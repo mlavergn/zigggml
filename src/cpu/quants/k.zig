@@ -42,10 +42,9 @@ inline fn as(comptime Block: type, p: ?*const anyopaque) [*]const Block {
 /// them into four words, the low two holding eight scales and the high two
 /// eight mins, both byte-addressable.
 ///
-/// Parameters:
 /// - `packed_scales`: the block's twelve scale bytes.
 ///
-/// Return: the four words, to be read as bytes.
+/// - Returns: the four words, to be read as bytes.
 fn unpackScalesMins(packed_scales: *const [12]u8) [4]u32 {
     const kmask1: u32 = 0x3f3f3f3f;
     const kmask2: u32 = 0x0f0f0f0f;
@@ -63,12 +62,16 @@ fn unpackScalesMins(packed_scales: *const [12]u8) [4]u32 {
     return utmp;
 }
 
+comptime {
+    @export(&ggmlVecDotQ2KQ8KGeneric, .{ .name = "ggml_vec_dot_q2_K_q8_K_generic" });
+}
+
 /// Ports `ggml_vec_dot_q2_K_q8_K_generic` (ggml-cpu/quants.c:613 @cd959bae9).
 ///
 /// Two-bit weights with a four-bit scale and a four-bit minimum per group of
 /// sixteen. The minima are handled in one pass up front against `q8_K`'s
 /// per-group sums, which is what `bsums` exists for.
-pub export fn ggml_vec_dot_q2_K_q8_K_generic(
+pub fn ggmlVecDotQ2KQ8KGeneric(
     n: c_int,
     s: [*c]f32,
     bs: usize,
@@ -77,7 +80,7 @@ pub export fn ggml_vec_dot_q2_K_q8_K_generic(
     vy: ?*const anyopaque,
     by: usize,
     nrc: c_int,
-) void {
+) callconv(.c) void {
     std.debug.assert(nrc == 1);
     _ = .{ bs, bx, by };
 
@@ -176,12 +179,16 @@ const Scratch = struct {
     }
 };
 
+comptime {
+    @export(&ggmlVecDotQ3KQ8KGeneric, .{ .name = "ggml_vec_dot_q3_K_q8_K_generic" });
+}
+
 /// Ports `ggml_vec_dot_q3_K_q8_K_generic` (ggml-cpu/quants.c:665 @cd959bae9).
 ///
 /// Three-bit weights: two bits in `qs` and an inverted high bit in `hmask`,
 /// so a clear mask bit subtracts 4. Scales are six-bit, biased by 32, packed
 /// across twelve bytes in a different layout from `q4_K`'s.
-pub export fn ggml_vec_dot_q3_K_q8_K_generic(
+pub fn ggmlVecDotQ3KQ8KGeneric(
     n: c_int,
     s: [*c]f32,
     bs: usize,
@@ -190,7 +197,7 @@ pub export fn ggml_vec_dot_q3_K_q8_K_generic(
     vy: ?*const anyopaque,
     by: usize,
     nrc: c_int,
-) void {
+) callconv(.c) void {
     std.debug.assert(@rem(n, c.QK_K) == 0);
     std.debug.assert(nrc == 1);
     _ = .{ bs, bx, by };
@@ -334,8 +341,12 @@ inline fn dotQ4Q5K(
     s[0] = sc.total(sumf);
 }
 
+comptime {
+    @export(&ggmlVecDotQ4KQ8KGeneric, .{ .name = "ggml_vec_dot_q4_K_q8_K_generic" });
+}
+
 /// Ports `ggml_vec_dot_q4_K_q8_K_generic` (ggml-cpu/quants.c:744 @cd959bae9).
-pub export fn ggml_vec_dot_q4_K_q8_K_generic(
+pub fn ggmlVecDotQ4KQ8KGeneric(
     n: c_int,
     s: [*c]f32,
     bs: usize,
@@ -344,7 +355,7 @@ pub export fn ggml_vec_dot_q4_K_q8_K_generic(
     vy: ?*const anyopaque,
     by: usize,
     nrc: c_int,
-) void {
+) callconv(.c) void {
     std.debug.assert(@rem(n, c.QK_K) == 0);
     std.debug.assert(nrc == 1);
     _ = .{ bs, bx, by };
@@ -352,8 +363,12 @@ pub export fn ggml_vec_dot_q4_K_q8_K_generic(
     dotQ4Q5K(blocks.Q4_K, n, s, vx, vy);
 }
 
+comptime {
+    @export(&ggmlVecDotQ5KQ8KGeneric, .{ .name = "ggml_vec_dot_q5_K_q8_K_generic" });
+}
+
 /// Ports `ggml_vec_dot_q5_K_q8_K_generic` (ggml-cpu/quants.c:819 @cd959bae9).
-pub export fn ggml_vec_dot_q5_K_q8_K_generic(
+pub fn ggmlVecDotQ5KQ8KGeneric(
     n: c_int,
     s: [*c]f32,
     bs: usize,
@@ -362,7 +377,7 @@ pub export fn ggml_vec_dot_q5_K_q8_K_generic(
     vy: ?*const anyopaque,
     by: usize,
     nrc: c_int,
-) void {
+) callconv(.c) void {
     std.debug.assert(@rem(n, c.QK_K) == 0);
     std.debug.assert(nrc == 1);
     _ = .{ bs, bx, by };
@@ -370,11 +385,15 @@ pub export fn ggml_vec_dot_q5_K_q8_K_generic(
     dotQ4Q5K(blocks.Q5_K, n, s, vx, vy);
 }
 
+comptime {
+    @export(&ggmlVecDotQ6KQ8KGeneric, .{ .name = "ggml_vec_dot_q6_K_q8_K_generic" });
+}
+
 /// Ports `ggml_vec_dot_q6_K_q8_K_generic` (ggml-cpu/quants.c:899 @cd959bae9).
 ///
 /// Six-bit weights biased by 32: four bits in `ql` and two in `qh`. The scales
 /// are already signed bytes, so there is no unpacking and no minimum.
-pub export fn ggml_vec_dot_q6_K_q8_K_generic(
+pub fn ggmlVecDotQ6KQ8KGeneric(
     n: c_int,
     s: [*c]f32,
     bs: usize,
@@ -383,7 +402,7 @@ pub export fn ggml_vec_dot_q6_K_q8_K_generic(
     vy: ?*const anyopaque,
     by: usize,
     nrc: c_int,
-) void {
+) callconv(.c) void {
     std.debug.assert(@rem(n, c.QK_K) == 0);
     std.debug.assert(nrc == 1);
     _ = .{ bs, bx, by };
@@ -449,23 +468,23 @@ const testing = @import("testing.zig");
 const golden = @import("golden.zig");
 
 test "q2_K dot matches the C" {
-    try testing.check(ggml_vec_dot_q2_K_q8_K_generic, c.GGML_TYPE_Q2_K, c.GGML_TYPE_Q8_K, golden.q2_K);
+    try testing.check(ggmlVecDotQ2KQ8KGeneric, c.GGML_TYPE_Q2_K, c.GGML_TYPE_Q8_K, golden.q2_K);
 }
 
 test "q3_K dot matches the C" {
-    try testing.check(ggml_vec_dot_q3_K_q8_K_generic, c.GGML_TYPE_Q3_K, c.GGML_TYPE_Q8_K, golden.q3_K);
+    try testing.check(ggmlVecDotQ3KQ8KGeneric, c.GGML_TYPE_Q3_K, c.GGML_TYPE_Q8_K, golden.q3_K);
 }
 
 test "q4_K dot matches the C" {
-    try testing.check(ggml_vec_dot_q4_K_q8_K_generic, c.GGML_TYPE_Q4_K, c.GGML_TYPE_Q8_K, golden.q4_K);
+    try testing.check(ggmlVecDotQ4KQ8KGeneric, c.GGML_TYPE_Q4_K, c.GGML_TYPE_Q8_K, golden.q4_K);
 }
 
 test "q5_K dot matches the C" {
-    try testing.check(ggml_vec_dot_q5_K_q8_K_generic, c.GGML_TYPE_Q5_K, c.GGML_TYPE_Q8_K, golden.q5_K);
+    try testing.check(ggmlVecDotQ5KQ8KGeneric, c.GGML_TYPE_Q5_K, c.GGML_TYPE_Q8_K, golden.q5_K);
 }
 
 test "q6_K dot matches the C" {
-    try testing.check(ggml_vec_dot_q6_K_q8_K_generic, c.GGML_TYPE_Q6_K, c.GGML_TYPE_Q8_K, golden.q6_K);
+    try testing.check(ggmlVecDotQ6KQ8KGeneric, c.GGML_TYPE_Q6_K, c.GGML_TYPE_Q8_K, golden.q6_K);
 }
 
 test "the shared scale unpacking splits eight scales and eight mins" {

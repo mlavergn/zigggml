@@ -55,7 +55,7 @@ fn sumF32(params: *const ComputeParams, dst: *Tensor) void {
             while (j02 < ne02) : (j02 += 1) {
                 var j01: i64 = 0;
                 while (j01 < ne01) : (j01 += 1) {
-                    vec.sum_f32_ggf(ne00, &row_sum, @ptrCast(@alignCast(s0 +
+                    vec.sumF32Ggf(ne00, &row_sum, @ptrCast(@alignCast(s0 +
                         @as(usize, @intCast(j01)) * nb01 + @as(usize, @intCast(j02)) * nb02 + @as(usize, @intCast(j03)) * nb03)));
                     sum += row_sum;
                 }
@@ -117,7 +117,7 @@ fn sumNarrow(comptime T: type, params: *const ComputeParams, dst: *Tensor) void 
             while (j01 < ne01) : (j01 += 1) {
                 const row: [*]const T = @ptrCast(@alignCast(s0 +
                     @as(usize, @intCast(j01)) * nb01 + @as(usize, @intCast(j02)) * nb02 + @as(usize, @intCast(j03)) * nb03));
-                if (T == c.ggml_fp16_t) vec.sum_f16_ggf(ne00, &row_sum, row) else vec.sum_bf16_ggf(ne00, &row_sum, row);
+                if (T == c.ggml_fp16_t) vec.sumF16Ggf(ne00, &row_sum, row) else vec.sumBf16Ggf(ne00, &row_sum, row);
                 sum += row_sum;
             }
         }
@@ -125,8 +125,12 @@ fn sumNarrow(comptime T: type, params: *const ComputeParams, dst: *Tensor) void 
     @as([*]T, @ptrCast(@alignCast(dst.data.?)))[0] = common.fromF32(T, sum);
 }
 
+comptime {
+    @export(&ggmlComputeForwardSum, .{ .name = "ggml_compute_forward_sum" });
+}
+
 /// Ports `ggml_compute_forward_sum` (ops.cpp:1412 @cd959bae9).
-pub export fn ggml_compute_forward_sum(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardSum(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
 
     switch (src0.type) {
@@ -167,12 +171,16 @@ fn cumsumF32(params: *const ComputeParams, dst: *Tensor) void {
         const dst_row: [*]f32 = @ptrCast(@alignCast(dd +
             @as(usize, @intCast(j01)) * l.nb1 + @as(usize, @intCast(j02)) * l.nb2 + @as(usize, @intCast(j03)) * l.nb3));
 
-        vec.cumsum_f32(l.ne00, dst_row, src_row);
+        vec.cumsumF32(l.ne00, dst_row, src_row);
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardCumsum, .{ .name = "ggml_compute_forward_cumsum" });
+}
+
 /// Ports `ggml_compute_forward_cumsum` (ops.cpp:1470 @cd959bae9).
-pub export fn ggml_compute_forward_cumsum(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardCumsum(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
 
     switch (src0.type) {
@@ -211,15 +219,19 @@ fn sumRowsF32(params: *const ComputeParams, dst: *Tensor) void {
                 const dst_row: [*]f32 = @ptrCast(@alignCast(dd +
                     @as(usize, @intCast(j1)) * l.nb1 + @as(usize, @intCast(j2)) * l.nb2 + @as(usize, @intCast(j3)) * l.nb3));
                 var row_sum: f32 = 0;
-                vec.sum_f32(l.ne00, &row_sum, src_row);
+                vec.sumF32(l.ne00, &row_sum, src_row);
                 dst_row[0] = row_sum;
             }
         }
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardSumRows, .{ .name = "ggml_compute_forward_sum_rows" });
+}
+
 /// Ports `ggml_compute_forward_sum_rows` (ops.cpp:1523 @cd959bae9).
-pub export fn ggml_compute_forward_sum_rows(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardSumRows(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
 
     switch (src0.type) {
@@ -254,7 +266,7 @@ fn meanF32(params: *const ComputeParams, dst: *Tensor) void {
             while (j01 < l.ne01) : (j01 += 1) {
                 const out: *f32 = @ptrCast(@alignCast(dd +
                     @as(usize, @intCast(j01)) * l.nb1 + @as(usize, @intCast(j02)) * l.nb2 + @as(usize, @intCast(j03)) * l.nb3));
-                vec.sum_f32(l.ne00, out, @ptrCast(@alignCast(s0 +
+                vec.sumF32(l.ne00, out, @ptrCast(@alignCast(s0 +
                     @as(usize, @intCast(j01)) * l.nb01 + @as(usize, @intCast(j02)) * l.nb02 + @as(usize, @intCast(j03)) * l.nb03)));
                 out.* /= @floatFromInt(l.ne00);
             }
@@ -262,8 +274,12 @@ fn meanF32(params: *const ComputeParams, dst: *Tensor) void {
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardMean, .{ .name = "ggml_compute_forward_mean" });
+}
+
 /// Ports `ggml_compute_forward_mean` (ops.cpp:1580 @cd959bae9).
-pub export fn ggml_compute_forward_mean(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardMean(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
 
     switch (src0.type) {
@@ -294,13 +310,17 @@ fn argmaxF32(params: *const ComputeParams, dst: *Tensor) void {
         const src: [*]const f32 = @ptrCast(@alignCast(s0 + @as(usize, @intCast(j1)) * nb01));
         const dst_: [*]i32 = @ptrCast(@alignCast(dd + @as(usize, @intCast(j1)) * nb0));
         var v: i32 = 0;
-        vec.argmax_f32(ne00, &v, src);
+        vec.argmaxF32(ne00, &v, src);
         dst_[0] = v;
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardArgmax, .{ .name = "ggml_compute_forward_argmax" });
+}
+
 /// Ports `ggml_compute_forward_argmax` (ops.cpp:1628 @cd959bae9).
-pub export fn ggml_compute_forward_argmax(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardArgmax(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
 
     switch (src0.type) {
@@ -362,7 +382,7 @@ fn countEqualI32(params: *const ComputeParams, dst: *Tensor) void {
     if (ith != 0) {
         sums[@intCast(ith)] = sum_thread;
     }
-    threading.ggml_barrier(@ptrCast(@alignCast(params.threadpool.?)));
+    threading.ggmlBarrier(@ptrCast(@alignCast(params.threadpool.?)));
 
     if (ith != 0) return;
 
@@ -373,8 +393,12 @@ fn countEqualI32(params: *const ComputeParams, dst: *Tensor) void {
     @as(*i64, @ptrCast(@alignCast(dst.data.?))).* = sum_thread;
 }
 
+comptime {
+    @export(&ggmlComputeForwardCountEqual, .{ .name = "ggml_compute_forward_count_equal" });
+}
+
 /// Ports `ggml_compute_forward_count_equal` (ops.cpp:1708 @cd959bae9).
-pub export fn ggml_compute_forward_count_equal(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardCountEqual(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
 
     switch (src0.type) {

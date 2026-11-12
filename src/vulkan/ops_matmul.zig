@@ -158,7 +158,7 @@ fn getMulMatMatF16acc(ctx: *const BackendCtx, src0_type: c.ggml_type, src1_type:
 /// the tile configurations of the matmul for these types, falling back to
 /// the f32 accumulator when the f16 one has none.
 ///
-/// Return: the configurations, borrowed from the device, or null when no
+/// - Returns: the configurations, borrowed from the device, or null when no
 /// pipeline exists.
 pub fn getMulMatMatPipelineMap(ctx: *const BackendCtx, src0_type: c.ggml_type, src1_type: c.ggml_type, prec: c.ggml_prec, mul_mat_id: bool) ?[]const MatmulPipelinePair {
     const dev = ctx.device;

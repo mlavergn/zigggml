@@ -41,7 +41,7 @@ const c = impl.c;
 const common = m.common;
 const vk = common.vk;
 const d = &common.dispatch;
-const allocator = common.allocator;
+const allocator = std.heap.c_allocator;
 const BackendCtx = m.context.BackendCtx;
 const Context = m.submit.Context;
 const Tensor = c.ggml_tensor;
@@ -215,7 +215,7 @@ fn notifySubmitted(comm: *CommCtx, round: u64) void {
 
 /// Ports `ggml_vk_comm_wait_submitted` (ggml-vulkan-comm.cpp:169 @cd959bae9).
 ///
-/// Return: false on stop.
+/// - Returns: false on stop.
 fn waitSubmitted(comm: *CommCtx, r: u64) bool {
     const t0 = now();
     while (comm.submitted.load(.seq_cst) < r) {
@@ -255,7 +255,7 @@ fn signalSemaphore(device: vk.VkDevice, sem: vk.VkSemaphore, value: u64) common.
 /// Ports `ggml_vk_comm_bridge_release` (ggml-vulkan-comm.cpp:190 @cd959bae9):
 /// signals go[i] once all peers of i are done.
 ///
-/// Return: false on stop; an error where a `vk::SystemError` is thrown.
+/// - Returns: false on stop; an error where a `vk::SystemError` is thrown.
 fn bridgeRelease(comm: *CommCtx, r: u64, seen: []u64, sent: []bool) common.VkError!bool {
     const n = comm.devs.len;
     @memset(sent, false);

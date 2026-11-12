@@ -38,11 +38,6 @@ const repack = @import("repack/module.zig");
 const c = impl.c;
 const Tensor = defs.Tensor;
 
-/// The C `new`s these and mostly never frees them. libc's allocator is what
-/// a C entry point can reach without being handed one — the same reasoning
-/// as `backend_reg.zig` and `backend.zig`.
-const allocator = std.heap.c_allocator;
-
 // -----------------------------------------------------------------------------
 // The extra buffer types
 
@@ -67,7 +62,7 @@ fn ensureExtraBufts() void {
     defer extra_bufts_mutex.unlock();
     if (extra_bufts_ready.load(.acquire)) return;
 
-    const buft = repack.ggml_backend_cpu_repack_buffer_type();
+    const buft = repack.ggmlBackendCpuRepackBufferType();
     if (buft != null) {
         extra_bufts[extra_bufts_n] = buft;
         extra_bufts_n += 1;
@@ -78,7 +73,7 @@ fn ensureExtraBufts() void {
 /// Ports `ggml_backend_cpu_get_extra_buffer_types` (ggml-cpu.cpp:42
 /// @cd959bae9).
 ///
-/// Return: the extra buffer types, borrowed for the life of the process.
+/// - Returns: the extra buffer types, borrowed for the life of the process.
 pub fn getExtraBufferTypes() []const c.ggml_backend_buffer_type_t {
     ensureExtraBufts();
     return extra_bufts[0..extra_bufts_n];
@@ -130,9 +125,9 @@ fn getName(backend: c.ggml_backend_t) callconv(.c) [*c]const u8 {
 fn backendFree(backend: c.ggml_backend_t) callconv(.c) void {
     const b = impl.one(c.struct_ggml_backend, backend);
     const ctx: *Context = @ptrCast(@alignCast(b.context.?));
-    if (ctx.work_data) |w| allocator.free(w[0..ctx.work_size]);
-    allocator.destroy(ctx);
-    allocator.destroy(b);
+    if (ctx.work_data) |w| std.heap.c_allocator.free(w[0..ctx.work_size]);
+    std.heap.c_allocator.destroy(ctx);
+    std.heap.c_allocator.destroy(b);
 }
 
 /// Ports `struct ggml_backend_plan_cpu` (ggml-cpu.cpp:125 @cd959bae9).
@@ -146,15 +141,15 @@ fn graphPlanCreate(backend: c.ggml_backend_t, cgraph: *const impl.CGraph) callco
     const b = impl.one(c.struct_ggml_backend, backend);
     const ctx: *Context = @ptrCast(@alignCast(b.context.?));
 
-    const plan = allocator.create(PlanCpu) catch return null;
+    const plan = std.heap.c_allocator.create(PlanCpu) catch return null;
 
     plan.cplan = c.ggml_graph_plan(@ptrCast(cgraph), ctx.n_threads, ctx.threadpool);
     // The C's own comment: "FIXME: deep copy".
     plan.cgraph = cgraph.*;
 
     if (plan.cplan.work_size > 0) {
-        const buf = allocator.alloc(u8, plan.cplan.work_size) catch {
-            allocator.destroy(plan);
+        const buf = std.heap.c_allocator.alloc(u8, plan.cplan.work_size) catch {
+            std.heap.c_allocator.destroy(plan);
             return null;
         };
         plan.cplan.work_data = buf.ptr;
@@ -171,8 +166,8 @@ fn graphPlanCreate(backend: c.ggml_backend_t, cgraph: *const impl.CGraph) callco
 fn graphPlanFree(backend: c.ggml_backend_t, plan_in: c.ggml_backend_graph_plan_t) callconv(.c) void {
     _ = backend;
     const plan: *PlanCpu = @ptrCast(@alignCast(plan_in.?));
-    if (plan.cplan.work_data) |w| allocator.free(w[0..plan.cplan.work_size]);
-    allocator.destroy(plan);
+    if (plan.cplan.work_data) |w| std.heap.c_allocator.free(w[0..plan.cplan.work_size]);
+    std.heap.c_allocator.destroy(plan);
 }
 
 /// Ports `ggml_backend_cpu_graph_plan_compute` (ggml-cpu.cpp:162 @cd959bae9).
@@ -190,8 +185,8 @@ fn graphCompute(backend: c.ggml_backend_t, cgraph: *impl.CGraph) callconv(.c) c.
     var cplan = c.ggml_graph_plan(@ptrCast(cgraph), ctx.n_threads, ctx.threadpool);
 
     if (ctx.work_size < cplan.work_size) {
-        if (ctx.work_data) |w| allocator.free(w[0..ctx.work_size]);
-        const buf = allocator.alloc(u8, cplan.work_size) catch {
+        if (ctx.work_data) |w| std.heap.c_allocator.free(w[0..ctx.work_size]);
+        const buf = std.heap.c_allocator.alloc(u8, cplan.work_size) catch {
             ctx.work_data = null;
             ctx.work_size = 0;
             return c.GGML_STATUS_ALLOC_FAILED;
@@ -237,15 +232,19 @@ fn guid() c.ggml_guid_t {
 
 extern fn ggml_cpu_init() void;
 
+comptime {
+    @export(&ggmlBackendCpuInit, .{ .name = "ggml_backend_cpu_init" });
+}
+
 /// Ports `ggml_backend_cpu_init` (ggml-cpu.cpp:217 @cd959bae9).
 ///
-/// Return: a new CPU backend, or null if allocation failed. The caller owns
+/// - Returns: a new CPU backend, or null if allocation failed. The caller owns
 /// it and frees it with `ggml_backend_free`.
-pub export fn ggml_backend_cpu_init() callconv(.c) c.ggml_backend_t {
+pub fn ggmlBackendCpuInit() callconv(.c) c.ggml_backend_t {
     // initialize CPU backend now to avoid slowing the first graph computation
     ggml_cpu_init();
 
-    const ctx = allocator.create(Context) catch return null;
+    const ctx = std.heap.c_allocator.create(Context) catch return null;
     ctx.* = .{
         .n_threads = c.GGML_DEFAULT_N_THREADS,
         .threadpool = null,
@@ -256,36 +255,48 @@ pub export fn ggml_backend_cpu_init() callconv(.c) c.ggml_backend_t {
         .use_ref = false,
     };
 
-    const backend = allocator.create(c.struct_ggml_backend) catch {
-        allocator.destroy(ctx);
+    const backend = std.heap.c_allocator.create(c.struct_ggml_backend) catch {
+        std.heap.c_allocator.destroy(ctx);
         return null;
     };
     backend.* = .{
         .guid = guid(),
         .iface = backend_i,
-        .device = c.ggml_backend_reg_dev_get(ggml_backend_cpu_reg(), 0),
+        .device = c.ggml_backend_reg_dev_get(ggmlBackendCpuReg(), 0),
         .context = ctx,
     };
     return backend;
 }
 
+comptime {
+    @export(&ggmlBackendIsCpu, .{ .name = "ggml_backend_is_cpu" });
+}
+
 /// Ports `ggml_backend_is_cpu` (ggml-cpu.cpp:249 @cd959bae9).
-pub export fn ggml_backend_is_cpu(backend: c.ggml_backend_t) callconv(.c) bool {
+pub fn ggmlBackendIsCpu(backend: c.ggml_backend_t) callconv(.c) bool {
     return backend != null and c.ggml_guid_matches(impl.one(c.struct_ggml_backend, backend).guid, guid());
 }
 
 inline fn contextOf(backend_cpu: c.ggml_backend_t) *Context {
-    impl.assert(ggml_backend_is_cpu(backend_cpu), "ggml_backend_is_cpu(backend_cpu)");
+    impl.assert(ggmlBackendIsCpu(backend_cpu), "ggml_backend_is_cpu(backend_cpu)");
     return @ptrCast(@alignCast(impl.one(c.struct_ggml_backend, backend_cpu).context.?));
 }
 
+comptime {
+    @export(&ggmlBackendCpuSetNThreads, .{ .name = "ggml_backend_cpu_set_n_threads" });
+}
+
 /// Ports `ggml_backend_cpu_set_n_threads` (ggml-cpu.cpp:253 @cd959bae9).
-pub export fn ggml_backend_cpu_set_n_threads(backend_cpu: c.ggml_backend_t, n_threads: c_int) callconv(.c) void {
+pub fn ggmlBackendCpuSetNThreads(backend_cpu: c.ggml_backend_t, n_threads: c_int) callconv(.c) void {
     contextOf(backend_cpu).n_threads = n_threads;
 }
 
+comptime {
+    @export(&ggmlBackendCpuSetThreadpool, .{ .name = "ggml_backend_cpu_set_threadpool" });
+}
+
 /// Ports `ggml_backend_cpu_set_threadpool` (ggml-cpu.cpp:260 @cd959bae9).
-pub export fn ggml_backend_cpu_set_threadpool(backend_cpu: c.ggml_backend_t, threadpool: c.ggml_threadpool_t) callconv(.c) void {
+pub fn ggmlBackendCpuSetThreadpool(backend_cpu: c.ggml_backend_t, threadpool: c.ggml_threadpool_t) callconv(.c) void {
     const ctx = contextOf(backend_cpu);
     if (ctx.threadpool != null and ctx.threadpool != threadpool) {
         // already had a different threadpool, pause/suspend it before switching
@@ -294,15 +305,23 @@ pub export fn ggml_backend_cpu_set_threadpool(backend_cpu: c.ggml_backend_t, thr
     ctx.threadpool = threadpool;
 }
 
+comptime {
+    @export(&ggmlBackendCpuSetAbortCallback, .{ .name = "ggml_backend_cpu_set_abort_callback" });
+}
+
 /// Ports `ggml_backend_cpu_set_abort_callback` (ggml-cpu.cpp:272 @cd959bae9).
-pub export fn ggml_backend_cpu_set_abort_callback(backend_cpu: c.ggml_backend_t, abort_callback: c.ggml_abort_callback, abort_callback_data: ?*anyopaque) callconv(.c) void {
+pub fn ggmlBackendCpuSetAbortCallback(backend_cpu: c.ggml_backend_t, abort_callback: c.ggml_abort_callback, abort_callback_data: ?*anyopaque) callconv(.c) void {
     const ctx = contextOf(backend_cpu);
     ctx.abort_callback = abort_callback;
     ctx.abort_callback_data = abort_callback_data;
 }
 
+comptime {
+    @export(&ggmlBackendCpuSetUseRef, .{ .name = "ggml_backend_cpu_set_use_ref" });
+}
+
 /// Ports `ggml_backend_cpu_set_use_ref` (ggml-cpu.cpp:280 @cd959bae9).
-pub export fn ggml_backend_cpu_set_use_ref(backend_cpu: c.ggml_backend_t, use_ref: bool) callconv(.c) void {
+pub fn ggmlBackendCpuSetUseRef(backend_cpu: c.ggml_backend_t, use_ref: bool) callconv(.c) void {
     contextOf(backend_cpu).use_ref = use_ref;
 }
 
@@ -463,7 +482,7 @@ fn deviceGetProps(dev: c.ggml_backend_dev_t, props: *c.struct_ggml_backend_dev_p
 fn deviceInitBackend(dev: c.ggml_backend_dev_t, params: [*c]const u8) callconv(.c) c.ggml_backend_t {
     _ = dev;
     _ = params;
-    return ggml_backend_cpu_init();
+    return ggmlBackendCpuInit();
 }
 
 fn deviceGetBufferType(dev: c.ggml_backend_dev_t) callconv(.c) c.ggml_backend_buffer_type_t {
@@ -679,17 +698,17 @@ fn regGetProcAddress(reg: c.ggml_backend_reg_t, name: [*c]const u8) callconv(.c)
     _ = reg;
     const n = std.mem.span(@as([*:0]const u8, @ptrCast(name)));
     const table = .{
-        .{ "ggml_backend_set_n_threads", @as(?*anyopaque, @ptrCast(@constCast(&ggml_backend_cpu_set_n_threads))) },
+        .{ "ggml_backend_set_n_threads", @as(?*anyopaque, @ptrCast(@constCast(&ggmlBackendCpuSetNThreads))) },
         .{ "ggml_backend_dev_get_extra_bufts", @as(?*anyopaque, @ptrCast(@constCast(&deviceGetExtraBuffersType))) },
         .{ "ggml_backend_get_features", @as(?*anyopaque, @ptrCast(@constCast(&regGetFeatures))) },
-        .{ "ggml_backend_set_abort_callback", @as(?*anyopaque, @ptrCast(@constCast(&ggml_backend_cpu_set_abort_callback))) },
+        .{ "ggml_backend_set_abort_callback", @as(?*anyopaque, @ptrCast(@constCast(&ggmlBackendCpuSetAbortCallback))) },
         .{ "ggml_backend_cpu_numa_init", @as(?*anyopaque, @ptrCast(@constCast(&c.ggml_numa_init))) },
         .{ "ggml_backend_cpu_is_numa", @as(?*anyopaque, @ptrCast(@constCast(&c.ggml_is_numa))) },
-        .{ "ggml_backend_cpu_set_use_ref", @as(?*anyopaque, @ptrCast(@constCast(&ggml_backend_cpu_set_use_ref))) },
+        .{ "ggml_backend_cpu_set_use_ref", @as(?*anyopaque, @ptrCast(@constCast(&ggmlBackendCpuSetUseRef))) },
         // threadpool - the C's own TODO: move to ggml-base
         .{ "ggml_threadpool_new", @as(?*anyopaque, @ptrCast(@constCast(&c.ggml_threadpool_new))) },
         .{ "ggml_threadpool_free", @as(?*anyopaque, @ptrCast(@constCast(&c.ggml_threadpool_free))) },
-        .{ "ggml_backend_cpu_set_threadpool", @as(?*anyopaque, @ptrCast(@constCast(&ggml_backend_cpu_set_threadpool))) },
+        .{ "ggml_backend_cpu_set_threadpool", @as(?*anyopaque, @ptrCast(@constCast(&ggmlBackendCpuSetThreadpool))) },
     };
     inline for (table) |entry| {
         if (std.mem.eql(u8, n, entry[0])) return entry[1];
@@ -711,10 +730,14 @@ var cpu_reg = c.struct_ggml_backend_reg{
     .context = null,
 };
 
+comptime {
+    @export(&ggmlBackendCpuReg, .{ .name = "ggml_backend_cpu_reg" });
+}
+
 /// Ports `ggml_backend_cpu_reg` (ggml-cpu.cpp:706 @cd959bae9).
 ///
-/// Return: the CPU registration, a process-lifetime singleton.
-pub export fn ggml_backend_cpu_reg() callconv(.c) c.ggml_backend_reg_t {
+/// - Returns: the CPU registration, a process-lifetime singleton.
+pub fn ggmlBackendCpuReg() callconv(.c) c.ggml_backend_reg_t {
     // init CPU feature detection
     ggml_cpu_init();
     return &cpu_reg;

@@ -25,7 +25,6 @@
 //! `launchFattn` therefore takes the caller's translation unit and launches
 //! the helpers from it, as the C++ does.
 
-const std = @import("std");
 const impl = @import("../impl.zig");
 const common = @import("common.zig");
 const kernels = @import("kernels.zig");
@@ -141,11 +140,10 @@ pub const F16ExtraData = struct {
 /// with whatever `data` the tensor has then) and the launch agree only
 /// because both pad the end to 128 bytes.
 ///
-/// Parameters:
 /// - `dst`: a `GGML_OP_FLASH_ATTN_EXT` node.
 /// - `need_f16_K`, `need_f16_V`: whether the kernel reads K and V as F16.
 ///
-/// Return: the addresses of the two copies (0 when not needed) and the end
+/// - Returns: the addresses of the two copies (0 when not needed) and the end
 /// of the region.
 pub fn getF16ExtraData(dst: *const Tensor, need_f16_K: bool, need_f16_V: bool) F16ExtraData {
     impl.assert(dst.op == c.GGML_OP_FLASH_ATTN_EXT, "dst->op == GGML_OP_FLASH_ATTN_EXT");
@@ -250,7 +248,6 @@ fn shouldUseStreamK(prefer_whole_tiles: bool, cc: c_int, ntiles_dst: c_int, max_
 
 /// Ports `launch_fattn` (fattn-common.cuh:982 @cd959bae9).
 ///
-/// Parameters:
 /// - `library`: the translation unit the calling case is instantiated in;
 ///   the helper kernels come from it.
 /// - `DV`, `ncols1`, `ncols2`: the C's template parameters.

@@ -11,7 +11,6 @@
 //! `ggml_cuda_op_mul_mat_vec_q`, the row-split entry point, is not ported:
 //! nothing in this version of upstream calls it.
 
-const std = @import("std");
 const impl = @import("../impl.zig");
 const common = @import("common.zig");
 const kernels = @import("kernels.zig");
@@ -637,7 +636,7 @@ pub fn mulMatVecQ(ctx: *common.Context, src0: *const Tensor, src1: *const Tensor
         const s11: i64 = @intCast(src1.nb[1] / ts_src1);
         const s12: i64 = @intCast(src1.nb[2] / ts_src1);
         const s13: i64 = @intCast(src1.nb[3] / ts_src1);
-        quantize.quantizeRowQ8_1(src1_d, null, src1_q8_1.get(), src0.type, ne10, s11, s12, s13, ne10_padded, ne11, ne12, ne13, stream);
+        quantize.quantizeRowQ81(src1_d, null, src1_q8_1.get(), src0.type, ne10, s11, s12, s13, ne10_padded, ne11, ne12, ne13, stream);
     }
 
     const s01: i64 = @intCast(src0.nb[1] / ts_src0);

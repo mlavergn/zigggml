@@ -62,8 +62,12 @@ const sh3: @Vector(16, u3) = @splat(3);
 const sh4: @Vector(16, u3) = @splat(4);
 const sh2: @Vector(16, u3) = @splat(2);
 
+comptime {
+    @export(&ggmlGemvQ5K8x4Q8K, .{ .name = "ggml_gemv_q5_K_8x4_q8_K" });
+}
+
 /// Ports `ggml_gemv_q5_K_8x4_q8_K` (arch/arm/repack.cpp:935 @cd959bae9).
-pub export fn ggml_gemv_q5_K_8x4_q8_K(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+pub fn ggmlGemvQ5K8x4Q8K(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
     if (comptime !neon.has_dotprod) return ggml_gemv_q5_K_8x4_q8_K_generic(n, s, bs, vx, vy, nr, nc);
     const nb = @divTrunc(n, 256);
     const ncols_interleaved: c_int = 8;
@@ -81,13 +85,13 @@ pub export fn ggml_gemv_q5_K_8x4_q8_K(n: c_int, s: [*]f32, bs: usize, vx: *const
 
         var b: usize = 0;
         while (b < @as(usize, @intCast(nb))) : (b += 1) {
-            const q5_d_0 = neon.cvt_f32_f16(neon.load_f16x4(@ptrCast(&q5_ptr[b].d)));
-            const q5_d_1 = neon.cvt_f32_f16(neon.load_f16x4(@as([*]const u16, @ptrCast(&q5_ptr[b].d)) + 4));
+            const q5_d_0 = neon.cvtF32F16(neon.loadF16x4(@ptrCast(&q5_ptr[b].d)));
+            const q5_d_1 = neon.cvtF32F16(neon.loadF16x4(@as([*]const u16, @ptrCast(&q5_ptr[b].d)) + 4));
             const q8_d: f32x4 = @splat(q8_ptr[b].d);
             const sb_scale_0123 = q5_d_0 * q8_d;
             const sb_scale_4567 = q5_d_1 * q8_d;
-            const q5_dmin_0 = neon.cvt_f32_f16(neon.load_f16x4(@ptrCast(&q5_ptr[b].dmin)));
-            const q5_dmin_1 = neon.cvt_f32_f16(neon.load_f16x4(@as([*]const u16, @ptrCast(&q5_ptr[b].dmin)) + 4));
+            const q5_dmin_0 = neon.cvtF32F16(neon.loadF16x4(@ptrCast(&q5_ptr[b].dmin)));
+            const q5_dmin_1 = neon.cvtF32F16(neon.loadF16x4(@as([*]const u16, @ptrCast(&q5_ptr[b].dmin)) + 4));
             const sb_min_0123 = q5_dmin_0 * q8_d;
             const sb_min_4567 = q5_dmin_1 * q8_d;
 
@@ -105,7 +109,7 @@ pub export fn ggml_gemv_q5_K_8x4_q8_K(n: c_int, s: [*]f32, bs: usize, vx: *const
             }
 
             const bsums_ptr: [*]const i16 = @ptrCast(&q8_ptr[b].bsums);
-            const bsums = neon.paddq_s16(loadq16(bsums_ptr), loadq16(bsums_ptr + 8));
+            const bsums = neon.paddqS16(loadq16(bsums_ptr), loadq16(bsums_ptr + 8));
             const bsums_arr: [8]i16 = bsums;
 
             for (0..4) |sb| {
@@ -120,7 +124,7 @@ pub export fn ggml_gemv_q5_K_8x4_q8_K(n: c_int, s: [*]f32, bs: usize, vx: *const
                     var aux: [8]i8 = undefined;
                     const offset = sb * 24 + i * 12;
                     kscales.decodeQKx86BitScales(@as([*]const u8, &q5_ptr[b].scales) + offset, &q5sb_mins[i], &aux);
-                    q5sb_scales[i] = neon.movl_s8(@as(@Vector(8, i8), aux));
+                    q5sb_scales[i] = neon.movlS8(@as(@Vector(8, i8), aux));
                 }
 
                 var q8_qs: [4]i8x16 = undefined;
@@ -138,47 +142,51 @@ pub export fn ggml_gemv_q5_K_8x4_q8_K(n: c_int, s: [*]f32, bs: usize, vx: *const
                         // In place: the next sub-block reads the next pair.
                         qh[cg][i] = qh[cg][i] >> sh2;
 
-                        q5_lo[i] = @bitCast(neon.sli_n_u8(q5_col & m4b, hbit_lo, 4));
+                        q5_lo[i] = @bitCast(neon.sliNU8(q5_col & m4b, hbit_lo, 4));
                         q5_hi[i] = @bitCast((q5_col >> sh4) | hbit_hi);
                     }
 
                     inline for (0..8) |i| {
-                        acc_lo[cg] = neon.dotq_laneq_s32(acc_lo[cg], q5_lo[i], q8_qs[i / 4], i % 4);
+                        acc_lo[cg] = neon.dotqLaneqS32(acc_lo[cg], q5_lo[i], q8_qs[i / 4], i % 4);
                     }
                     inline for (0..8) |i| {
-                        acc_hi[cg] = neon.dotq_laneq_s32(acc_hi[cg], q5_hi[i], q8_qs[2 + i / 4], i % 4);
+                        acc_hi[cg] = neon.dotqLaneqS32(acc_hi[cg], q5_hi[i], q8_qs[2 + i / 4], i % 4);
                     }
                 }
 
                 const sc_0123_lo = neon.low(q5sb_scales[0]);
                 const sc_0123_hi = neon.low(q5sb_scales[1]);
-                const sumf_0123 = neon.cvt_f32_s32((neon.movl_s16(sc_0123_lo) *% acc_lo[0]) +%
-                    (neon.movl_s16(sc_0123_hi) *% acc_hi[0]));
-                acc_f32[0] = neon.fma_f32(acc_f32[0], sb_scale_0123, sumf_0123);
+                const sumf_0123 = neon.cvtF32S32((neon.movlS16(sc_0123_lo) *% acc_lo[0]) +%
+                    (neon.movlS16(sc_0123_hi) *% acc_hi[0]));
+                acc_f32[0] = neon.fmaF32(acc_f32[0], sb_scale_0123, sumf_0123);
 
                 const sc_4567_lo = neon.high(q5sb_scales[0]);
                 const sc_4567_hi = neon.high(q5sb_scales[1]);
-                const sumf_4567 = neon.cvt_f32_s32((neon.movl_s16(sc_4567_lo) *% acc_lo[1]) +%
-                    (neon.movl_s16(sc_4567_hi) *% acc_hi[1]));
-                acc_f32[1] = neon.fma_f32(acc_f32[1], sb_scale_4567, sumf_4567);
+                const sumf_4567 = neon.cvtF32S32((neon.movlS16(sc_4567_lo) *% acc_lo[1]) +%
+                    (neon.movlS16(sc_4567_hi) *% acc_hi[1]));
+                acc_f32[1] = neon.fmaF32(acc_f32[1], sb_scale_4567, sumf_4567);
 
                 const bsums_vec_lo: i16x4 = @splat(bsums_arr[2 * sb + 0]);
                 const bsums_vec_hi: i16x4 = @splat(bsums_arr[2 * sb + 1]);
 
-                bias_acc[0] = neon.mlal_s16(bias_acc[0], bsums_vec_lo, neon.low(q5sb_mins[0]));
-                bias_acc[0] = neon.mlal_s16(bias_acc[0], bsums_vec_hi, neon.low(q5sb_mins[1]));
-                bias_acc[1] = neon.mlal_s16(bias_acc[1], bsums_vec_lo, neon.high(q5sb_mins[0]));
-                bias_acc[1] = neon.mlal_s16(bias_acc[1], bsums_vec_hi, neon.high(q5sb_mins[1]));
+                bias_acc[0] = neon.mlalS16(bias_acc[0], bsums_vec_lo, neon.low(q5sb_mins[0]));
+                bias_acc[0] = neon.mlalS16(bias_acc[0], bsums_vec_hi, neon.low(q5sb_mins[1]));
+                bias_acc[1] = neon.mlalS16(bias_acc[1], bsums_vec_lo, neon.high(q5sb_mins[0]));
+                bias_acc[1] = neon.mlalS16(bias_acc[1], bsums_vec_hi, neon.high(q5sb_mins[1]));
             }
 
-            acc_f32[0] = neon.mlsq_f32(acc_f32[0], neon.cvt_f32_s32(bias_acc[0]), sb_min_0123);
-            acc_f32[1] = neon.mlsq_f32(acc_f32[1], neon.cvt_f32_s32(bias_acc[1]), sb_min_4567);
+            acc_f32[0] = neon.mlsqF32(acc_f32[0], neon.cvtF32S32(bias_acc[0]), sb_min_0123);
+            acc_f32[1] = neon.mlsqF32(acc_f32[1], neon.cvtF32S32(bias_acc[1]), sb_min_4567);
         }
 
         const base: usize = @intCast(x * ncols_interleaved);
         s[base..][0..4].* = acc_f32[0];
         s[base + 4 ..][0..4].* = acc_f32[1];
     }
+}
+
+comptime {
+    @export(&ggmlGemvQ5K8x8Q8K, .{ .name = "ggml_gemv_q5_K_8x8_q8_K" });
 }
 
 /// Ports `ggml_gemv_q5_K_8x8_q8_K` (arch/arm/repack.cpp:1094 @cd959bae9).
@@ -190,7 +198,7 @@ pub export fn ggml_gemv_q5_K_8x4_q8_K(n: c_int, s: [*]f32, bs: usize, vx: *const
 ///
 /// `qh` here is `[4][4]`, not `[2][8]`, and is shifted in place per
 /// sub-block exactly as in the 8x4 kernel.
-pub export fn ggml_gemv_q5_K_8x8_q8_K(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+pub fn ggmlGemvQ5K8x8Q8K(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
     if (comptime !neon.has_dotprod) return ggml_gemv_q5_K_8x8_q8_K_generic(n, s, bs, vx, vy, nr, nc);
     const nb = @divTrunc(n, 256);
     const ncols_interleaved: c_int = 8;
@@ -208,27 +216,27 @@ pub export fn ggml_gemv_q5_K_8x8_q8_K(n: c_int, s: [*]f32, bs: usize, vx: *const
 
         var b: usize = 0;
         while (b < @as(usize, @intCast(nb))) : (b += 1) {
-            const q5_d_0 = neon.cvt_f32_f16(neon.load_f16x4(@ptrCast(&q5_ptr[b].d)));
-            const q5_d_1 = neon.cvt_f32_f16(neon.load_f16x4(@as([*]const u16, @ptrCast(&q5_ptr[b].d)) + 4));
+            const q5_d_0 = neon.cvtF32F16(neon.loadF16x4(@ptrCast(&q5_ptr[b].d)));
+            const q5_d_1 = neon.cvtF32F16(neon.loadF16x4(@as([*]const u16, @ptrCast(&q5_ptr[b].d)) + 4));
             const q8_d: f32x4 = @splat(q8_ptr[b].d);
             const sb_scale_0 = q5_d_0 * q8_d;
             const sb_scale_1 = q5_d_1 * q8_d;
-            const q5_dmin_0 = neon.cvt_f32_f16(neon.load_f16x4(@ptrCast(&q5_ptr[b].dmin)));
-            const q5_dmin_1 = neon.cvt_f32_f16(neon.load_f16x4(@as([*]const u16, @ptrCast(&q5_ptr[b].dmin)) + 4));
+            const q5_dmin_0 = neon.cvtF32F16(neon.loadF16x4(@ptrCast(&q5_ptr[b].dmin)));
+            const q5_dmin_1 = neon.cvtF32F16(neon.loadF16x4(@as([*]const u16, @ptrCast(&q5_ptr[b].dmin)) + 4));
             const sb_min_0 = q5_dmin_0 * q8_d;
             const sb_min_1 = q5_dmin_1 * q8_d;
 
             var acc_lo: [col_pairs]i32x4 = undefined;
             var acc_hi: [col_pairs]i32x4 = undefined;
 
-            const qh_base: [*]const u8 = @as([*]const u8, &q5_ptr[b].qh);
+            const qh_base: [*]const u8 = &q5_ptr[b].qh;
             var qh: [col_pairs][4]u8x16 = undefined;
             for (0..col_pairs) |cp| {
                 inline for (0..4) |i| qh[cp][i] = loadqu(qh_base + 16 * cp + 64 * i);
             }
 
             const bsums_ptr: [*]const i16 = @ptrCast(&q8_ptr[b].bsums);
-            const bsums = neon.paddq_s16(loadq16(bsums_ptr), loadq16(bsums_ptr + 8));
+            const bsums = neon.paddqS16(loadq16(bsums_ptr), loadq16(bsums_ptr + 8));
             const bsums_arr: [8]i16 = bsums;
 
             for (0..4) |sb| {
@@ -243,12 +251,12 @@ pub export fn ggml_gemv_q5_K_8x8_q8_K(n: c_int, s: [*]f32, bs: usize, vx: *const
                     var aux: [8]i8 = undefined;
                     const offset = sb * 24 + i * 12;
                     kscales.decodeQKx86BitScales(@as([*]const u8, &q5_ptr[b].scales) + offset, &q5sb_mins[i], &aux);
-                    q5sb_scales[i] = neon.movl_s8(@as(@Vector(8, i8), aux));
+                    q5sb_scales[i] = neon.movlS8(@as(@Vector(8, i8), aux));
                 }
 
                 const q8_base: [*]const i8 = @as([*]const i8, @ptrCast(&q8_ptr[b].qs)) + sb * 64;
                 var q8_qs: [8]i8x16 = undefined;
-                for (0..8) |i| q8_qs[i] = neon.dupq_i8x16_from8(q8_base + i * 8);
+                for (0..8) |i| q8_qs[i] = neon.dupqI8x16From8(q8_base + i * 8);
 
                 const qs_base: [*]const u8 = @as([*]const u8, &q5_ptr[b].qs) + sb * 256;
                 for (0..col_pairs) |cp| {
@@ -258,10 +266,10 @@ pub export fn ggml_gemv_q5_K_8x8_q8_K(n: c_int, s: [*]f32, bs: usize, vx: *const
                         const hbit_hi = (qh[cp][i] & mtwo) << sh3;
                         qh[cp][i] = qh[cp][i] >> sh2;
 
-                        const lo: i8x16 = @bitCast(neon.sli_n_u8(qs & m4b, hbit_lo, 4));
+                        const lo: i8x16 = @bitCast(neon.sliNU8(qs & m4b, hbit_lo, 4));
                         const hi: i8x16 = @bitCast((qs >> sh4) | hbit_hi);
-                        acc_lo[cp] = neon.dotq_s32(acc_lo[cp], lo, q8_qs[i]);
-                        acc_hi[cp] = neon.dotq_s32(acc_hi[cp], hi, q8_qs[4 + i]);
+                        acc_lo[cp] = neon.dotqS32(acc_lo[cp], lo, q8_qs[i]);
+                        acc_hi[cp] = neon.dotqS32(acc_hi[cp], hi, q8_qs[4 + i]);
                     }
                 }
 
@@ -278,13 +286,13 @@ pub export fn ggml_gemv_q5_K_8x8_q8_K(n: c_int, s: [*]f32, bs: usize, vx: *const
                     const sb_scale = if (p == 0) sb_scale_0 else sb_scale_1;
                     const sb_min = if (p == 0) sb_min_0 else sb_min_1;
 
-                    const sumf_0 = neon.cvt_f32_s32(neon.movl_s16(group_scales_lo) *%
-                        neon.paddq_s32(acc_lo[p], acc_lo[p + 1]));
-                    acc_f32[i] = neon.fma_f32(acc_f32[i], sb_scale, sumf_0);
+                    const sumf_0 = neon.cvtF32S32(neon.movlS16(group_scales_lo) *%
+                        neon.paddqS32(acc_lo[p], acc_lo[p + 1]));
+                    acc_f32[i] = neon.fmaF32(acc_f32[i], sb_scale, sumf_0);
 
-                    const sumf_1 = neon.cvt_f32_s32(neon.movl_s16(group_scales_hi) *%
-                        neon.paddq_s32(acc_hi[p], acc_hi[p + 1]));
-                    acc_f32[i] = neon.fma_f32(acc_f32[i], sb_scale, sumf_1);
+                    const sumf_1 = neon.cvtF32S32(neon.movlS16(group_scales_hi) *%
+                        neon.paddqS32(acc_hi[p], acc_hi[p + 1]));
+                    acc_f32[i] = neon.fmaF32(acc_f32[i], sb_scale, sumf_1);
 
                     // The C's "FUSED BIAS": the bias is formed and
                     // subtracted here, inside the sub-block loop, not
@@ -292,9 +300,9 @@ pub export fn ggml_gemv_q5_K_8x8_q8_K(n: c_int, s: [*]f32, bs: usize, vx: *const
                     // it. `sb_min` is constant across `sb`, so the two are
                     // the same arithmetic -- and not the same rounding.
                     // `scripts/repack-diff` caught the difference.
-                    var bias = neon.mull_s16(bsums_vec_lo, group_mins_lo);
-                    bias = neon.mlal_s16(bias, bsums_vec_hi, group_mins_hi);
-                    acc_f32[i] = neon.mlsq_f32(acc_f32[i], sb_min, neon.cvt_f32_s32(bias));
+                    var bias = neon.mullS16(bsums_vec_lo, group_mins_lo);
+                    bias = neon.mlalS16(bias, bsums_vec_hi, group_mins_hi);
+                    acc_f32[i] = neon.mlsqF32(acc_f32[i], sb_min, neon.cvtF32S32(bias));
                 }
             }
         }
@@ -305,6 +313,10 @@ pub export fn ggml_gemv_q5_K_8x8_q8_K(n: c_int, s: [*]f32, bs: usize, vx: *const
     }
 }
 
+comptime {
+    @export(&ggmlGemmQ5K8x4Q8K, .{ .name = "ggml_gemm_q5_K_8x4_q8_K" });
+}
+
 /// Ports `ggml_gemm_q5_K_8x4_q8_K` (arch/arm/repack.cpp:3786 @cd959bae9).
 ///
 /// `q4_k.zig`'s gemm with this file's fifth-bit fold. `qh` is again
@@ -312,7 +324,7 @@ pub export fn ggml_gemv_q5_K_8x8_q8_K(n: c_int, s: [*]f32, bs: usize, vx: *const
 /// note that is per **read**, not per sub-block as in the gemv, because
 /// the gemm walks eight reads per sub-block and each consumes one bit
 /// pair.
-pub export fn ggml_gemm_q5_K_8x4_q8_K(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+pub fn ggmlGemmQ5K8x4Q8K(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
     if (comptime !neon.has_dotprod) return ggml_gemm_q5_K_8x4_q8_K_generic(n, s, bs, vx, vy, nr, nc);
     const nb = @divTrunc(n, 256);
     const ncols_interleaved: c_int = 8;
@@ -336,10 +348,10 @@ pub export fn ggml_gemm_q5_K_8x4_q8_K(n: c_int, s: [*]f32, bs: usize, vx: *const
 
             var b: usize = 0;
             while (b < @as(usize, @intCast(nb))) : (b += 1) {
-                const q5_d_0123 = neon.cvt_f32_f16(neon.load_f16x4(@ptrCast(&q5_ptr[b].d)));
-                const q5_d_4567 = neon.cvt_f32_f16(neon.load_f16x4(@as([*]const u16, @ptrCast(&q5_ptr[b].d)) + 4));
-                const q5_dmin_0123 = neon.cvt_f32_f16(neon.load_f16x4(@ptrCast(&q5_ptr[b].dmin)));
-                const q5_dmin_4567 = neon.cvt_f32_f16(neon.load_f16x4(@as([*]const u16, @ptrCast(&q5_ptr[b].dmin)) + 4));
+                const q5_d_0123 = neon.cvtF32F16(neon.loadF16x4(@ptrCast(&q5_ptr[b].d)));
+                const q5_d_4567 = neon.cvtF32F16(neon.loadF16x4(@as([*]const u16, @ptrCast(&q5_ptr[b].d)) + 4));
+                const q5_dmin_0123 = neon.cvtF32F16(neon.loadF16x4(@ptrCast(&q5_ptr[b].dmin)));
+                const q5_dmin_4567 = neon.cvtF32F16(neon.loadF16x4(@as([*]const u16, @ptrCast(&q5_ptr[b].dmin)) + 4));
                 const q8_d_0123: f32x4 = @as([*]const f32, &q8_ptr[b].d)[0..4].*;
 
                 var sbd_scale_0123: [4]f32x4 = undefined;
@@ -357,7 +369,7 @@ pub export fn ggml_gemm_q5_K_8x4_q8_K(n: c_int, s: [*]f32, bs: usize, vx: *const
                 var bsums_arr: [4][8]i16 = undefined;
                 inline for (0..4) |q8_row| {
                     const bp: [*]const i16 = @as([*]const i16, @ptrCast(&q8_ptr[b].bsums)) + 16 * q8_row;
-                    bsums_arr[q8_row] = neon.paddq_s16(loadq16(bp), loadq16(bp + 8));
+                    bsums_arr[q8_row] = neon.paddqS16(loadq16(bp), loadq16(bp + 8));
                 }
 
                 var qh: [col_groups][8]u8x16 = undefined;
@@ -377,7 +389,7 @@ pub export fn ggml_gemm_q5_K_8x4_q8_K(n: c_int, s: [*]f32, bs: usize, vx: *const
                         var aux: [8]i8 = undefined;
                         const offset = sb * 24 + i * 12;
                         kscales.decodeQKx86BitScales(@as([*]const u8, &q5_ptr[b].scales) + offset, &q5sb_mins[i], &aux);
-                        q5sb_scales[i] = neon.movl_s8(@as(@Vector(8, i8), aux));
+                        q5sb_scales[i] = neon.movlS8(@as(@Vector(8, i8), aux));
                     }
 
                     for (0..8) |k| {
@@ -395,18 +407,18 @@ pub export fn ggml_gemm_q5_K_8x4_q8_K(n: c_int, s: [*]f32, bs: usize, vx: *const
                         const hbit_hi_4567 = (qh[1][k] & mtwo) << sh3;
                         qh[1][k] = qh[1][k] >> sh2;
 
-                        const q5_0123_lo: i8x16 = @bitCast(neon.sli_n_u8(q5_0123 & m4b, hbit_lo_0123, 4));
+                        const q5_0123_lo: i8x16 = @bitCast(neon.sliNU8(q5_0123 & m4b, hbit_lo_0123, 4));
                         const q5_0123_hi: i8x16 = @bitCast((q5_0123 >> sh4) | hbit_hi_0123);
                         inline for (0..4) |r| {
-                            acc_lo[r] = neon.dotq_laneq_s32(acc_lo[r], q5_0123_lo, q8_blk0, r);
-                            acc_hi[r] = neon.dotq_laneq_s32(acc_hi[r], q5_0123_hi, q8_blk1, r);
+                            acc_lo[r] = neon.dotqLaneqS32(acc_lo[r], q5_0123_lo, q8_blk0, r);
+                            acc_hi[r] = neon.dotqLaneqS32(acc_hi[r], q5_0123_hi, q8_blk1, r);
                         }
 
-                        const q5_4567_lo: i8x16 = @bitCast(neon.sli_n_u8(q5_4567 & m4b, hbit_lo_4567, 4));
+                        const q5_4567_lo: i8x16 = @bitCast(neon.sliNU8(q5_4567 & m4b, hbit_lo_4567, 4));
                         const q5_4567_hi: i8x16 = @bitCast((q5_4567 >> sh4) | hbit_hi_4567);
                         inline for (0..4) |r| {
-                            acc_lo[4 + r] = neon.dotq_laneq_s32(acc_lo[4 + r], q5_4567_lo, q8_blk0, r);
-                            acc_hi[4 + r] = neon.dotq_laneq_s32(acc_hi[4 + r], q5_4567_hi, q8_blk1, r);
+                            acc_lo[4 + r] = neon.dotqLaneqS32(acc_lo[4 + r], q5_4567_lo, q8_blk0, r);
+                            acc_hi[4 + r] = neon.dotqLaneqS32(acc_hi[4 + r], q5_4567_hi, q8_blk1, r);
                         }
                     }
 
@@ -416,26 +428,26 @@ pub export fn ggml_gemm_q5_K_8x4_q8_K(n: c_int, s: [*]f32, bs: usize, vx: *const
                     const sc_4567_hi = neon.high(q5sb_scales[1]);
 
                     inline for (0..4) |row| {
-                        const sumf_0123 = neon.cvt_f32_s32((neon.movl_s16(sc_0123_lo) *% acc_lo[row]) +%
-                            (neon.movl_s16(sc_0123_hi) *% acc_hi[row]));
-                        acc_f32[2 * row] = neon.fma_f32(acc_f32[2 * row], sbd_scale_0123[row], sumf_0123);
+                        const sumf_0123 = neon.cvtF32S32((neon.movlS16(sc_0123_lo) *% acc_lo[row]) +%
+                            (neon.movlS16(sc_0123_hi) *% acc_hi[row]));
+                        acc_f32[2 * row] = neon.fmaF32(acc_f32[2 * row], sbd_scale_0123[row], sumf_0123);
 
-                        const sumf_4567 = neon.cvt_f32_s32((neon.movl_s16(sc_4567_lo) *% acc_lo[row + 4]) +%
-                            (neon.movl_s16(sc_4567_hi) *% acc_hi[row + 4]));
-                        acc_f32[2 * row + 1] = neon.fma_f32(acc_f32[2 * row + 1], sbd_scale_4567[row], sumf_4567);
+                        const sumf_4567 = neon.cvtF32S32((neon.movlS16(sc_4567_lo) *% acc_lo[row + 4]) +%
+                            (neon.movlS16(sc_4567_hi) *% acc_hi[row + 4]));
+                        acc_f32[2 * row + 1] = neon.fmaF32(acc_f32[2 * row + 1], sbd_scale_4567[row], sumf_4567);
 
                         const bsums_vec_lo: i16x4 = @splat(bsums_arr[sb][row * 2]);
                         const bsums_vec_hi: i16x4 = @splat(bsums_arr[sb][row * 2 + 1]);
-                        bias_acc[2 * row] = neon.mlal_s16(bias_acc[2 * row], bsums_vec_lo, neon.low(q5sb_mins[0]));
-                        bias_acc[2 * row] = neon.mlal_s16(bias_acc[2 * row], bsums_vec_hi, neon.low(q5sb_mins[1]));
-                        bias_acc[2 * row + 1] = neon.mlal_s16(bias_acc[2 * row + 1], bsums_vec_lo, neon.high(q5sb_mins[0]));
-                        bias_acc[2 * row + 1] = neon.mlal_s16(bias_acc[2 * row + 1], bsums_vec_hi, neon.high(q5sb_mins[1]));
+                        bias_acc[2 * row] = neon.mlalS16(bias_acc[2 * row], bsums_vec_lo, neon.low(q5sb_mins[0]));
+                        bias_acc[2 * row] = neon.mlalS16(bias_acc[2 * row], bsums_vec_hi, neon.low(q5sb_mins[1]));
+                        bias_acc[2 * row + 1] = neon.mlalS16(bias_acc[2 * row + 1], bsums_vec_lo, neon.high(q5sb_mins[0]));
+                        bias_acc[2 * row + 1] = neon.mlalS16(bias_acc[2 * row + 1], bsums_vec_hi, neon.high(q5sb_mins[1]));
                     }
                 }
 
                 inline for (0..4) |row| {
-                    acc_f32[2 * row] = neon.mlsq_f32(acc_f32[2 * row], neon.cvt_f32_s32(bias_acc[2 * row]), sbd_min_0123[row]);
-                    acc_f32[2 * row + 1] = neon.mlsq_f32(acc_f32[2 * row + 1], neon.cvt_f32_s32(bias_acc[2 * row + 1]), sbd_min_4567[row]);
+                    acc_f32[2 * row] = neon.mlsqF32(acc_f32[2 * row], neon.cvtF32S32(bias_acc[2 * row]), sbd_min_0123[row]);
+                    acc_f32[2 * row + 1] = neon.mlsqF32(acc_f32[2 * row + 1], neon.cvtF32S32(bias_acc[2 * row + 1]), sbd_min_4567[row]);
                 }
             }
 

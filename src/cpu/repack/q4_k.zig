@@ -29,7 +29,6 @@
 //! the gemm indexes bsums as `(sb * 8) + (m * 4) - ((sb % 2) * 6)`, which
 //! is not a typo — it walks the interleaved layout.
 
-const std = @import("std");
 const impl = @import("../../impl.zig");
 const blocks = @import("blocks.zig");
 const epilogue = @import("epilogue.zig");
@@ -110,8 +109,10 @@ fn gemv(
                     var i: i32 = 0;
                     while (i < blocklen) : (i += 1) {
                         const q = bl.qs[@intCast(k * ncols_interleaved * blocklen + @as(i32, @intCast(j)) * blocklen + i)];
-                        const v0: i32 = @as(i8, @bitCast(q & 0xF));
-                        const v1: i32 = @as(i8, @bitCast(q >> 4));
+                        const v0_raw: i8 = @bitCast(q & 0xF);
+                        const v0: i32 = v0_raw;
+                        const v1_raw: i8 = @bitCast(q >> 4);
+                        const v1: i32 = v1_raw;
                         const base = @divTrunc(k, kdiv) * 64 + @rem(k, kdiv) * blocklen + i;
                         var sumi1: i32 = v0 * al.qs[@intCast(base)];
                         var sumi2: i32 = v1 * al.qs[@intCast(base + 32)];
@@ -196,8 +197,10 @@ fn gemm(
                             var i: i32 = 0;
                             while (i < blocklen) : (i += 1) {
                                 const q = bl.qs[@intCast(k * ncols_interleaved * blocklen + @as(i32, @intCast(j)) * blocklen + i)];
-                                const v0: i32 = @as(i8, @bitCast(q & 0xF));
-                                const v1: i32 = @as(i8, @bitCast(q >> 4));
+                                const v0_raw: i8 = @bitCast(q & 0xF);
+                                const v0: i32 = v0_raw;
+                                const v1_raw: i8 = @bitCast(q >> 4);
+                                const v1: i32 = v1_raw;
                                 const base = @divTrunc(k, kdiv) * 256 + @rem(k, kdiv) * 4 * blocklen +
                                     @as(i32, @intCast(m)) * blocklen + i;
                                 var sumi1: i32 = v0 * al.qs[@intCast(base)];
@@ -237,15 +240,31 @@ fn gemm(
     }
 }
 
-pub export fn ggml_gemv_q4_K_8x4_q8_K_generic(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+comptime {
+    @export(&ggmlGemvQ4K8x4Q8KGeneric, .{ .name = "ggml_gemv_q4_K_8x4_q8_K_generic" });
+}
+
+pub fn ggmlGemvQ4K8x4Q8KGeneric(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
     gemv(4, n, s, bs, vx, vy, nr, nc);
 }
-pub export fn ggml_gemv_q4_K_8x8_q8_K_generic(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+comptime {
+    @export(&ggmlGemvQ4K8x8Q8KGeneric, .{ .name = "ggml_gemv_q4_K_8x8_q8_K_generic" });
+}
+
+pub fn ggmlGemvQ4K8x8Q8KGeneric(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
     gemv(8, n, s, bs, vx, vy, nr, nc);
 }
-pub export fn ggml_gemm_q4_K_8x4_q8_K_generic(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+comptime {
+    @export(&ggmlGemmQ4K8x4Q8KGeneric, .{ .name = "ggml_gemm_q4_K_8x4_q8_K_generic" });
+}
+
+pub fn ggmlGemmQ4K8x4Q8KGeneric(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
     gemm(4, n, s, bs, vx, vy, nr, nc);
 }
-pub export fn ggml_gemm_q4_K_8x8_q8_K_generic(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+comptime {
+    @export(&ggmlGemmQ4K8x8Q8KGeneric, .{ .name = "ggml_gemm_q4_K_8x8_q8_K_generic" });
+}
+
+pub fn ggmlGemmQ4K8x8Q8KGeneric(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
     gemm(8, n, s, bs, vx, vy, nr, nc);
 }

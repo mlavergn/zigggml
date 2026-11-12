@@ -32,7 +32,6 @@
 const std = @import("std");
 const impl = @import("../../impl.zig");
 const common = @import("common.zig");
-const vec = @import("vecinline.zig");
 const simd = @import("../simd.zig");
 
 const c = impl.c;
@@ -120,8 +119,12 @@ fn ssmConvF32(params: *const ComputeParams, dst: *Tensor) void {
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardSsmConv, .{ .name = "ggml_compute_forward_ssm_conv" });
+}
+
 /// Ports `ggml_compute_forward_ssm_conv` (ops.cpp:9996 @cd959bae9).
-pub export fn ggml_compute_forward_ssm_conv(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardSsmConv(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     switch (impl.one(Tensor, dst.src[0]).type) {
         c.GGML_TYPE_F32 => ssmConvF32(params, dst),
         else => impl.abort("fatal error"),
@@ -347,8 +350,12 @@ fn ssmScanF32(params: *const ComputeParams, dst: *Tensor) void {
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardSsmScan, .{ .name = "ggml_compute_forward_ssm_scan" });
+}
+
 /// Ports `ggml_compute_forward_ssm_scan` (ops.cpp:10236 @cd959bae9).
-pub export fn ggml_compute_forward_ssm_scan(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardSsmScan(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     switch (impl.one(Tensor, dst.src[0]).type) {
         c.GGML_TYPE_F32 => ssmScanF32(params, dst),
         else => impl.abort("fatal error"),

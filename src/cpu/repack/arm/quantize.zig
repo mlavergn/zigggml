@@ -56,13 +56,13 @@ fn quantizeMat(comptime blck: i64, x: [*]const f32, vy: *anyopaque, k: i64) void
                 const off: usize = @intCast(@as(i64, @intCast(row_iter)) * k + i * 32 + 4 * @as(i64, @intCast(j)));
                 srcv[row_iter][j] = x[off..][0..4].*;
             }
-            for (0..8) |j| asrcv[j] = neon.abs_f32(srcv[row_iter][j]);
+            for (0..8) |j| asrcv[j] = neon.absF32(srcv[row_iter][j]);
 
-            for (0..4) |j| amaxv[2 * j] = neon.max_f32(asrcv[2 * j], asrcv[2 * j + 1]);
-            for (0..2) |j| amaxv[4 * j] = neon.max_f32(amaxv[4 * j], amaxv[4 * j + 2]);
-            for (0..1) |j| amaxv[8 * j] = neon.max_f32(amaxv[8 * j], amaxv[8 * j + 4]);
+            for (0..4) |j| amaxv[2 * j] = neon.maxF32(asrcv[2 * j], asrcv[2 * j + 1]);
+            for (0..2) |j| amaxv[4 * j] = neon.maxF32(amaxv[4 * j], amaxv[4 * j + 2]);
+            for (0..1) |j| amaxv[8 * j] = neon.maxF32(amaxv[8 * j], amaxv[8 * j + 4]);
 
-            const amax = neon.maxvq_f32(amaxv[0]);
+            const amax = neon.maxvqF32(amaxv[0]);
 
             const d = amax / ((1 << 7) - 1);
             id[row_iter] = if (d != 0.0) 1.0 / d else 0.0;
@@ -77,8 +77,8 @@ fn quantizeMat(comptime blck: i64, x: [*]const f32, vy: *anyopaque, k: i64) void
         while (j < @as(usize, @intCast(@divTrunc(32, blck)))) : (j += 1) {
             for (0..4) |row| {
                 for (0..vecs_per_row) |v| {
-                    const src = neon.mul_n_f32(srcv[row][j * vecs_per_row + v], id[row]);
-                    const vi = neon.cvtnq_s32_f32(src);
+                    const src = neon.mulNF32(srcv[row][j * vecs_per_row + v], id[row]);
+                    const vi = neon.cvtnqS32F32(src);
                     const base: usize = @intCast(@as(i64, @intCast(j)) * blck * 4 +
                         @as(i64, @intCast(row)) * blck + @as(i64, @intCast(v)) * 4);
                     inline for (0..4) |lane| {
@@ -90,11 +90,19 @@ fn quantizeMat(comptime blck: i64, x: [*]const f32, vy: *anyopaque, k: i64) void
     }
 }
 
-pub export fn ggml_quantize_mat_q8_0_4x4(x: [*]const f32, vy: *anyopaque, k: i64) callconv(.c) void {
+comptime {
+    @export(&ggmlQuantizeMatQ804x4, .{ .name = "ggml_quantize_mat_q8_0_4x4" });
+}
+
+pub fn ggmlQuantizeMatQ804x4(x: [*]const f32, vy: *anyopaque, k: i64) callconv(.c) void {
     quantizeMat(4, x, vy, k);
 }
 
-pub export fn ggml_quantize_mat_q8_0_4x8(x: [*]const f32, vy: *anyopaque, k: i64) callconv(.c) void {
+comptime {
+    @export(&ggmlQuantizeMatQ804x8, .{ .name = "ggml_quantize_mat_q8_0_4x8" });
+}
+
+pub fn ggmlQuantizeMatQ804x8(x: [*]const f32, vy: *anyopaque, k: i64) callconv(.c) void {
     quantizeMat(8, x, vy, k);
 }
 

@@ -10,7 +10,6 @@
 //! (`cd959bae9`), the host half. The kernel, `moe_weighted_reduction_f32`,
 //! stays CUDA.
 
-const std = @import("std");
 const impl = @import("../impl.zig");
 const common = @import("common.zig");
 const kernels = @import("kernels.zig");

@@ -18,7 +18,7 @@ const m = @import("module.zig");
 const common = m.common;
 const vk = common.vk;
 const d = &common.dispatch;
-const allocator = common.allocator;
+const allocator = std.heap.c_allocator;
 const Device = m.device.Device;
 const c = impl.c;
 
@@ -119,7 +119,7 @@ fn literalEq(words: []const u32, s: []const u8) bool {
 /// removes `SPV_NV_cooperative_matrix_decode_vector` from a module so a
 /// driver with only `SPV_NV_cooperative_matrix2` can load it.
 ///
-/// Return: the stripped copy, owned by the caller, when the module used the
+/// - Returns: the stripped copy, owned by the caller, when the module used the
 /// extension; null otherwise.
 fn stripDecodeVector(code: []const u32) ?[]u32 {
     const ext = "SPV_NV_cooperative_matrix_decode_vector";
@@ -210,7 +210,7 @@ fn stripDecodeVector(code: []const u32) ?[]u32 {
 /// Ports `ggml_vk_roll_bk_loop` (ggml-vulkan.cpp:501 @cd959bae9): swaps the
 /// unroll hint of `mul_mm.comp`'s BK loop for `DontUnroll`.
 ///
-/// Return: the patched copy, owned by the caller, or null when no BK loop
+/// - Returns: the patched copy, owned by the caller, or null when no BK loop
 /// was found.
 fn rollBkLoop(code: []const u32) ?[]u32 {
     if (code.len < 5) return null;

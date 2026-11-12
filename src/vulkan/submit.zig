@@ -20,7 +20,7 @@ const c = impl.c;
 const common = m.common;
 const vk = common.vk;
 const d = &common.dispatch;
-const allocator = common.allocator;
+const allocator = std.heap.c_allocator;
 const Device = m.device.Device;
 const CommandBuffer = m.device.CommandBuffer;
 const CommandPool = m.device.CommandPool;
@@ -267,7 +267,7 @@ pub fn ctxBegin(device: *Device, subctx: *Context) void {
     if (m.instance.instance.debug_utils_support) {
         // outermost region, one per command buffer, so the gaps between submits stand out
         var buf: [32]u8 = undefined;
-        const name = std.fmt.bufPrintSentinel(&buf, "submit {d}", .{device.debug_cmdbuf_idx}, 0) catch unreachable;
+        const name = std.fmt.bufPrintSentinel(&buf, "submit {d}", .{device.debug_cmdbuf_idx}, 0) catch @panic("name buffer too small");
         device.debug_cmdbuf_idx +%= 1;
         cmdLabelBegin(subctx.cmd(), name.ptr);
 
@@ -562,7 +562,7 @@ pub fn ensureSyncStagingBuffer(device: *Device, size: usize) void {
 
 /// Ports `ggml_vk_buffer_write_2d_async` (ggml-vulkan-buffers.cpp:504 @cd959bae9).
 ///
-/// Return: false when `src` is not pinned and `sync_staging` is off -- the
+/// - Returns: false when `src` is not pinned and `sync_staging` is off -- the
 /// caller must fall back.
 pub fn bufferWrite2dAsync(subctx: *Context, dst: *Buffer, offset: usize, src: [*]const u8, spitch: usize, dpitch: usize, width: usize, height: usize, sync_staging: bool) bool {
     // Check if src is pinned memory

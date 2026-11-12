@@ -40,7 +40,6 @@ const impl = @import("../../impl.zig");
 const convert = @import("../convert.zig");
 const common = @import("common.zig");
 const vec = @import("vecinline.zig");
-const threading = @import("../threading.zig");
 
 const c = impl.c;
 const Tensor = common.Tensor;
@@ -184,8 +183,12 @@ fn convTranspose1d(comptime T: type, params: *const ComputeParams, dst: *Tensor)
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardConvTranspose1d, .{ .name = "ggml_compute_forward_conv_transpose_1d" });
+}
+
 /// Ports `ggml_compute_forward_conv_transpose_1d` (ops.cpp:6677 @cd959bae9).
-pub export fn ggml_compute_forward_conv_transpose_1d(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardConvTranspose1d(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
 
     switch (src0.type) {
@@ -358,8 +361,12 @@ fn im2colF16(params: *const ComputeParams, dst: *Tensor) void {
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardIm2col, .{ .name = "ggml_compute_forward_im2col" });
+}
+
 /// Ports `ggml_compute_forward_im2col` (ops.cpp:6859 @cd959bae9).
-pub export fn ggml_compute_forward_im2col(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardIm2col(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     switch (dst.type) {
         c.GGML_TYPE_F16 => im2colF16(params, dst),
         c.GGML_TYPE_F32 => im2colF32(params, dst),
@@ -367,12 +374,16 @@ pub export fn ggml_compute_forward_im2col(params: *const ComputeParams, dst: *Te
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardIm2colBackF32, .{ .name = "ggml_compute_forward_im2col_back_f32" });
+}
+
 /// Ports `ggml_compute_forward_im2col_back_f32` (ops.cpp:6880 @cd959bae9).
 ///
 /// Note the roles swap against `im2col`: the image geometry comes from `dst`
 /// and the kernel's from `src1`. `%` and `/` on a negative offset truncate
 /// toward zero in the C, hence `@rem` and `@divTrunc`.
-pub export fn ggml_compute_forward_im2col_back_f32(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardIm2colBackF32(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]); // gradients of forward pass output
     const src1 = impl.one(Tensor, dst.src[1]); // convolution kernel
 
@@ -560,8 +571,12 @@ fn im2col3d(comptime T: type, params: *const ComputeParams, dst: *Tensor) void {
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardIm2col3d, .{ .name = "ggml_compute_forward_im2col_3d" });
+}
+
 /// Ports `ggml_compute_forward_im2col_3d` (ops.cpp:7156 @cd959bae9).
-pub export fn ggml_compute_forward_im2col_3d(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardIm2col3d(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     switch (dst.type) {
         c.GGML_TYPE_F16 => im2col3d(fp16, params, dst),
         c.GGML_TYPE_F32 => im2col3d(f32, params, dst),
@@ -675,11 +690,15 @@ fn col2im1d(comptime T: type, params: *const ComputeParams, dst: *Tensor) void {
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardCol2im1d, .{ .name = "ggml_compute_forward_col2im_1d" });
+}
+
 /// Ports `ggml_compute_forward_col2im_1d` (ops.cpp:7283 @cd959bae9).
 ///
 /// The C's abort message carries the type number through a format string;
 /// `impl.abort` takes a literal, so the number is dropped.
-pub export fn ggml_compute_forward_col2im_1d(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardCol2im1d(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     switch (impl.one(Tensor, dst.src[0]).type) {
         c.GGML_TYPE_F32 => col2im1d(f32, params, dst),
         c.GGML_TYPE_F16 => col2im1d(fp16, params, dst),
@@ -831,8 +850,12 @@ fn conv2dImpl(params: *const ComputeParams, kernel: *const Tensor, src: *const T
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardConv2d, .{ .name = "ggml_compute_forward_conv_2d" });
+}
+
 /// Ports `ggml_compute_forward_conv_2d` (ops.cpp:7422 @cd959bae9).
-pub export fn ggml_compute_forward_conv_2d(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardConv2d(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
     const src1 = impl.one(Tensor, dst.src[1]);
 
@@ -979,8 +1002,12 @@ fn conv3dImpl(params: *const ComputeParams, kernel: *const Tensor, src: *const T
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardConv3d, .{ .name = "ggml_compute_forward_conv_3d" });
+}
+
 /// Ports `ggml_compute_forward_conv_3d` (ops.cpp:7566 @cd959bae9).
-pub export fn ggml_compute_forward_conv_3d(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardConv3d(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
     const src1 = impl.one(Tensor, dst.src[1]);
     conv3dImpl(params, src0, src1, dst, src0.type);
@@ -1115,8 +1142,12 @@ fn convTranspose2d(comptime T: type, params: *const ComputeParams, dst: *Tensor)
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardConvTranspose2d, .{ .name = "ggml_compute_forward_conv_transpose_2d" });
+}
+
 /// Ports `ggml_compute_forward_conv_transpose_2d` (ops.cpp:7685 @cd959bae9).
-pub export fn ggml_compute_forward_conv_transpose_2d(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardConvTranspose2d(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
 
     switch (src0.type) {
@@ -1268,8 +1299,12 @@ fn conv2dDwWhcn(params: *const ComputeParams, src: *const Tensor, kernel: *const
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardConv2dDw, .{ .name = "ggml_compute_forward_conv_2d_dw" });
+}
+
 /// Ports `ggml_compute_forward_conv_2d_dw` (ops.cpp:7859 @cd959bae9).
-pub export fn ggml_compute_forward_conv_2d_dw(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardConv2dDw(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const kernel = impl.one(Tensor, dst.src[0]);
     const src = impl.one(Tensor, dst.src[1]);
     const p: Conv2dDwParams = .{

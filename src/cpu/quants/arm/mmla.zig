@@ -81,30 +81,29 @@ inline fn storeReordered(s: [*c]f32, bs: usize, r: f32x4) void {
 
 /// `vzip1q_f32(v, vextq_f32(v, v, 2))`: `ABCD` to `ACBD`.
 inline fn reorder(v: f32x4) f32x4 {
-    return neon.zip1q_f32(v, neon.extq_f32(v, v, 2));
+    return neon.zip1qF32(v, neon.extqF32(v, v, 2));
 }
 
 /// The chained four `vmmlaq_s32` the `q4_0`, `q4_1` and `q8_0` arms close
 /// on: both halves of both 16-byte groups of a 32-weight block.
 ///
-/// Parameters:
 /// - `x0l`, `x0h`, `x1l`, `x1h`: the two weight rows' low and high 16 bytes.
 /// - `y0l`, `y0h`, `y1l`, `y1h`: the same for the two activation columns.
 ///
-/// Return: `[x0.y0, x0.y1, x1.y0, x1.y1]`.
+/// - Returns: `[x0.y0, x0.y1, x1.y0, x1.y1]`.
 inline fn mmlaBlock32(x0l: i8x16, x0h: i8x16, x1l: i8x16, x1h: i8x16, y0l: i8x16, y0h: i8x16, y1l: i8x16, y1h: i8x16) i32x4 {
-    const l0 = neon.zip1q_s64(x0l, x1l);
-    const l1 = neon.zip2q_s64(x0l, x1l);
-    const l2 = neon.zip1q_s64(x0h, x1h);
-    const l3 = neon.zip2q_s64(x0h, x1h);
+    const l0 = neon.zip1qS64(x0l, x1l);
+    const l1 = neon.zip2qS64(x0l, x1l);
+    const l2 = neon.zip1qS64(x0h, x1h);
+    const l3 = neon.zip2qS64(x0h, x1h);
 
-    const r0 = neon.zip1q_s64(y0l, y1l);
-    const r1 = neon.zip2q_s64(y0l, y1l);
-    const r2 = neon.zip1q_s64(y0h, y1h);
-    const r3 = neon.zip2q_s64(y0h, y1h);
+    const r0 = neon.zip1qS64(y0l, y1l);
+    const r1 = neon.zip2qS64(y0l, y1l);
+    const r2 = neon.zip1qS64(y0h, y1h);
+    const r3 = neon.zip2qS64(y0h, y1h);
 
     const zero: i32x4 = @splat(0);
-    return neon.mmlaq_s32(neon.mmlaq_s32(neon.mmlaq_s32(neon.mmlaq_s32(zero, l0, r0), l1, r1), l2, r2), l3, r3);
+    return neon.mmlaqS32(neon.mmlaqS32(neon.mmlaqS32(neon.mmlaqS32(zero, l0, r0), l1, r1), l2, r2), l3, r3);
 }
 
 /// The four products of two scales by two scales, in `mmlaBlock32`'s
@@ -116,8 +115,8 @@ inline fn outer(a0: f32, a1: f32, b0: f32, b1: f32) f32x4 {
 /// `vaddq_s32(vmull_s16(low a, low b), vmull_s16(high a, high b))`.
 inline fn mullSum(a: i16x8, b: i16x8) i32x4 {
     return neon.add(
-        neon.mull_s16(neon.low(a), neon.low(b)),
-        neon.mull_s16(neon.high(a), neon.high(b)),
+        neon.mullS16(neon.low(a), neon.low(b)),
+        neon.mullS16(neon.high(a), neon.high(b)),
     );
 }
 
@@ -129,7 +128,7 @@ const s8b: i8x16 = @splat(0x8);
 
 /// Ports `ggml_vec_dot_q4_0_q8_0` (arch/arm/quants.c:300 @cd959bae9), the
 /// `__ARM_FEATURE_MATMUL_INT8` arm at line 315: two rows.
-pub fn q4_0(n: c_int, s: [*c]f32, bs: usize, vx: ?*const anyopaque, bx: usize, vy: ?*const anyopaque, by: usize) void {
+pub fn q40(n: c_int, s: [*c]f32, bs: usize, vx: ?*const anyopaque, bx: usize, vy: ?*const anyopaque, by: usize) void {
     const nb: usize = @intCast(@divTrunc(n, c.QK8_0));
 
     const vx0 = rowAt(blocks.Q4_0, vx, 0);
@@ -162,7 +161,7 @@ pub fn q4_0(n: c_int, s: [*c]f32, bs: usize, vx: ?*const anyopaque, bx: usize, v
         const scale = outer(f(b_x0.d), f(b_x1.d), f(b_y0.d), f(b_y1.d));
 
         const p = mmlaBlock32(x0_l, x0_h, x1_l, x1_h, y0_l, y0_h, y1_l, y1_h);
-        sumv0 = neon.mlaq_f32(sumv0, neon.cvt_f32_s32(p), scale);
+        sumv0 = neon.mlaqF32(sumv0, neon.cvtF32S32(p), scale);
     }
 
     storeTwoColumns(s, bs, sumv0);
@@ -174,7 +173,7 @@ pub fn q4_0(n: c_int, s: [*c]f32, bs: usize, vx: ?*const anyopaque, bx: usize, v
 /// `summs0` is built already in the reordered `ACBD` layout -- the C's
 /// `summs_t` lists `x0.y0, x1.y0, x0.y1, x1.y1` -- and is added after the
 /// reorder, not before.
-pub fn q4_1(n: c_int, s: [*c]f32, bs: usize, vx: ?*const anyopaque, bx: usize, vy: ?*const anyopaque, by: usize) void {
+pub fn q41(n: c_int, s: [*c]f32, bs: usize, vx: ?*const anyopaque, bx: usize, vy: ?*const anyopaque, by: usize) void {
     const nb: usize = @intCast(@divTrunc(n, c.QK8_1));
 
     const vx0 = rowAt(blocks.Q4_1, vx, 0);
@@ -216,7 +215,7 @@ pub fn q4_1(n: c_int, s: [*c]f32, bs: usize, vx: ?*const anyopaque, bx: usize, v
         const scale = outer(f(b_x0.d), f(b_x1.d), f(b_y0.d), f(b_y1.d));
 
         const p = mmlaBlock32(x0_l, x0_h, x1_l, x1_h, y0_l, y0_h, y1_l, y1_h);
-        sumv0 = neon.mlaq_f32(sumv0, neon.cvt_f32_s32(p), scale);
+        sumv0 = neon.mlaqF32(sumv0, neon.cvtF32S32(p), scale);
     }
 
     storeReordered(s, bs, reorder(sumv0) + summs0);
@@ -224,7 +223,7 @@ pub fn q4_1(n: c_int, s: [*c]f32, bs: usize, vx: ?*const anyopaque, bx: usize, v
 
 /// Ports `ggml_vec_dot_q8_0_q8_0` (arch/arm/quants.c:1153 @cd959bae9), the
 /// `__ARM_FEATURE_MATMUL_INT8` arm at line 1168: two rows.
-pub fn q8_0(n: c_int, s: [*c]f32, bs: usize, vx: ?*const anyopaque, bx: usize, vy: ?*const anyopaque, by: usize) void {
+pub fn q80(n: c_int, s: [*c]f32, bs: usize, vx: ?*const anyopaque, bx: usize, vy: ?*const anyopaque, by: usize) void {
     const nb: usize = @intCast(@divTrunc(n, c.QK8_0));
 
     const vx0 = rowAt(blocks.Q8_0, vx, 0);
@@ -253,7 +252,7 @@ pub fn q8_0(n: c_int, s: [*c]f32, bs: usize, vx: ?*const anyopaque, bx: usize, v
         const scale = outer(f(b_x0.d), f(b_x1.d), f(b_y0.d), f(b_y1.d));
 
         const p = mmlaBlock32(x0_l, x0_h, x1_l, x1_h, y0_l, y0_h, y1_l, y1_h);
-        sumv0 = neon.mlaq_f32(sumv0, neon.cvt_f32_s32(p), scale);
+        sumv0 = neon.mlaqF32(sumv0, neon.cvtF32S32(p), scale);
     }
 
     storeTwoColumns(s, bs, sumv0);
@@ -271,10 +270,9 @@ const Q4KScales = struct {
 
 /// The two braced blocks at the top of the `q4_K` arm's loop.
 ///
-/// Parameters:
 /// - `packed_scales`: a `block_q4_K`'s twelve `scales` bytes.
 ///
-/// Return: the decoded scales and mins.
+/// - Returns: the decoded scales and mins.
 inline fn decodeQ4K(packed_scales: *const [c.K_SCALE_SIZE]u8) Q4KScales {
     const kmask1: u32 = 0x3f3f3f3f;
     const kmask2: u32 = 0x0f0f0f0f;
@@ -293,7 +291,7 @@ inline fn decodeQ4K(packed_scales: *const [c.K_SCALE_SIZE]u8) Q4KScales {
 
     return .{
         .scales = @bitCast(scales),
-        .mins = @bitCast(@as(u16x8, neon.movl_u8(@bitCast(mins)))),
+        .mins = @bitCast(@as(u16x8, neon.movlU8(@bitCast(mins)))),
     };
 }
 
@@ -303,7 +301,7 @@ inline fn decodeQ4K(packed_scales: *const [c.K_SCALE_SIZE]u8) Q4KScales {
 /// The block scales multiply in integers (`vmlaq_s32` into `visum`), so only
 /// the super-block epilogue is float: the mins first, fused-subtracted, then
 /// the scaled sum, fused-added -- two statements, in that order.
-pub fn q4_K(n: c_int, s: [*c]f32, bs: usize, vx: ?*const anyopaque, bx: usize, vy: ?*const anyopaque, by: usize) void {
+pub fn q4K(n: c_int, s: [*c]f32, bs: usize, vx: ?*const anyopaque, bx: usize, vy: ?*const anyopaque, by: usize) void {
     const nb: usize = @intCast(@divTrunc(n, c.QK_K));
 
     const x0 = rowAt(blocks.Q4_K, vx, 0);
@@ -353,27 +351,27 @@ pub fn q4_K(n: c_int, s: [*c]f32, bs: usize, vx: ?*const anyopaque, bx: usize, v
                 var vr: i32x4 = @splat(0);
                 for (0..2) |l| {
                     const idx = k * 2 + l;
-                    const vx_l = neon.zip1q_s64(vx0[idx], vx1[idx]);
-                    const vx_h = neon.zip2q_s64(vx0[idx], vx1[idx]);
-                    const vy_l = neon.zip1q_s64(vy0[idx], vy1[idx]);
-                    const vy_h = neon.zip2q_s64(vy0[idx], vy1[idx]);
-                    vr = neon.mmlaq_s32(vr, vx_l, vy_l);
-                    vr = neon.mmlaq_s32(vr, vx_h, vy_h);
+                    const vx_l = neon.zip1qS64(vx0[idx], vx1[idx]);
+                    const vx_h = neon.zip2qS64(vx0[idx], vx1[idx]);
+                    const vy_l = neon.zip1qS64(vy0[idx], vy1[idx]);
+                    const vy_h = neon.zip2qS64(vy0[idx], vy1[idx]);
+                    vr = neon.mmlaqS32(vr, vx_l, vy_l);
+                    vr = neon.mmlaqS32(vr, vx_h, vy_h);
                 }
                 // Will not overflow: block_scale * sum_256(int4*int8) is
                 // under 2^28.
-                visum = neon.mlaq_s32(visum, vr, block_scale);
+                visum = neon.mlaqS32(visum, vr, block_scale);
             }
         }
 
         // The bias, then the super-block scale.
-        const y0_sums = neon.paddq_s16(neon.loadFrom(i16x8, &y0[i].bsums), neon.loadFrom(i16x8, y0[i].bsums[8..]));
-        const y1_sums = neon.paddq_s16(neon.loadFrom(i16x8, &y1[i].bsums), neon.loadFrom(i16x8, y1[i].bsums[8..]));
+        const y0_sums = neon.paddqS16(neon.loadFrom(i16x8, &y0[i].bsums), neon.loadFrom(i16x8, y0[i].bsums[8..]));
+        const y1_sums = neon.paddqS16(neon.loadFrom(i16x8, &y1[i].bsums), neon.loadFrom(i16x8, y1[i].bsums[8..]));
         const bias: i32x4 = .{
-            neon.addvq_s32(mullSum(y0_sums, sm0.mins)),
-            neon.addvq_s32(mullSum(y1_sums, sm0.mins)),
-            neon.addvq_s32(mullSum(y0_sums, sm1.mins)),
-            neon.addvq_s32(mullSum(y1_sums, sm1.mins)),
+            neon.addvqS32(mullSum(y0_sums, sm0.mins)),
+            neon.addvqS32(mullSum(y1_sums, sm0.mins)),
+            neon.addvqS32(mullSum(y0_sums, sm1.mins)),
+            neon.addvqS32(mullSum(y1_sums, sm1.mins)),
         };
         const dmins: f32x4 = .{
             f(x0[i].dmin) * y0[i].d,
@@ -381,7 +379,7 @@ pub fn q4_K(n: c_int, s: [*c]f32, bs: usize, vx: ?*const anyopaque, bx: usize, v
             f(x1[i].dmin) * y0[i].d,
             f(x1[i].dmin) * y1[i].d,
         };
-        vfsum = neon.mlsq_f32(vfsum, neon.cvt_f32_s32(bias), dmins);
+        vfsum = neon.mlsqF32(vfsum, neon.cvtF32S32(bias), dmins);
 
         const superblock_scale: f32x4 = .{
             f(x0[i].d) * y0[i].d,
@@ -389,7 +387,7 @@ pub fn q4_K(n: c_int, s: [*c]f32, bs: usize, vx: ?*const anyopaque, bx: usize, v
             f(x1[i].d) * y0[i].d,
             f(x1[i].d) * y1[i].d,
         };
-        vfsum = neon.mlaq_f32(vfsum, neon.cvt_f32_s32(visum), superblock_scale);
+        vfsum = neon.mlaqF32(vfsum, neon.cvtF32S32(visum), superblock_scale);
     }
 
     storeTwoColumns(s, bs, vfsum);
@@ -411,11 +409,10 @@ inline fn nibbles(v0: u8x16, v1: u8x16) [4]i8x16 {
 /// 64 `ql` bytes and 32 `qh` bytes -- into eight vectors of six-bit values,
 /// **without** the bias of 32, which the arm takes out of the sum instead.
 ///
-/// Parameters:
 /// - `ql`: 64 bytes of low nibbles.
 /// - `qh`: 32 bytes of high bit pairs.
 ///
-/// Return: the eight vectors, in the C's `vx[0..8]` order.
+/// - Returns: the eight vectors, in the C's `vx[0..8]` order.
 inline fn dequantQ6K(ql: [*]const u8, qh: [*]const u8) [8]i8x16 {
     const mone: u8x16 = @splat(0x30);
     const mask: u8x16 = @splat(0x0f);
@@ -454,13 +451,13 @@ inline fn dequantQ6K(ql: [*]const u8, qh: [*]const u8) [8]i8x16 {
 /// `vaddvq_s32` of the `q6_K` arm's bias product: sixteen `bsums` against
 /// sixteen sign-extended scales, as four widening multiplies.
 inline fn q6Bias(q8sums: [2]i16x8, q6scales: [2]i16x8) i32 {
-    return neon.addvq_s32(neon.add(mullSum(q8sums[0], q6scales[0]), mullSum(q8sums[1], q6scales[1])));
+    return neon.addvqS32(neon.add(mullSum(q8sums[0], q6scales[0]), mullSum(q8sums[1], q6scales[1])));
 }
 
 /// The sixteen `i8` scales of a `q6_K` block widened to two `i16x8`.
 inline fn q6Scales(scales: *const [c.QK_K / 16]i8) [2]i16x8 {
     const v = neon.loadFrom(i8x16, scales);
-    return .{ neon.movl_s8(neon.low(v)), neon.movl_s8(neon.high(v)) };
+    return .{ neon.movlS8(neon.low(v)), neon.movlS8(neon.high(v)) };
 }
 
 /// Ports `ggml_vec_dot_q6_K_q8_K` (arch/arm/quants.c:2969 @cd959bae9), the
@@ -469,7 +466,7 @@ inline fn q6Scales(scales: *const [c.QK_K / 16]i8) [2]i16x8 {
 /// The bias of 32 is not subtracted from the weights. It comes off the
 /// integer sum at the end of each super-block as `32 * sum(bsums * scales)`
 /// -- the same arithmetic, exact, done once.
-pub fn q6_K(n: c_int, s: [*c]f32, bs: usize, vx: ?*const anyopaque, bx: usize, vy: ?*const anyopaque, by: usize) void {
+pub fn q6K(n: c_int, s: [*c]f32, bs: usize, vx: ?*const anyopaque, bx: usize, vy: ?*const anyopaque, by: usize) void {
     const nb: usize = @intCast(@divTrunc(n, c.QK_K));
 
     const x0 = rowAt(blocks.Q6_K, vx, 0);
@@ -505,17 +502,17 @@ pub fn q6_K(n: c_int, s: [*c]f32, bs: usize, vx: ?*const anyopaque, bx: usize, v
                 };
 
                 // Four results at once, as an outer product.
-                const vx_l = neon.zip1q_s64(vx0[k], vx1[k]);
-                const vx_h = neon.zip2q_s64(vx0[k], vx1[k]);
-                const vy_l = neon.zip1q_s64(vy0, vy1);
-                const vy_h = neon.zip2q_s64(vy0, vy1);
+                const vx_l = neon.zip1qS64(vx0[k], vx1[k]);
+                const vx_h = neon.zip2qS64(vx0[k], vx1[k]);
+                const vy_l = neon.zip1qS64(vy0, vy1);
+                const vy_h = neon.zip2qS64(vy0, vy1);
                 var vr: i32x4 = @splat(0);
-                vr = neon.mmlaq_s32(vr, vx_l, vy_l);
-                vr = neon.mmlaq_s32(vr, vx_h, vy_h);
+                vr = neon.mmlaqS32(vr, vx_l, vy_l);
+                vr = neon.mmlaqS32(vr, vx_h, vy_h);
 
                 // Will not overflow: block_scale * sum_256(int6*int8) is
                 // under 2^30.
-                visum = neon.mlaq_s32(visum, vr, block_scale);
+                visum = neon.mlaqS32(visum, vr, block_scale);
             }
         }
 
@@ -531,7 +528,7 @@ pub fn q6_K(n: c_int, s: [*c]f32, bs: usize, vx: ?*const anyopaque, bx: usize, v
             q6Bias(q8sums0, q6scales1),
             q6Bias(q8sums1, q6scales1),
         };
-        const vibias = neon.mulq_n_s32(bias, 32);
+        const vibias = neon.mulqNS32(bias, 32);
 
         const superblock_scale: f32x4 = .{
             f(x0[i].d) * y0[i].d,
@@ -541,7 +538,7 @@ pub fn q6_K(n: c_int, s: [*c]f32, bs: usize, vx: ?*const anyopaque, bx: usize, v
         };
 
         visum = neon.sub(visum, vibias);
-        vfsum = neon.mlaq_f32(vfsum, neon.cvt_f32_s32(visum), superblock_scale);
+        vfsum = neon.mlaqF32(vfsum, neon.cvtF32S32(visum), superblock_scale);
     }
 
     storeTwoColumns(s, bs, vfsum);

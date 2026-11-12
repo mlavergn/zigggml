@@ -45,43 +45,71 @@ extern fn ggml_gemm_q5_K_8x8_q8_K_generic(n: c_int, s: [*]f32, bs: usize, vx: *c
 extern fn ggml_gemm_q6_K_8x8_q8_K_generic(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) void;
 extern fn ggml_gemm_q8_0_4x8_q8_0_generic(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) void;
 
+comptime {
+    @export(&ggmlGemvQ408x8Q80, .{ .name = "ggml_gemv_q4_0_8x8_q8_0" });
+}
+
 /// Ports `ggml_gemv_q4_0_8x8_q8_0` (arch/arm/repack.cpp:357 @cd959bae9).
-pub export fn ggml_gemv_q4_0_8x8_q8_0(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+pub fn ggmlGemvQ408x8Q80(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
     ggml_gemv_q4_0_8x8_q8_0_generic(n, s, bs, vx, vy, nr, nc);
 }
 
+comptime {
+    @export(&ggmlGemmQ404x8Q80, .{ .name = "ggml_gemm_q4_0_4x8_q8_0" });
+}
+
 /// Ports `ggml_gemm_q4_0_4x8_q8_0` (arch/arm/repack.cpp:2570 @cd959bae9).
-pub export fn ggml_gemm_q4_0_4x8_q8_0(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
-    if (comptime mmla.enabled) return mmla.gemmQ4_0_4x8(n, s, bs, vx, vy, nr, nc);
+pub fn ggmlGemmQ404x8Q80(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+    if (comptime mmla.enabled) return mmla.gemmQ404x8(n, s, bs, vx, vy, nr, nc);
     ggml_gemm_q4_0_4x8_q8_0_generic(n, s, bs, vx, vy, nr, nc);
 }
 
+comptime {
+    @export(&ggmlGemmQ408x8Q80, .{ .name = "ggml_gemm_q4_0_8x8_q8_0" });
+}
+
 /// Ports `ggml_gemm_q4_0_8x8_q8_0` (arch/arm/repack.cpp:2991 @cd959bae9).
-pub export fn ggml_gemm_q4_0_8x8_q8_0(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+pub fn ggmlGemmQ408x8Q80(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
     ggml_gemm_q4_0_8x8_q8_0_generic(n, s, bs, vx, vy, nr, nc);
 }
 
+comptime {
+    @export(&ggmlGemmQ4K8x8Q8K, .{ .name = "ggml_gemm_q4_K_8x8_q8_K" });
+}
+
 /// Ports `ggml_gemm_q4_K_8x8_q8_K` (arch/arm/repack.cpp:4015 @cd959bae9).
-pub export fn ggml_gemm_q4_K_8x8_q8_K(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
-    if (comptime mmla.enabled) return mmla.gemmQ4_K_8x8(n, s, bs, vx, vy, nr, nc);
+pub fn ggmlGemmQ4K8x8Q8K(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+    if (comptime mmla.enabled) return mmla.gemmQ4K8x8(n, s, bs, vx, vy, nr, nc);
     ggml_gemm_q4_K_8x8_q8_K_generic(n, s, bs, vx, vy, nr, nc);
 }
 
+comptime {
+    @export(&ggmlGemmQ5K8x8Q8K, .{ .name = "ggml_gemm_q5_K_8x8_q8_K" });
+}
+
 /// Ports `ggml_gemm_q5_K_8x8_q8_K` (arch/arm/repack.cpp:4535 @cd959bae9).
-pub export fn ggml_gemm_q5_K_8x8_q8_K(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
-    if (comptime mmla.enabled) return mmla.gemmQ5_K_8x8(n, s, bs, vx, vy, nr, nc);
+pub fn ggmlGemmQ5K8x8Q8K(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+    if (comptime mmla.enabled) return mmla.gemmQ5K8x8(n, s, bs, vx, vy, nr, nc);
     ggml_gemm_q5_K_8x8_q8_K_generic(n, s, bs, vx, vy, nr, nc);
 }
 
+comptime {
+    @export(&ggmlGemmQ6K8x8Q8K, .{ .name = "ggml_gemm_q6_K_8x8_q8_K" });
+}
+
 /// Ports `ggml_gemm_q6_K_8x8_q8_K` (arch/arm/repack.cpp:4984 @cd959bae9).
-pub export fn ggml_gemm_q6_K_8x8_q8_K(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
-    if (comptime mmla.enabled) return mmla.gemmQ6_K_8x8(n, s, bs, vx, vy, nr, nc);
+pub fn ggmlGemmQ6K8x8Q8K(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+    if (comptime mmla.enabled) return mmla.gemmQ6K8x8(n, s, bs, vx, vy, nr, nc);
     ggml_gemm_q6_K_8x8_q8_K_generic(n, s, bs, vx, vy, nr, nc);
 }
 
+comptime {
+    @export(&ggmlGemmQ804x8Q80, .{ .name = "ggml_gemm_q8_0_4x8_q8_0" });
+}
+
 /// Ports `ggml_gemm_q8_0_4x8_q8_0` (arch/arm/repack.cpp:5456 @cd959bae9).
-pub export fn ggml_gemm_q8_0_4x8_q8_0(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
-    if (comptime mmla.enabled) return mmla.gemmQ8_0_4x8(n, s, bs, vx, vy, nr, nc);
+pub fn ggmlGemmQ804x8Q80(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+    if (comptime mmla.enabled) return mmla.gemmQ804x8(n, s, bs, vx, vy, nr, nc);
     ggml_gemm_q8_0_4x8_q8_0_generic(n, s, bs, vx, vy, nr, nc);
 }
 
@@ -101,12 +129,12 @@ const quantize = @import("../quantize.zig");
 comptime {
     _ = impl;
     _ = std;
-    @export(&quantize.ggml_quantize_mat_q8_K_4x4_generic, .{ .name = "ggml_quantize_mat_q8_K_4x4" });
-    @export(&quantize.ggml_quantize_mat_q8_K_4x8_generic, .{ .name = "ggml_quantize_mat_q8_K_4x8" });
-    @export(&nibble4.ggml_gemv_iq4_nl_8x8_q8_0_generic, .{ .name = "ggml_gemv_iq4_nl_8x8_q8_0" });
-    @export(&nibble4.ggml_gemv_mxfp4_8x8_q8_0_generic, .{ .name = "ggml_gemv_mxfp4_8x8_q8_0" });
-    @export(&q2_k.ggml_gemv_q2_K_8x8_q8_K_generic, .{ .name = "ggml_gemv_q2_K_8x8_q8_K" });
-    @export(&nibble4.ggml_gemm_iq4_nl_8x8_q8_0_generic, .{ .name = "ggml_gemm_iq4_nl_8x8_q8_0" });
-    @export(&nibble4.ggml_gemm_mxfp4_8x8_q8_0_generic, .{ .name = "ggml_gemm_mxfp4_8x8_q8_0" });
-    @export(&q2_k.ggml_gemm_q2_K_8x8_q8_K_generic, .{ .name = "ggml_gemm_q2_K_8x8_q8_K" });
+    @export(&quantize.ggmlQuantizeMatQ8K4x4Generic, .{ .name = "ggml_quantize_mat_q8_K_4x4" });
+    @export(&quantize.ggmlQuantizeMatQ8K4x8Generic, .{ .name = "ggml_quantize_mat_q8_K_4x8" });
+    @export(&nibble4.ggmlGemvIq4Nl8x8Q80Generic, .{ .name = "ggml_gemv_iq4_nl_8x8_q8_0" });
+    @export(&nibble4.ggmlGemvMxfp48x8Q80Generic, .{ .name = "ggml_gemv_mxfp4_8x8_q8_0" });
+    @export(&q2_k.ggmlGemvQ2K8x8Q8KGeneric, .{ .name = "ggml_gemv_q2_K_8x8_q8_K" });
+    @export(&nibble4.ggmlGemmIq4Nl8x8Q80Generic, .{ .name = "ggml_gemm_iq4_nl_8x8_q8_0" });
+    @export(&nibble4.ggmlGemmMxfp48x8Q80Generic, .{ .name = "ggml_gemm_mxfp4_8x8_q8_0" });
+    @export(&q2_k.ggmlGemmQ2K8x8Q8KGeneric, .{ .name = "ggml_gemm_q2_K_8x8_q8_K" });
 }

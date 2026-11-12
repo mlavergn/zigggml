@@ -32,7 +32,6 @@
 //! right by four, once, rather than each product. Shifting earlier loses
 //! the low bits of the odd term.
 
-const std = @import("std");
 const impl = @import("../../impl.zig");
 const blocks = @import("blocks.zig");
 const epilogue = @import("epilogue.zig");
@@ -84,8 +83,10 @@ fn gemv(
                     var i: i32 = 0;
                     while (i < blocklen) : (i += 1) {
                         const q = bl.qs[@intCast(k * ncols_interleaved * blocklen + @as(i32, @intCast(j)) * blocklen + i)];
-                        const v0: i32 = @as(i8, @bitCast(@as(u8, @bitCast(q)) << 4));
-                        const v1: i32 = @as(i8, @bitCast(@as(u8, @bitCast(q)) & 0xF0));
+                        const v0_raw: i8 = @bitCast(@as(u8, @bitCast(q)) << 4);
+                        const v0: i32 = v0_raw;
+                        const v1_raw: i8 = @bitCast(@as(u8, @bitCast(q)) & 0xF0);
+                        const v1: i32 = v1_raw;
                         sumi += ((v0 * al.qs[@intCast(k * blocklen + i)]) +
                             (v1 * al.qs[@intCast(k * blocklen + i + @divTrunc(qk, 2))])) >> 4;
                     }
@@ -144,8 +145,10 @@ fn gemm(
                             var i: i32 = 0;
                             while (i < blocklen) : (i += 1) {
                                 const q = bl.qs[@intCast(k * ncols_interleaved * blocklen + @as(i32, @intCast(j)) * blocklen + i)];
-                                const v0: i32 = @as(i8, @bitCast(@as(u8, @bitCast(q)) << 4));
-                                const v1: i32 = @as(i8, @bitCast(@as(u8, @bitCast(q)) & 0xF0));
+                                const v0_raw: i8 = @bitCast(@as(u8, @bitCast(q)) << 4);
+                                const v0: i32 = v0_raw;
+                                const v1_raw: i8 = @bitCast(@as(u8, @bitCast(q)) & 0xF0);
+                                const v1: i32 = v1_raw;
                                 sumi += ((v0 * al.qs[@intCast(k * 4 * blocklen + @as(i32, @intCast(m)) * blocklen + i)]) +
                                     (v1 * al.qs[@intCast(k * 4 * blocklen + @as(i32, @intCast(m)) * blocklen + i + @divTrunc(qk, 2) * 4)])) >> 4;
                             }
@@ -165,22 +168,46 @@ fn gemm(
 
 const Gemv = fn (c_int, [*]f32, usize, *const anyopaque, *const anyopaque, c_int, c_int) callconv(.c) void;
 
-pub export fn ggml_gemv_q4_0_4x4_q8_0_generic(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+comptime {
+    @export(&ggmlGemvQ404x4Q80Generic, .{ .name = "ggml_gemv_q4_0_4x4_q8_0_generic" });
+}
+
+pub fn ggmlGemvQ404x4Q80Generic(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
     gemv(4, 4, blocks.block_q4_0x4, n, s, bs, vx, vy, nr, nc);
 }
-pub export fn ggml_gemv_q4_0_4x8_q8_0_generic(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+comptime {
+    @export(&ggmlGemvQ404x8Q80Generic, .{ .name = "ggml_gemv_q4_0_4x8_q8_0_generic" });
+}
+
+pub fn ggmlGemvQ404x8Q80Generic(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
     gemv(4, 8, blocks.block_q4_0x4, n, s, bs, vx, vy, nr, nc);
 }
-pub export fn ggml_gemv_q4_0_8x8_q8_0_generic(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+comptime {
+    @export(&ggmlGemvQ408x8Q80Generic, .{ .name = "ggml_gemv_q4_0_8x8_q8_0_generic" });
+}
+
+pub fn ggmlGemvQ408x8Q80Generic(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
     gemv(8, 8, blocks.block_q4_0x8, n, s, bs, vx, vy, nr, nc);
 }
-pub export fn ggml_gemm_q4_0_4x4_q8_0_generic(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+comptime {
+    @export(&ggmlGemmQ404x4Q80Generic, .{ .name = "ggml_gemm_q4_0_4x4_q8_0_generic" });
+}
+
+pub fn ggmlGemmQ404x4Q80Generic(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
     gemm(4, 4, blocks.block_q4_0x4, n, s, bs, vx, vy, nr, nc);
 }
-pub export fn ggml_gemm_q4_0_4x8_q8_0_generic(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+comptime {
+    @export(&ggmlGemmQ404x8Q80Generic, .{ .name = "ggml_gemm_q4_0_4x8_q8_0_generic" });
+}
+
+pub fn ggmlGemmQ404x8Q80Generic(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
     gemm(4, 8, blocks.block_q4_0x4, n, s, bs, vx, vy, nr, nc);
 }
-pub export fn ggml_gemm_q4_0_8x8_q8_0_generic(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+comptime {
+    @export(&ggmlGemmQ408x8Q80Generic, .{ .name = "ggml_gemm_q4_0_8x8_q8_0_generic" });
+}
+
+pub fn ggmlGemmQ408x8Q80Generic(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
     gemm(8, 8, blocks.block_q4_0x8, n, s, bs, vx, vy, nr, nc);
 }
 

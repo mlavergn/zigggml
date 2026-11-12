@@ -38,7 +38,7 @@ pub fn main(init: std.process.Init) !void {
     const arena = init.arena.allocator();
     const args = try init.minimal.args.toSlice(arena);
     if (args.len < 3) {
-        std.debug.print("usage: vulkan_shaders <out.zig> <out.bin> <generated.cpp>...\n", .{});
+        std.log.err("usage: vulkan_shaders <out.zig> <out.bin> <generated.cpp>...", .{});
         std.process.exit(2);
     }
 
@@ -167,6 +167,6 @@ fn parseFile(
 }
 
 fn fail(comptime fmt: []const u8, args: anytype) noreturn {
-    std.debug.print("vulkan_shaders: " ++ fmt ++ "\n", args);
+    std.log.err("vulkan_shaders: " ++ fmt ++ "\n", args);
     std.process.exit(1);
 }

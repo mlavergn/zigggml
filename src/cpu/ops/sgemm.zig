@@ -104,13 +104,13 @@ inline fn unhalf(d: c.ggml_fp16_t) f32 {
 /// Ports `hsum` (sgemm.cpp:232 @cd959bae9): `vaddvq_f32`, a
 /// **pairwise** reduce, not the ordered one `@reduce(.Add, ...)` gives.
 inline fn hsum4(x: f32x4) f32 {
-    return neon.addvq_f32(x);
+    return neon.addvqF32(x);
 }
 
 /// Ports `hsum` (sgemm.cpp:238 @cd959bae9): widen both halves
 /// to `f32x4`, add, then the pairwise reduce.
 inline fn hsum8(x: f16x8) f32 {
-    return neon.addvq_f32(neon.cvt_f32_f16_half(x, false) + neon.cvt_f32_f16_half(x, true));
+    return neon.addvqF32(neon.cvtF32F16Half(x, false) + neon.cvtF32F16Half(x, true));
 }
 
 /// Ports `hsum`, `hsum` (sgemm.cpp:268, 252 @cd959bae9), the `__m256` one and the
@@ -212,7 +212,7 @@ fn TinyBLAS(comptime KN: i64, comptime V: type, comptime TA: type, comptime TB: 
             if (V == f32x16) return loadAvx512(T, p);
             if (V == f32x8) return loadAvx(T, p);
             if (T == f32) return p[0..4].*;
-            if (V == f32x4) return neon.cvt_f32_f16(neon.load_f16x4(p));
+            if (V == f32x4) return neon.cvtF32F16(neon.loadF16x4(p));
             return @bitCast(@as(@Vector(8, u16), p[0..8].*));
         }
 
@@ -366,9 +366,9 @@ fn TinyBLAS(comptime KN: i64, comptime V: type, comptime TA: type, comptime TB: 
             const tp: *defs.Threadpool = @ptrCast(@alignCast(self.params.threadpool.?));
             if (self.params.ith == 0) {
                 impl.assert(jj_BN * SIZE_BN + (NB_BN - jj_BN) * (SIZE_BN - 1) == xtiles, "jj_BN * SIZE_BN + (NB_BN - jj_BN) * (SIZE_BN - 1) == xtiles");
-                threading.ggml_threadpool_chunk_set(tp, self.params.nth);
+                threading.ggmlThreadpoolChunkSet(tp, self.params.nth);
             }
-            threading.ggml_barrier(tp);
+            threading.ggmlBarrier(tp);
 
             var job: i64 = self.params.ith;
             while (job < nb_job) {
@@ -393,9 +393,9 @@ fn TinyBLAS(comptime KN: i64, comptime V: type, comptime TA: type, comptime TB: 
                     }
                     impl.assert(jj == jj2, "jj == jj2");
                 }
-                job = threading.ggml_threadpool_chunk_add(tp, 1);
+                job = threading.ggmlThreadpoolChunkAdd(tp, 1);
             }
-            threading.ggml_barrier(tp);
+            threading.ggmlBarrier(tp);
         }
     };
 }
@@ -539,14 +539,14 @@ fn TinyBlasQ0Arm(comptime TA: type) type {
                         inline for (0..RM) |i| {
                             const a = &self.A[@intCast(self.lda * (ii + @as(i64, i)) + l)];
                             const b = &self.B[@intCast(self.ldb * (jj + @as(i64, j)) + l)];
-                            const dot = neon.dotq_s32(
-                                neon.dotq_s32(@splat(0), loadLo(a), loadLoQ8(b)),
+                            const dot = neon.dotqS32(
+                                neon.dotqS32(@splat(0), loadLo(a), loadLoQ8(b)),
                                 loadHi(a),
                                 loadHiQ8(b),
                             );
-                            Cv[j][i] = neon.mla_n_f32(
+                            Cv[j][i] = neon.mlaNF32(
                                 Cv[j][i],
-                                neon.cvt_f32_s32(dot),
+                                neon.cvtF32S32(dot),
                                 unhalf(a.d) * unhalf(b.d),
                             );
                         }
@@ -592,8 +592,8 @@ fn TinyBlasQ0Avx(comptime TA: type) type {
         /// Ports `denibble` (sgemm.cpp:1857 @cd959bae9): sixteen bytes to
         /// 32 nibbles, low first.
         inline fn denibble(p: *const [16]u8) avx.m256i {
-            const x = avx.mm_loadu_si128(p);
-            return avx.mm256_and_si256(avx.mm256_set1_epi8(15), avx.mm256_set_m128i(avx.mm_srli_epi16(x, 4), x));
+            const x = avx.mmLoaduSi128(p);
+            return avx.mm256AndSi256(avx.mm256Set1Epi8(15), avx.mm256SetM128i(avx.mmSrliEpi16(x, 4), x));
         }
 
         /// Ports `bittobyte` (sgemm.cpp:1864 @cd959bae9): `q5_0`'s fifth
@@ -601,14 +601,14 @@ fn TinyBlasQ0Avx(comptime TA: type) type {
         /// nibble minus 16, signed.
         inline fn bittobyte(p: *const [4]u8) avx.m256i {
             const x32 = std.mem.readInt(u32, p, .little);
-            const bytes = avx.mm256_cmpeq_epi8(
-                avx.mm256_set1_epi64x(-1),
-                avx.mm256_or_si256(
-                    avx.mm256_set1_epi64x(0x7fbfdfeff7fbfdfe),
-                    avx.mm256_shuffle_epi8(avx.mm256_set1_epi32(@bitCast(x32)), avx.mm256_set_epi64x(0x0303030303030303, 0x0202020202020202, 0x0101010101010101, 0x0000000000000000)),
+            const bytes = avx.mm256CmpeqEpi8(
+                avx.mm256Set1Epi64x(-1),
+                avx.mm256OrSi256(
+                    avx.mm256Set1Epi64x(0x7fbfdfeff7fbfdfe),
+                    avx.mm256ShuffleEpi8(avx.mm256Set1Epi32(@bitCast(x32)), avx.mm256SetEpi64x(0x0303030303030303, 0x0202020202020202, 0x0101010101010101, 0x0000000000000000)),
                 ),
             );
-            return avx.mm256_andnot_si256(bytes, avx.mm256_set1_epi8(@bitCast(@as(u8, 0xF0))));
+            return avx.mm256AndnotSi256(bytes, avx.mm256Set1Epi8(@bitCast(@as(u8, 0xF0))));
         }
 
         /// Ports `load`, `load`, `load`, `load` (sgemm.cpp:1775, 1787, 1801, 1831 @cd959bae9):
@@ -616,15 +616,15 @@ fn TinyBlasQ0Avx(comptime TA: type) type {
         /// `load0`, each a `pshufb` through the codebook, which the
         /// constructor copies into `iq4nlt`.
         inline fn load(comptime T: type, b: *const T) avx.m256i {
-            if (T == qblocks.Q8_0) return avx.mm256_loadu_si256(&b.qs);
-            if (T == qblocks.Q4_0) return avx.mm256_sub_epi8(denibble(&b.qs), avx.mm256_set1_epi8(8));
-            if (T == qblocks.Q5_0) return avx.mm256_or_si256(denibble(&b.qs), bittobyte(&b.qh));
+            if (T == qblocks.Q8_0) return avx.mm256LoaduSi256(&b.qs);
+            if (T == qblocks.Q4_0) return avx.mm256SubEpi8(denibble(&b.qs), avx.mm256Set1Epi8(8));
+            if (T == qblocks.Q5_0) return avx.mm256OrSi256(denibble(&b.qs), bittobyte(&b.qh));
             comptime std.debug.assert(T == qblocks.IQ4_NL);
-            const iq4nlt = avx.mm_loadu_si128(&c.kvalues_iq4nl);
-            const x = avx.mm_loadu_si128(&b.qs);
-            const lo = avx.mm_shuffle_epi8(iq4nlt, avx.mm_and_si128(avx.mm_set1_epi8(15), x));
-            const hi = avx.mm_shuffle_epi8(iq4nlt, avx.mm_and_si128(avx.mm_set1_epi8(15), avx.mm_srli_epi16(x, 4)));
-            return avx.mm256_set_m128i(hi, lo);
+            const iq4nlt = avx.mmLoaduSi128(&c.kvalues_iq4nl);
+            const x = avx.mmLoaduSi128(&b.qs);
+            const lo = avx.mmShuffleEpi8(iq4nlt, avx.mmAndSi128(avx.mmSet1Epi8(15), x));
+            const hi = avx.mmShuffleEpi8(iq4nlt, avx.mmAndSi128(avx.mmSet1Epi8(15), avx.mmSrliEpi16(x, 4)));
+            return avx.mm256SetM128i(hi, lo);
         }
 
         /// Ports `updot` (sgemm.cpp:1845 @cd959bae9): unsigned by signed
@@ -632,16 +632,16 @@ fn TinyBlasQ0Avx(comptime TA: type) type {
         /// `__AVX512VNNI__ && __AVX512VL__`, otherwise summed in pairs
         /// twice.
         inline fn updot(u: avx.m256i, s: avx.m256i) avx.m256 {
-            if (comptime avx.has_avx512vnni_vl) return avx.mm256_cvtepi32_ps(avx.mm256_dpbusd_epi32(avx.mm256_setzero_si256(), u, s));
+            if (comptime avx.has_avx512vnni_vl) return avx.mm256Cvtepi32Ps(avx.mm256DpbusdEpi32(avx.mm256SetzeroSi256(), u, s));
             if (comptime avx.has_avxvnni_only) @compileError("the __AVXVNNI__ arm of updot is not ported");
-            const res = avx.mm256_madd_epi16(avx.mm256_set1_epi16(1), avx.mm256_maddubs_epi16(u, s));
-            return avx.mm256_cvtepi32_ps(res);
+            const res = avx.mm256MaddEpi16(avx.mm256Set1Epi16(1), avx.mm256MaddubsEpi16(u, s));
+            return avx.mm256Cvtepi32Ps(res);
         }
 
         /// The C's `updot(_mm256_sign_epi8(a, a), _mm256_sign_epi8(b, a))`:
         /// a signed dot product through the unsigned instruction.
         inline fn dot(av: avx.m256i, bv: avx.m256i) avx.m256 {
-            return updot(avx.mm256_sign_epi8(av, av), avx.mm256_sign_epi8(bv, av));
+            return updot(avx.mm256SignEpi8(av, av), avx.mm256SignEpi8(bv, av));
         }
 
         inline fn aAt(self: *const Self, row: i64, l: i64) *const TA {
@@ -776,7 +776,7 @@ fn TinyBlasQ0Avx(comptime TA: type) type {
             while (job < end) : (job += 1) {
                 const ii = m0 + @divTrunc(job, xtiles) * 4;
                 const jj = n0 + @rem(job, xtiles) * RN;
-                var Cv: [RN][4]avx.m256 = @splat(@splat(avx.mm256_setzero_ps()));
+                var Cv: [RN][4]avx.m256 = @splat(@splat(avx.mm256SetzeroPs()));
                 var l: i64 = 0;
                 while (l < self.k) : (l += 1) {
                     // Convert delta values for four blocks to float values
@@ -790,7 +790,7 @@ fn TinyBlasQ0Avx(comptime TA: type) type {
                         // the vector by `_mm256_shuffle_ps`
                         const dvec = da * db;
                         inline for (0..4) |i| {
-                            Cv[j][i] = avx.mm256_fmadd_ps(@splat(dvec[i]), dot(avec[i], load(qblocks.Q8_0, b)), Cv[j][i]);
+                            Cv[j][i] = avx.mm256FmaddPs(@splat(dvec[i]), dot(avec[i], load(qblocks.Q8_0, b)), Cv[j][i]);
                         }
                     }
                 }
@@ -812,7 +812,7 @@ fn TinyBlasQ0Avx(comptime TA: type) type {
             while (job < end) : (job += 1) {
                 const ii = m0 + @divTrunc(job, xtiles) * RM;
                 const jj = n0 + @rem(job, xtiles) * 4;
-                var Cv: [4][RM]avx.m256 = @splat(@splat(avx.mm256_setzero_ps()));
+                var Cv: [4][RM]avx.m256 = @splat(@splat(avx.mm256SetzeroPs()));
                 var l: i64 = 0;
                 while (l < self.k) : (l += 1) {
                     // Convert delta values for four blocks to float values
@@ -824,7 +824,7 @@ fn TinyBlasQ0Avx(comptime TA: type) type {
                         const da: @Vector(4, f32) = @splat(unhalf(a.d));
                         const dvec = da * db;
                         inline for (0..4) |j| {
-                            Cv[j][i] = avx.mm256_fmadd_ps(@splat(dvec[j]), dot(load(TA, a), bvec[j]), Cv[j][i]);
+                            Cv[j][i] = avx.mm256FmaddPs(@splat(dvec[j]), dot(load(TA, a), bvec[j]), Cv[j][i]);
                         }
                     }
                 }
@@ -845,7 +845,7 @@ fn TinyBlasQ0Avx(comptime TA: type) type {
             while (job < end) : (job += 1) {
                 const ii = m0 + @divTrunc(job, xtiles) * RM;
                 const jj = n0 + @rem(job, xtiles) * RN;
-                var Cv: [RN][RM]avx.m256 = @splat(@splat(avx.mm256_setzero_ps()));
+                var Cv: [RN][RM]avx.m256 = @splat(@splat(avx.mm256SetzeroPs()));
                 var l: i64 = 0;
                 while (l < self.k) : (l += 1) {
                     inline for (0..RN) |j| {
@@ -853,7 +853,7 @@ fn TinyBlasQ0Avx(comptime TA: type) type {
                             const a = self.aAt(ii + i, l);
                             const b = self.bAt(jj + j, l);
                             const udTmp = dot(load(TA, a), load(qblocks.Q8_0, b));
-                            Cv[j][i] = avx.mm256_fmadd_ps(@splat(unhalf(a.d) * unhalf(b.d)), udTmp, Cv[j][i]);
+                            Cv[j][i] = avx.mm256FmaddPs(@splat(unhalf(a.d) * unhalf(b.d)), udTmp, Cv[j][i]);
                         }
                     }
                 }
@@ -867,20 +867,23 @@ fn TinyBlasQ0Avx(comptime TA: type) type {
     };
 }
 
+comptime {
+    @export(&llamafileSgemm, .{ .name = "llamafile_sgemm" });
+}
+
 /// Ports `llamafile_sgemm` (sgemm.cpp:3896 @cd959bae9).
 ///
 /// Returns **false** when there is no kernel for this shape or type pair,
 /// and `cpu/mulmat.zig` then computes the product itself. On this target
 /// `BF16`, `Q5_0` and `IQ4_NL` always take that path.
 ///
-/// Parameters:
 /// - `params`: thread index, count and threadpool.
 /// - `m`, `n`, `k`: the product's dimensions.
 /// - `A`, `lda`, `B`, `ldb`, `C`, `ldc`: operands and their leading strides.
 /// - `Atype`, `Btype`, `Ctype`: `ggml_type` of each operand.
 ///
-/// Return: true if the product was computed here.
-pub export fn llamafile_sgemm(
+/// - Returns: true if the product was computed here.
+pub fn llamafileSgemm(
     params: *const ComputeParams,
     m: i64,
     n: i64,

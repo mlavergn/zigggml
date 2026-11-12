@@ -30,42 +30,46 @@ const QK_K = 256;
 inline fn packBytes(v0: avx.m256, v1: avx.m256, v2: avx.m256, v3: avx.m256) avx.m256i {
     // Round to nearest integer, then convert. The C's `i0`..`i3`, renamed
     // digit for digit: Zig reserves them as integer types.
-    var j0 = avx.mm256_cvtps_epi32(avx.mm256_round_ps(v0, avx.MM_ROUND_NEAREST));
-    const j1 = avx.mm256_cvtps_epi32(avx.mm256_round_ps(v1, avx.MM_ROUND_NEAREST));
-    var j2 = avx.mm256_cvtps_epi32(avx.mm256_round_ps(v2, avx.MM_ROUND_NEAREST));
-    const j3 = avx.mm256_cvtps_epi32(avx.mm256_round_ps(v3, avx.MM_ROUND_NEAREST));
+    var j0 = avx.mm256CvtpsEpi32(avx.mm256RoundPs(v0, avx.MM_ROUND_NEAREST));
+    const j1 = avx.mm256CvtpsEpi32(avx.mm256RoundPs(v1, avx.MM_ROUND_NEAREST));
+    var j2 = avx.mm256CvtpsEpi32(avx.mm256RoundPs(v2, avx.MM_ROUND_NEAREST));
+    const j3 = avx.mm256CvtpsEpi32(avx.mm256RoundPs(v3, avx.MM_ROUND_NEAREST));
 
     // Convert int32 to int16
-    j0 = avx.mm256_packs_epi32(j0, j1);
-    j2 = avx.mm256_packs_epi32(j2, j3);
+    j0 = avx.mm256PacksEpi32(j0, j1);
+    j2 = avx.mm256PacksEpi32(j2, j3);
     // Convert int16 to int8
-    j0 = avx.mm256_packs_epi16(j0, j2);
+    j0 = avx.mm256PacksEpi16(j0, j2);
 
     // Permute the quantized weights into order after the pack.
-    const perm = avx.mm256_setr_epi32(.{ 0, 4, 1, 5, 2, 6, 3, 7 });
-    return avx.mm256_permutevar8x32_epi32(j0, perm);
+    const perm = avx.mm256SetrEpi32(.{ 0, 4, 1, 5, 2, 6, 3, 7 });
+    return avx.mm256Permutevar8x32Epi32(j0, perm);
 }
 
 /// `max(|v0|, ..., |v3|)` reduced to a scalar, as the C writes it.
 inline fn absMax4(v: [4]avx.m256) avx.m256 {
-    const signBit = avx.mm256_set1_ps(-0.0);
-    var maxAbs = avx.mm256_andnot_ps(signBit, v[0]);
-    maxAbs = avx.mm256_max_ps(maxAbs, avx.mm256_andnot_ps(signBit, v[1]));
-    maxAbs = avx.mm256_max_ps(maxAbs, avx.mm256_andnot_ps(signBit, v[2]));
-    maxAbs = avx.mm256_max_ps(maxAbs, avx.mm256_andnot_ps(signBit, v[3]));
+    const signBit = avx.mm256Set1Ps(-0.0);
+    var maxAbs = avx.mm256AndnotPs(signBit, v[0]);
+    maxAbs = avx.mm256MaxPs(maxAbs, avx.mm256AndnotPs(signBit, v[1]));
+    maxAbs = avx.mm256MaxPs(maxAbs, avx.mm256AndnotPs(signBit, v[2]));
+    maxAbs = avx.mm256MaxPs(maxAbs, avx.mm256AndnotPs(signBit, v[3]));
     return maxAbs;
 }
 
 inline fn reduceMax(maxAbs: avx.m256) f32 {
-    var max4 = avx.mm_max_ps(avx.mm256_extractf128_ps(maxAbs, 1), avx.mm256_castps256_ps128(maxAbs));
-    max4 = avx.mm_max_ps(max4, avx.mm_movehl_ps(max4, max4));
-    max4 = avx.mm_max_ss(max4, avx.mm_movehdup_ps(max4));
-    return avx.mm_cvtss_f32(max4);
+    var max4 = avx.mmMaxPs(avx.mm256Extractf128Ps(maxAbs, 1), avx.mm256Castps256Ps128(maxAbs));
+    max4 = avx.mmMaxPs(max4, avx.mmMovehlPs(max4, max4));
+    max4 = avx.mmMaxSs(max4, avx.mmMovehdupPs(max4));
+    return avx.mmCvtssF32(max4);
+}
+
+comptime {
+    @export(&ggmlQuantizeMatQ804x8, .{ .name = "ggml_quantize_mat_q8_0_4x8" });
 }
 
 /// Ports `ggml_quantize_mat_q8_0_4x8` (arch/x86/repack.cpp:178 @cd959bae9),
 /// the `__AVX2__ || __AVX__` arm with its `__AVX2__` pack.
-pub export fn ggml_quantize_mat_q8_0_4x8(x: [*]const f32, vy: *anyopaque, k: i64) callconv(.c) void {
+pub fn ggmlQuantizeMatQ804x8(x: [*]const f32, vy: *anyopaque, k: i64) callconv(.c) void {
     std.debug.assert(@rem(k, QK8_0) == 0);
     const nb: usize = @intCast(@divTrunc(k, QK8_0));
     const ku: usize = @intCast(k);
@@ -80,10 +84,10 @@ pub export fn ggml_quantize_mat_q8_0_4x8(x: [*]const f32, vy: *anyopaque, k: i64
             // Load elements into 4 AVX vectors
             const base = x + row_iter * ku + i * 32;
             const v = [4]avx.m256{
-                avx.mm256_loadu_ps(base),
-                avx.mm256_loadu_ps(base + 8),
-                avx.mm256_loadu_ps(base + 16),
-                avx.mm256_loadu_ps(base + 24),
+                avx.mm256LoaduPs(base),
+                avx.mm256LoaduPs(base + 8),
+                avx.mm256LoaduPs(base + 16),
+                avx.mm256LoaduPs(base + 24),
             };
 
             const maxScalar = reduceMax(absMax4(v));
@@ -96,20 +100,24 @@ pub export fn ggml_quantize_mat_q8_0_4x8(x: [*]const f32, vy: *anyopaque, k: i64
             y[i].d[row_iter] = convert.cpuFp32ToFp16(d);
 
             srcv[row_iter] = v;
-            idvec[row_iter] = avx.mm256_set1_ps(id);
+            idvec[row_iter] = avx.mm256Set1Ps(id);
         }
 
         // Four chunks of eight bytes from each row's block, interleaved.
         for (0..4) |j| {
             const q = packBytes(
-                avx.mm256_mul_ps(srcv[0][j], idvec[0]),
-                avx.mm256_mul_ps(srcv[1][j], idvec[1]),
-                avx.mm256_mul_ps(srcv[2][j], idvec[2]),
-                avx.mm256_mul_ps(srcv[3][j], idvec[3]),
+                avx.mm256MulPs(srcv[0][j], idvec[0]),
+                avx.mm256MulPs(srcv[1][j], idvec[1]),
+                avx.mm256MulPs(srcv[2][j], idvec[2]),
+                avx.mm256MulPs(srcv[3][j], idvec[3]),
             );
-            avx.mm256_storeu_si256(y[i].qs[32 * j ..].ptr, q);
+            avx.mm256StoreuSi256(y[i].qs[32 * j ..].ptr, q);
         }
     }
+}
+
+comptime {
+    @export(&ggmlQuantizeMatQ8K4x8, .{ .name = "ggml_quantize_mat_q8_K_4x8" });
 }
 
 /// Ports `ggml_quantize_mat_q8_K_4x8` (arch/x86/repack.cpp:290 @cd959bae9),
@@ -122,7 +130,7 @@ pub export fn ggml_quantize_mat_q8_0_4x8(x: [*]const f32, vy: *anyopaque, k: i64
 /// the signed max. The `bsums` are summed from the interleaved quants with
 /// shuffles and blends that pick two values from each of four sub-blocks at
 /// a time.
-pub export fn ggml_quantize_mat_q8_K_4x8(x: [*]const f32, vy: *anyopaque, k: i64) callconv(.c) void {
+pub fn ggmlQuantizeMatQ8K4x8(x: [*]const f32, vy: *anyopaque, k: i64) callconv(.c) void {
     std.debug.assert(@rem(k, QK_K) == 0);
     const nb: usize = @intCast(@divTrunc(k, QK_K));
     const ku: usize = @intCast(k);
@@ -135,30 +143,30 @@ pub export fn ggml_quantize_mat_q8_K_4x8(x: [*]const f32, vy: *anyopaque, k: i64
 
     for (0..nb) |i| {
         for (0..4) |row_iter| {
-            const signBit = avx.mm256_set1_ps(-0.0);
+            const signBit = avx.mm256Set1Ps(-0.0);
 
             const base = x + row_iter * ku + i * 256;
-            const v0 = avx.mm256_loadu_ps(base);
-            const v1 = avx.mm256_loadu_ps(base + 8);
-            const v2 = avx.mm256_loadu_ps(base + 16);
-            const v3 = avx.mm256_loadu_ps(base + 24);
+            const v0 = avx.mm256LoaduPs(base);
+            const v1 = avx.mm256LoaduPs(base + 8);
+            const v2 = avx.mm256LoaduPs(base + 16);
+            const v3 = avx.mm256LoaduPs(base + 24);
 
             // Compute max(abs(e)) for the block
-            const abs0 = avx.mm256_andnot_ps(signBit, v0);
-            const abs1 = avx.mm256_andnot_ps(signBit, v1);
-            const abs2 = avx.mm256_andnot_ps(signBit, v2);
-            const abs3 = avx.mm256_andnot_ps(signBit, v3);
+            const abs0 = avx.mm256AndnotPs(signBit, v0);
+            const abs1 = avx.mm256AndnotPs(signBit, v1);
+            const abs2 = avx.mm256AndnotPs(signBit, v2);
+            const abs3 = avx.mm256AndnotPs(signBit, v3);
 
-            var maxAbs = avx.mm256_max_ps(abs0, abs1);
-            maxAbs = avx.mm256_max_ps(maxAbs, abs2);
-            maxAbs = avx.mm256_max_ps(maxAbs, abs3);
+            var maxAbs = avx.mm256MaxPs(abs0, abs1);
+            maxAbs = avx.mm256MaxPs(maxAbs, abs2);
+            maxAbs = avx.mm256MaxPs(maxAbs, abs3);
 
-            var mask0 = avx.mm256_cmpeq_oq_ps(maxAbs, v0);
-            var mask1 = avx.mm256_cmpeq_oq_ps(maxAbs, v1);
-            var mask2 = avx.mm256_cmpeq_oq_ps(maxAbs, v2);
-            var mask3 = avx.mm256_cmpeq_oq_ps(maxAbs, v3);
+            var mask0 = avx.mm256CmpeqOqPs(maxAbs, v0);
+            var mask1 = avx.mm256CmpeqOqPs(maxAbs, v1);
+            var mask2 = avx.mm256CmpeqOqPs(maxAbs, v2);
+            var mask3 = avx.mm256CmpeqOqPs(maxAbs, v3);
 
-            var maskAbs = avx.mm256_or_ps(avx.mm256_or_ps(mask0, mask1), avx.mm256_or_ps(mask2, mask3));
+            var maskAbs = avx.mm256OrPs(avx.mm256OrPs(mask0, mask1), avx.mm256OrPs(mask2, mask3));
 
             srcv[row_iter][0] = v0;
             srcv[row_iter][1] = v1;
@@ -170,26 +178,26 @@ pub export fn ggml_quantize_mat_q8_K_4x8(x: [*]const f32, vy: *anyopaque, k: i64
                 const tempAbs = maxAbs;
 
                 const b = base + sb * 32;
-                const w0 = avx.mm256_loadu_ps(b);
-                const w1 = avx.mm256_loadu_ps(b + 8);
-                const w2 = avx.mm256_loadu_ps(b + 16);
-                const w3 = avx.mm256_loadu_ps(b + 24);
+                const w0 = avx.mm256LoaduPs(b);
+                const w1 = avx.mm256LoaduPs(b + 8);
+                const w2 = avx.mm256LoaduPs(b + 16);
+                const w3 = avx.mm256LoaduPs(b + 24);
 
-                maxAbs = avx.mm256_max_ps(maxAbs, avx.mm256_andnot_ps(signBit, w0));
-                maxAbs = avx.mm256_max_ps(maxAbs, avx.mm256_andnot_ps(signBit, w1));
-                maxAbs = avx.mm256_max_ps(maxAbs, avx.mm256_andnot_ps(signBit, w2));
-                maxAbs = avx.mm256_max_ps(maxAbs, avx.mm256_andnot_ps(signBit, w3));
+                maxAbs = avx.mm256MaxPs(maxAbs, avx.mm256AndnotPs(signBit, w0));
+                maxAbs = avx.mm256MaxPs(maxAbs, avx.mm256AndnotPs(signBit, w1));
+                maxAbs = avx.mm256MaxPs(maxAbs, avx.mm256AndnotPs(signBit, w2));
+                maxAbs = avx.mm256MaxPs(maxAbs, avx.mm256AndnotPs(signBit, w3));
 
-                const mask_prev = avx.mm256_cmpeq_oq_ps(tempAbs, maxAbs);
-                maskAbs = avx.mm256_and_ps(maskAbs, mask_prev);
+                const mask_prev = avx.mm256CmpeqOqPs(tempAbs, maxAbs);
+                maskAbs = avx.mm256AndPs(maskAbs, mask_prev);
 
-                mask0 = avx.mm256_cmpeq_oq_ps(maxAbs, w0);
-                mask1 = avx.mm256_cmpeq_oq_ps(maxAbs, w1);
-                mask2 = avx.mm256_cmpeq_oq_ps(maxAbs, w2);
-                mask3 = avx.mm256_cmpeq_oq_ps(maxAbs, w3);
+                mask0 = avx.mm256CmpeqOqPs(maxAbs, w0);
+                mask1 = avx.mm256CmpeqOqPs(maxAbs, w1);
+                mask2 = avx.mm256CmpeqOqPs(maxAbs, w2);
+                mask3 = avx.mm256CmpeqOqPs(maxAbs, w3);
 
-                const mask_curr = avx.mm256_or_ps(avx.mm256_or_ps(mask0, mask1), avx.mm256_or_ps(mask2, mask3));
-                maskAbs = avx.mm256_or_ps(maskAbs, mask_curr);
+                const mask_curr = avx.mm256OrPs(avx.mm256OrPs(mask0, mask1), avx.mm256OrPs(mask2, mask3));
+                maskAbs = avx.mm256OrPs(maskAbs, mask_curr);
 
                 srcv[row_iter][sb * 4] = w0;
                 srcv[row_iter][sb * 4 + 1] = w1;
@@ -199,12 +207,12 @@ pub export fn ggml_quantize_mat_q8_K_4x8(x: [*]const f32, vy: *anyopaque, k: i64
 
             const maxScalar = reduceMax(maxAbs);
 
-            const maxScalarVec = avx.mm256_set1_ps(maxScalar);
+            const maxScalarVec = avx.mm256Set1Ps(maxScalar);
 
-            const mask_next = avx.mm256_cmpeq_oq_ps(maxScalarVec, maxAbs);
-            const finalMask = avx.mm256_and_ps(maskAbs, mask_next);
+            const mask_next = avx.mm256CmpeqOqPs(maxScalarVec, maxAbs);
+            const finalMask = avx.mm256AndPs(maskAbs, mask_next);
 
-            const mask = avx.mm256_movemask_ps(finalMask);
+            const mask = avx.mm256MovemaskPs(finalMask);
             iscale[row_iter] = if (maxScalar != 0.0) 127.0 / maxScalar else 0.0;
 
             if (mask != 0) {
@@ -212,31 +220,31 @@ pub export fn ggml_quantize_mat_q8_K_4x8(x: [*]const f32, vy: *anyopaque, k: i64
             }
 
             y[i].d[row_iter] = if (maxScalar != 0) 1 / iscale[row_iter] else 0;
-            iscale_vec[row_iter] = avx.mm256_set1_ps(iscale[row_iter]);
+            iscale_vec[row_iter] = avx.mm256Set1Ps(iscale[row_iter]);
         }
 
         var quants_interleaved: [32]avx.m256i = undefined;
         for (0..32) |j| {
             const q = packBytes(
-                avx.mm256_mul_ps(srcv[0][j], iscale_vec[0]),
-                avx.mm256_mul_ps(srcv[1][j], iscale_vec[1]),
-                avx.mm256_mul_ps(srcv[2][j], iscale_vec[2]),
-                avx.mm256_mul_ps(srcv[3][j], iscale_vec[3]),
+                avx.mm256MulPs(srcv[0][j], iscale_vec[0]),
+                avx.mm256MulPs(srcv[1][j], iscale_vec[1]),
+                avx.mm256MulPs(srcv[2][j], iscale_vec[2]),
+                avx.mm256MulPs(srcv[3][j], iscale_vec[3]),
             );
-            avx.mm256_storeu_si256(y[i].qs[32 * j ..].ptr, q);
+            avx.mm256StoreuSi256(y[i].qs[32 * j ..].ptr, q);
             quants_interleaved[j] = q;
         }
 
         // Masks to shuffle the quants of corresponding sub blocks for
         // rearranging quants for vectorized bsums computation
-        var shuffle_mask_sb2 = avx.mm256_castsi128_si256(avx.mm_setr_epi8(.{ 0, 1, 0, 1, 4, 5, 6, 7, 8, 9, 8, 9, 12, 13, 14, 15 }));
-        shuffle_mask_sb2 = avx.mm256_permute2f128_si256(shuffle_mask_sb2, shuffle_mask_sb2, 0);
-        var shuffle_mask_sb3 = avx.mm256_castsi128_si256(avx.mm_setr_epi8(.{ 0, 1, 2, 3, 0, 1, 6, 7, 8, 9, 10, 11, 8, 9, 14, 15 }));
-        shuffle_mask_sb3 = avx.mm256_permute2f128_si256(shuffle_mask_sb3, shuffle_mask_sb3, 0);
-        var shuffle_mask_sb4 = avx.mm256_castsi128_si256(avx.mm_setr_epi8(.{ 0, 1, 2, 3, 4, 5, 0, 1, 8, 9, 10, 11, 12, 13, 8, 9 }));
-        shuffle_mask_sb4 = avx.mm256_permute2f128_si256(shuffle_mask_sb4, shuffle_mask_sb4, 0);
+        var shuffle_mask_sb2 = avx.mm256Castsi128Si256(avx.mmSetrEpi8(.{ 0, 1, 0, 1, 4, 5, 6, 7, 8, 9, 8, 9, 12, 13, 14, 15 }));
+        shuffle_mask_sb2 = avx.mm256Permute2f128Si256(shuffle_mask_sb2, shuffle_mask_sb2, 0);
+        var shuffle_mask_sb3 = avx.mm256Castsi128Si256(avx.mmSetrEpi8(.{ 0, 1, 2, 3, 0, 1, 6, 7, 8, 9, 10, 11, 8, 9, 14, 15 }));
+        shuffle_mask_sb3 = avx.mm256Permute2f128Si256(shuffle_mask_sb3, shuffle_mask_sb3, 0);
+        var shuffle_mask_sb4 = avx.mm256Castsi128Si256(avx.mmSetrEpi8(.{ 0, 1, 2, 3, 4, 5, 0, 1, 8, 9, 10, 11, 12, 13, 8, 9 }));
+        shuffle_mask_sb4 = avx.mm256Permute2f128Si256(shuffle_mask_sb4, shuffle_mask_sb4, 0);
 
-        const one = avx.mm256_set1_epi8(1);
+        const one = avx.mm256Set1Epi8(1);
 
         for (0..4) |kk| {
             // Quants from four different sub blocks are taken
@@ -248,24 +256,24 @@ pub export fn ggml_quantize_mat_q8_K_4x8(x: [*]const f32, vy: *anyopaque, k: i64
             // second (q1, q3, q5, q7), two values from each at a time.
             inline for (0..2) |h| {
                 var interleaved = blend4(q[h], q[h + 2], q[h + 4], q[h + 6], shuffle_mask_sb2, shuffle_mask_sb3, shuffle_mask_sb4);
-                var acc = avx.mm256_maddubs_epi16(one, interleaved);
+                var acc = avx.mm256MaddubsEpi16(one, interleaved);
 
                 for (0..3) |_| {
                     // Quants value shifted to process next two values from each sub block
-                    q[h] = avx.mm256_srli_epi64(q[h], 16);
-                    q[h + 2] = avx.mm256_srli_epi64(q[h + 2], 16);
-                    q[h + 4] = avx.mm256_srli_epi64(q[h + 4], 16);
-                    q[h + 6] = avx.mm256_srli_epi64(q[h + 6], 16);
+                    q[h] = avx.mm256SrliEpi64(q[h], 16);
+                    q[h + 2] = avx.mm256SrliEpi64(q[h + 2], 16);
+                    q[h + 4] = avx.mm256SrliEpi64(q[h + 4], 16);
+                    q[h + 6] = avx.mm256SrliEpi64(q[h + 6], 16);
 
                     interleaved = blend4(q[h], q[h + 2], q[h + 4], q[h + 6], shuffle_mask_sb2, shuffle_mask_sb3, shuffle_mask_sb4);
-                    acc = avx.mm256_add_epi16(acc, avx.mm256_maddubs_epi16(one, interleaved));
+                    acc = avx.mm256AddEpi16(acc, avx.mm256MaddubsEpi16(one, interleaved));
                 }
                 bsums_r[h] = acc;
             }
 
             // Overall bsums in interleaved fashion computed by adding results of both halves
-            const bsums = avx.mm256_add_epi16(bsums_r[0], bsums_r[1]);
-            avx.mm256_storeu_si256(y[i].bsums[16 * kk ..].ptr, bsums);
+            const bsums = avx.mm256AddEpi16(bsums_r[0], bsums_r[1]);
+            avx.mm256StoreuSi256(y[i].bsums[16 * kk ..].ptr, bsums);
         }
     }
 }
@@ -275,9 +283,9 @@ pub export fn ggml_quantize_mat_q8_K_4x8(x: [*]const f32, vy: *anyopaque, k: i64
 /// the first as is and the other three shuffled into the second, third and
 /// fourth sixteen-bit lane of each group and blended in.
 inline fn blend4(a: avx.m256i, b: avx.m256i, c: avx.m256i, d: avx.m256i, sb2: avx.m256i, sb3: avx.m256i, sb4: avx.m256i) avx.m256i {
-    var r = avx.mm256_blend_epi16(a, avx.mm256_shuffle_epi8(b, sb2), 34);
-    r = avx.mm256_blend_epi16(r, avx.mm256_shuffle_epi8(c, sb3), 68);
-    return avx.mm256_blend_epi16(r, avx.mm256_shuffle_epi8(d, sb4), 136);
+    var r = avx.mm256BlendEpi16(a, avx.mm256ShuffleEpi8(b, sb2), 34);
+    r = avx.mm256BlendEpi16(r, avx.mm256ShuffleEpi8(c, sb3), 68);
+    return avx.mm256BlendEpi16(r, avx.mm256ShuffleEpi8(d, sb4), 136);
 }
 
 // -----------------------------------------------------------------------------

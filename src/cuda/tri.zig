@@ -7,7 +7,6 @@
 //! `llama.cpp/ggml/src/ggml-cuda/tri.cuh` at v0.9.0 (`cd959bae9`). The
 //! kernel, `tri_kernel<T, prefix_keep, add_to_split>`, stays CUDA.
 
-const std = @import("std");
 const impl = @import("../impl.zig");
 const common = @import("common.zig");
 const kernels = @import("kernels.zig");

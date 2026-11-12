@@ -66,7 +66,7 @@ pub const sizeof_block_fp4_mmq = sizeof_block_q8_1_mmq;
 pub const Q8_1DsLayout = enum(c_int) { d4 = 0, ds4 = 1, d2s6 = 2 };
 
 /// Ports `mmq_get_q8_1_ds_layout` (mmq.cuh:63 @cd959bae9).
-pub fn getQ8_1DsLayout(type_x: c.enum_ggml_type) Q8_1DsLayout {
+pub fn getQ81DsLayout(type_x: c.enum_ggml_type) Q8_1DsLayout {
     return switch (type_x) {
         c.GGML_TYPE_Q1_0, c.GGML_TYPE_Q2_0 => .d4,
         c.GGML_TYPE_Q4_0, c.GGML_TYPE_Q4_1 => .ds4,
@@ -492,8 +492,8 @@ const PrecEnv = struct {
 fn getPrecEnv() c.enum_ggml_prec {
     const env_c = std.c.getenv("GGML_CUDA_MMQ_PREC") orelse return c.GGML_PREC_UNDEFINED;
     const env = std.mem.span(env_c);
-    const env_cpp = common.allocator.allocSentinel(u8, env.len, 0) catch impl.abort("out of memory");
-    defer common.allocator.free(env_cpp);
+    const env_cpp = std.heap.c_allocator.allocSentinel(u8, env.len, 0) catch impl.abort("out of memory");
+    defer std.heap.c_allocator.free(env_cpp);
     for (env, 0..) |ch, i| env_cpp[i] = std.ascii.toLower(ch);
     if (std.mem.eql(u8, env_cpp, "q4")) {
         return c.GGML_PREC_Q4;
@@ -682,7 +682,7 @@ pub fn mulMatQ(ctx: *common.Context, src0: *const Tensor, src1: *const Tensor, i
                 const use_aligned_float8 = common.isAligned(src1, align_float8);
                 quantize.quantizeMmqFp4(src1_d, null, src1_q8_1.get(), firstOf(f32, src1_scale.ptr), src0.type, use_aligned_float8, ne10, s11, s12, s13, ne10_padded, ne11, ne12, ne13, stream);
             } else {
-                quantize.quantizeMmqQ8_1(src1_d, null, src1_q8_1.get(), src0.type, ne10, s11, s12, s13, ne10_padded, ne11, ne12, ne13, stream);
+                quantize.quantizeMmqQ81(src1_d, null, src1_q8_1.get(), src0.type, ne10, s11, s12, s13, ne10_padded, ne11, ne12, ne13, stream);
             }
             common.cudaCheck(cu.cudaGetLastError(), "cudaGetLastError()", @src());
         }
@@ -784,9 +784,9 @@ pub fn mulMatQ(ctx: *common.Context, src0: *const Tensor, src1: *const Tensor, i
                 quantize.quantizeMmqFp4(src1_d, firstOf(i32, ids_src1.ptr), src1_q8_1.get(), firstOf(f32, src1_scale.ptr), src0.type, use_aligned_float8, ne10, s11, s12, s13, ne10_padded, ne11_flat, ne12_flat, ne13_flat, stream);
             }
         } else if (dedup_bcast) {
-            quantize.quantizeScatterMmqQ8_1(src1_d, firstOf(i32, ids_src1.ptr), src1_q8_1.get(), src0.type, ne10, s12, ne10_padded, ne12, ne11_flat, i32Of(n_expert_used), stream);
+            quantize.quantizeScatterMmqQ81(src1_d, firstOf(i32, ids_src1.ptr), src1_q8_1.get(), src0.type, ne10, s12, ne10_padded, ne12, ne11_flat, i32Of(n_expert_used), stream);
         } else {
-            quantize.quantizeMmqQ8_1(src1_d, firstOf(i32, ids_src1.ptr), src1_q8_1.get(), src0.type, ne10, s11, s12, s13, ne10_padded, ne11_flat, ne12_flat, ne13_flat, stream);
+            quantize.quantizeMmqQ81(src1_d, firstOf(i32, ids_src1.ptr), src1_q8_1.get(), src0.type, ne10, s11, s12, s13, ne10_padded, ne11_flat, ne12_flat, ne13_flat, stream);
         }
         common.cudaCheck(cu.cudaGetLastError(), "cudaGetLastError()", @src());
     }

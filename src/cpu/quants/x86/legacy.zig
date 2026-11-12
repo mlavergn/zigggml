@@ -43,6 +43,10 @@ inline fn ue4m3(x: u8) f32 {
     return convert.ggml_table_f32_ue4m3[x];
 }
 
+comptime {
+    @export(&ggmlVecDotQ10Q80, .{ .name = "ggml_vec_dot_q1_0_q8_0" });
+}
+
 /// Ports `ggml_vec_dot_q1_0_q8_0` (arch/x86/quants.c:555 @cd959bae9), the
 /// `__AVX2__` arm.
 ///
@@ -51,7 +55,7 @@ inline fn ue4m3(x: u8) f32 {
 /// the dot product is a plain sum. A `q1_0` block spans four `q8_0` blocks,
 /// summed into `acc_block` (a multiply, then three fused adds) before the
 /// block's own scale is fused in.
-pub export fn ggml_vec_dot_q1_0_q8_0(
+pub fn ggmlVecDotQ10Q80(
     n: c_int,
     s: [*c]f32,
     bs: usize,
@@ -60,7 +64,7 @@ pub export fn ggml_vec_dot_q1_0_q8_0(
     vy: ?*const anyopaque,
     by: usize,
     nrc: c_int,
-) void {
+) callconv(.c) void {
     const qk = c.QK1_0;
     const nb: usize = @intCast(@divTrunc(n, qk));
 
@@ -71,18 +75,18 @@ pub export fn ggml_vec_dot_q1_0_q8_0(
     const x = as(blocks.Q1_0, vx);
     const y = as(blocks.Q8_0, vy);
 
-    const ones_8 = avx.mm256_set1_epi8(1);
-    const ones_16 = avx.mm256_set1_epi16(1);
-    const byte_shuf = avx.mm256_setr_epi8(.{
+    const ones_8 = avx.mm256Set1Epi8(1);
+    const ones_16 = avx.mm256Set1Epi16(1);
+    const byte_shuf = avx.mm256SetrEpi8(.{
         0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1,
         2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3,
     });
-    const bit_masks = avx.mm256_setr_epi8(.{
+    const bit_masks = avx.mm256SetrEpi8(.{
         1, 2, 4, 8, 16, 32, 64, -128, 1, 2, 4, 8, 16, 32, 64, -128,
         1, 2, 4, 8, 16, 32, 64, -128, 1, 2, 4, 8, 16, 32, 64, -128,
     });
-    const zero = avx.mm256_setzero_si256();
-    var acc = avx.mm256_setzero_ps();
+    const zero = avx.mm256SetzeroSi256();
+    var acc = avx.mm256SetzeroPs();
 
     for (0..nb) |ib| {
         const d0 = f(x[ib].d);
@@ -91,57 +95,61 @@ pub export fn ggml_vec_dot_q1_0_q8_0(
         var acc_block: avx.m256 = undefined;
         inline for (0..4) |K| {
             const qs32 = std.mem.readInt(u32, x[ib].qs[4 * K ..][0..4], .little);
-            const qy = avx.mm256_loadu_si256(&y_ptr[K].qs);
-            const sm = avx.mm256_cmpeq_epi8(
-                avx.mm256_and_si256(avx.mm256_shuffle_epi8(avx.mm256_set1_epi32(@bitCast(qs32)), byte_shuf), bit_masks),
+            const qy = avx.mm256LoaduSi256(&y_ptr[K].qs);
+            const sm = avx.mm256CmpeqEpi8(
+                avx.mm256AndSi256(avx.mm256ShuffleEpi8(avx.mm256Set1Epi32(@bitCast(qs32)), byte_shuf), bit_masks),
                 zero,
             );
-            const sy = avx.mm256_sub_epi8(avx.mm256_xor_si256(qy, sm), sm);
-            const s32 = avx.mm256_madd_epi16(avx.mm256_maddubs_epi16(ones_8, sy), ones_16);
-            const dy = avx.mm256_set1_ps(f(y_ptr[K].d));
+            const sy = avx.mm256SubEpi8(avx.mm256XorSi256(qy, sm), sm);
+            const s32 = avx.mm256MaddEpi16(avx.mm256MaddubsEpi16(ones_8, sy), ones_16);
+            const dy = avx.mm256Set1Ps(f(y_ptr[K].d));
             acc_block = if (K == 0)
-                avx.mm256_mul_ps(dy, avx.mm256_cvtepi32_ps(s32))
+                avx.mm256MulPs(dy, avx.mm256Cvtepi32Ps(s32))
             else
-                avx.mm256_fmadd_ps(dy, avx.mm256_cvtepi32_ps(s32), acc_block);
+                avx.mm256FmaddPs(dy, avx.mm256Cvtepi32Ps(s32), acc_block);
         }
-        acc = avx.mm256_fmadd_ps(avx.mm256_set1_ps(d0), acc_block, acc);
+        acc = avx.mm256FmaddPs(avx.mm256Set1Ps(d0), acc_block, acc);
     }
 
-    s[0] = common.hsum_float_8(acc);
+    s[0] = common.hsumFloat8(acc);
 }
 
 /// Ports `q2_0_unpack_32_avx2` (arch/x86/quants.c:703 @cd959bae9): four
 /// consecutive Q2_0 weights per byte. Byte `b` becomes `b & 3`, `(b >> 2) & 3`,
 /// `(b >> 4) & 3`, `(b >> 6) & 3` -- OR, never add: the overlapping copies only
 /// touch masked-off bits.
-inline fn q2_0_unpack_32_avx2(qs: [*]const u8) avx.m256i {
-    var v = avx.mm256_cvtepu8_epi32(avx.mm_loadl_epi64(qs));
-    v = avx.mm256_or_si256(v, avx.mm256_slli_epi32(v, 12));
-    v = avx.mm256_or_si256(v, avx.mm256_slli_epi32(v, 6));
-    return avx.mm256_and_si256(v, avx.mm256_set1_epi32(0x03030303));
+inline fn q20Unpack32Avx2(qs: [*]const u8) avx.m256i {
+    var v = avx.mm256Cvtepu8Epi32(avx.mmLoadlEpi64(qs));
+    v = avx.mm256OrSi256(v, avx.mm256SlliEpi32(v, 12));
+    v = avx.mm256OrSi256(v, avx.mm256SlliEpi32(v, 6));
+    return avx.mm256AndSi256(v, avx.mm256Set1Epi32(0x03030303));
 }
 
 /// Ports `q2_0_dot_32_avx2` (arch/x86/quants.c:711 @cd959bae9): 32 weights
 /// against one Q8_0 block, as `sum(v * y) - sum(y)`, which is
 /// `sum((v - 1) * y)` exactly for every `int8` `y`.
-inline fn q2_0_dot_32_avx2(qs: [*]const u8, qy: [*]const i8) avx.m256 {
-    const v = q2_0_unpack_32_avx2(qs);
-    const y = avx.mm256_loadu_si256(qy);
-    const p = avx.mm256_sub_epi16(avx.mm256_maddubs_epi16(v, y), avx.mm256_maddubs_epi16(avx.mm256_set1_epi8(1), y));
-    return avx.mm256_cvtepi32_ps(avx.mm256_madd_epi16(p, avx.mm256_set1_epi16(1)));
+inline fn q20Dot32Avx2(qs: [*]const u8, qy: [*]const i8) avx.m256 {
+    const v = q20Unpack32Avx2(qs);
+    const y = avx.mm256LoaduSi256(qy);
+    const p = avx.mm256SubEpi16(avx.mm256MaddubsEpi16(v, y), avx.mm256MaddubsEpi16(avx.mm256Set1Epi8(1), y));
+    return avx.mm256Cvtepi32Ps(avx.mm256MaddEpi16(p, avx.mm256Set1Epi16(1)));
 }
 
 /// Ports `q2_0_acc_block_avx2` (arch/x86/quants.c:718 @cd959bae9), at its
 /// `__FMA__` arm, which x86-64-v3 compiles: one Q2_0 block over its two Q8_0
 /// blocks into `acc`.
-inline fn q2_0_acc_block_avx2(x: *const blocks.Q2_0, y: [*]const blocks.Q8_0, acc_in: avx.m256) avx.m256 {
+inline fn q20AccBlockAvx2(x: *const blocks.Q2_0, y: [*]const blocks.Q8_0, acc_in: avx.m256) avx.m256 {
     const dx = f(x.d);
-    const d0 = avx.mm256_set1_ps(dx * f(y[0].d));
-    const d1 = avx.mm256_set1_ps(dx * f(y[1].d));
-    const p0 = q2_0_dot_32_avx2(x.qs[0..].ptr, &y[0].qs);
-    const p1 = q2_0_dot_32_avx2(x.qs[8..].ptr, &y[1].qs);
-    const acc = avx.mm256_fmadd_ps(d0, p0, acc_in);
-    return avx.mm256_fmadd_ps(d1, p1, acc);
+    const d0 = avx.mm256Set1Ps(dx * f(y[0].d));
+    const d1 = avx.mm256Set1Ps(dx * f(y[1].d));
+    const p0 = q20Dot32Avx2(x.qs[0..].ptr, &y[0].qs);
+    const p1 = q20Dot32Avx2(x.qs[8..].ptr, &y[1].qs);
+    const acc = avx.mm256FmaddPs(d0, p0, acc_in);
+    return avx.mm256FmaddPs(d1, p1, acc);
+}
+
+comptime {
+    @export(&ggmlVecDotQ20Q80, .{ .name = "ggml_vec_dot_q2_0_q8_0" });
 }
 
 /// Ports `ggml_vec_dot_q2_0_q8_0` (arch/x86/quants.c:734 @cd959bae9), its
@@ -152,7 +160,7 @@ inline fn q2_0_acc_block_avx2(x: *const blocks.Q2_0, y: [*]const blocks.Q8_0, ac
 /// Two Q2_0 blocks per step, each into its own accumulator (two FMA chains),
 /// an odd final block into the first. The `#else` arm, the generic, is for
 /// x86 without AVX2, which is not a target.
-pub export fn ggml_vec_dot_q2_0_q8_0(
+pub fn ggmlVecDotQ20Q80(
     n: c_int,
     s: [*c]f32,
     bs: usize,
@@ -161,7 +169,7 @@ pub export fn ggml_vec_dot_q2_0_q8_0(
     vy: ?*const anyopaque,
     by: usize,
     nrc: c_int,
-) void {
+) callconv(.c) void {
     const qk = c.QK2_0;
     std.debug.assert(@rem(n, qk) == 0);
     std.debug.assert(nrc == 1);
@@ -172,23 +180,27 @@ pub export fn ggml_vec_dot_q2_0_q8_0(
     const nb: usize = @intCast(@divTrunc(n, qk));
 
     // two Q2_0 blocks per step, each into its own accumulator (two FMA chains)
-    var acc0 = avx.mm256_setzero_ps();
-    var acc1 = avx.mm256_setzero_ps();
+    var acc0 = avx.mm256SetzeroPs();
+    var acc1 = avx.mm256SetzeroPs();
     var i: usize = 0;
     while (i + 1 < nb) : (i += 2) {
-        acc0 = q2_0_acc_block_avx2(&x[i + 0], y + 2 * i + 0, acc0);
-        acc1 = q2_0_acc_block_avx2(&x[i + 1], y + 2 * i + 2, acc1);
+        acc0 = q20AccBlockAvx2(&x[i + 0], y + 2 * i + 0, acc0);
+        acc1 = q20AccBlockAvx2(&x[i + 1], y + 2 * i + 2, acc1);
     }
     if (i < nb) {
-        acc0 = q2_0_acc_block_avx2(&x[i], y + 2 * i, acc0);
+        acc0 = q20AccBlockAvx2(&x[i], y + 2 * i, acc0);
     }
 
-    s[0] = common.hsum_float_8(avx.mm256_add_ps(acc0, acc1));
+    s[0] = common.hsumFloat8(avx.mm256AddPs(acc0, acc1));
+}
+
+comptime {
+    @export(&ggmlVecDotQ40Q80, .{ .name = "ggml_vec_dot_q4_0_q8_0" });
 }
 
 /// Ports `ggml_vec_dot_q4_0_q8_0` (arch/x86/quants.c:765 @cd959bae9), the
 /// `__AVX2__` arm.
-pub export fn ggml_vec_dot_q4_0_q8_0(
+pub fn ggmlVecDotQ40Q80(
     n: c_int,
     s: [*c]f32,
     bs: usize,
@@ -197,7 +209,7 @@ pub export fn ggml_vec_dot_q4_0_q8_0(
     vy: ?*const anyopaque,
     by: usize,
     nrc: c_int,
-) void {
+) callconv(.c) void {
     const qk = c.QK8_0;
     const nb: usize = @intCast(@divTrunc(n, qk));
 
@@ -209,28 +221,32 @@ pub export fn ggml_vec_dot_q4_0_q8_0(
     const y = as(blocks.Q8_0, vy);
 
     // Initialize accumulator with zeros
-    var acc = avx.mm256_setzero_ps();
+    var acc = avx.mm256SetzeroPs();
 
     // Main loop
     for (0..nb) |ib| {
         // Compute combined scale for the block
-        const d = avx.mm256_set1_ps(f(x[ib].d) * f(y[ib].d));
+        const d = avx.mm256Set1Ps(f(x[ib].d) * f(y[ib].d));
 
-        var qx = common.bytes_from_nibbles_32(&x[ib].qs);
+        var qx = common.bytesFromNibbles32(&x[ib].qs);
 
         // Bytes in [0, 15], offset into [-8, 7].
-        const off = avx.mm256_set1_epi8(8);
-        qx = avx.mm256_sub_epi8(qx, off);
+        const off = avx.mm256Set1Epi8(8);
+        qx = avx.mm256SubEpi8(qx, off);
 
-        const qy = avx.mm256_loadu_si256(&y[ib].qs);
+        const qy = avx.mm256LoaduSi256(&y[ib].qs);
 
-        const q = common.mul_sum_i8_pairs_float(qx, qy);
+        const q = common.mulSumI8PairsFloat(qx, qy);
 
         // Multiply q with scale and accumulate
-        acc = avx.mm256_fmadd_ps(d, q, acc);
+        acc = avx.mm256FmaddPs(d, q, acc);
     }
 
-    s[0] = common.hsum_float_8(acc);
+    s[0] = common.hsumFloat8(acc);
+}
+
+comptime {
+    @export(&ggmlVecDotQ41Q81, .{ .name = "ggml_vec_dot_q4_1_q8_1" });
 }
 
 /// Ports `ggml_vec_dot_q4_1_q8_1` (arch/x86/quants.c:923 @cd959bae9), the
@@ -239,7 +255,7 @@ pub export fn ggml_vec_dot_q4_0_q8_0(
 /// The weights are unsigned, so no sign trick: `maddubs` takes them
 /// directly. The minimum comes in through `q8_1`'s precomputed `s`, one
 /// fused `summs += m * s` per block.
-pub export fn ggml_vec_dot_q4_1_q8_1(
+pub fn ggmlVecDotQ41Q81(
     n: c_int,
     s: [*c]f32,
     bs: usize,
@@ -248,7 +264,7 @@ pub export fn ggml_vec_dot_q4_1_q8_1(
     vy: ?*const anyopaque,
     by: usize,
     nrc: c_int,
-) void {
+) callconv(.c) void {
     const qk = c.QK8_1;
     const nb: usize = @intCast(@divTrunc(n, qk));
 
@@ -260,7 +276,7 @@ pub export fn ggml_vec_dot_q4_1_q8_1(
     const y = as(blocks.Q8_1, vy);
 
     // Initialize accumulator with zeros
-    var acc = avx.mm256_setzero_ps();
+    var acc = avx.mm256SetzeroPs();
 
     var summs: f32 = 0;
 
@@ -271,23 +287,27 @@ pub export fn ggml_vec_dot_q4_1_q8_1(
 
         summs = @mulAdd(f32, f(x[ib].m), f(y[ib].s), summs);
 
-        const d0v = avx.mm256_set1_ps(d0);
-        const d1v = avx.mm256_set1_ps(d1);
+        const d0v = avx.mm256Set1Ps(d0);
+        const d1v = avx.mm256Set1Ps(d1);
 
         // Compute combined scales
-        const d0d1 = avx.mm256_mul_ps(d0v, d1v);
+        const d0d1 = avx.mm256MulPs(d0v, d1v);
 
         // Load 16 bytes, and unpack 4 bit fields into bytes, making 32 bytes
-        const qx = common.bytes_from_nibbles_32(&x[ib].qs);
-        const qy = avx.mm256_loadu_si256(&y[ib].qs);
+        const qx = common.bytesFromNibbles32(&x[ib].qs);
+        const qy = avx.mm256LoaduSi256(&y[ib].qs);
 
-        const xy = common.mul_sum_us8_pairs_float(qx, qy);
+        const xy = common.mulSumUs8PairsFloat(qx, qy);
 
         // Accumulate d0*d1*x*y
-        acc = avx.mm256_fmadd_ps(d0d1, xy, acc);
+        acc = avx.mm256FmaddPs(d0d1, xy, acc);
     }
 
-    s[0] = common.hsum_float_8(acc) + summs;
+    s[0] = common.hsumFloat8(acc) + summs;
+}
+
+comptime {
+    @export(&ggmlVecDotMxfp4Q80, .{ .name = "ggml_vec_dot_mxfp4_q8_0" });
 }
 
 /// Ports `ggml_vec_dot_mxfp4_q8_0` (arch/x86/quants.c:982 @cd959bae9), the
@@ -296,7 +316,7 @@ pub export fn ggml_vec_dot_q4_1_q8_1(
 /// Two blocks a step into two accumulators, summed only at the end; the
 /// four-bit codes go through `kvalues_mxfp4` with a 16-entry `pshufb`. An
 /// odd last block takes the scalar tail.
-pub export fn ggml_vec_dot_mxfp4_q8_0(
+pub fn ggmlVecDotMxfp4Q80(
     n: c_int,
     s: [*c]f32,
     bs: usize,
@@ -305,7 +325,7 @@ pub export fn ggml_vec_dot_mxfp4_q8_0(
     vy: ?*const anyopaque,
     by: usize,
     nrc: c_int,
-) void {
+) callconv(.c) void {
     std.debug.assert(nrc == 1);
     _ = .{ bs, bx, by };
     std.debug.assert(@rem(n, c.QK_MXFP4) == 0);
@@ -319,37 +339,37 @@ pub export fn ggml_vec_dot_mxfp4_q8_0(
     var ib: usize = 0;
     var sumf: f32 = 0;
 
-    const values128 = avx.mm_loadu_si128(&c.kvalues_mxfp4);
-    const m4b = avx.mm_set1_epi8(0x0f);
-    const mone = avx.mm256_set1_epi16(1);
+    const values128 = avx.mmLoaduSi128(&c.kvalues_mxfp4);
+    const m4b = avx.mmSet1Epi8(0x0f);
+    const mone = avx.mm256Set1Epi16(1);
 
-    var accum1 = avx.mm256_setzero_ps();
-    var accum2 = avx.mm256_setzero_ps();
+    var accum1 = avx.mm256SetzeroPs();
+    var accum2 = avx.mm256SetzeroPs();
 
     while (ib + 1 < nb) : (ib += 2) {
-        const q4bits_1 = avx.mm_loadu_si128(&x[ib + 0].qs);
-        const q4bits_2 = avx.mm_loadu_si128(&x[ib + 1].qs);
-        const q8b_1 = avx.mm256_loadu_si256(&y[ib + 0].qs);
-        const q8b_2 = avx.mm256_loadu_si256(&y[ib + 1].qs);
-        const q4b_1 = avx.mm256_set_m128i(
-            avx.mm_shuffle_epi8(values128, avx.mm_and_si128(avx.mm_srli_epi16(q4bits_1, 4), m4b)),
-            avx.mm_shuffle_epi8(values128, avx.mm_and_si128(q4bits_1, m4b)),
+        const q4bits_1 = avx.mmLoaduSi128(&x[ib + 0].qs);
+        const q4bits_2 = avx.mmLoaduSi128(&x[ib + 1].qs);
+        const q8b_1 = avx.mm256LoaduSi256(&y[ib + 0].qs);
+        const q8b_2 = avx.mm256LoaduSi256(&y[ib + 1].qs);
+        const q4b_1 = avx.mm256SetM128i(
+            avx.mmShuffleEpi8(values128, avx.mmAndSi128(avx.mmSrliEpi16(q4bits_1, 4), m4b)),
+            avx.mmShuffleEpi8(values128, avx.mmAndSi128(q4bits_1, m4b)),
         );
-        const q4b_2 = avx.mm256_set_m128i(
-            avx.mm_shuffle_epi8(values128, avx.mm_and_si128(avx.mm_srli_epi16(q4bits_2, 4), m4b)),
-            avx.mm_shuffle_epi8(values128, avx.mm_and_si128(q4bits_2, m4b)),
+        const q4b_2 = avx.mm256SetM128i(
+            avx.mmShuffleEpi8(values128, avx.mmAndSi128(avx.mmSrliEpi16(q4bits_2, 4), m4b)),
+            avx.mmShuffleEpi8(values128, avx.mmAndSi128(q4bits_2, m4b)),
         );
-        const p16_1 = common.mul_add_epi8(q4b_1, q8b_1);
-        const p16_2 = common.mul_add_epi8(q4b_2, q8b_2);
-        const p_1 = avx.mm256_madd_epi16(p16_1, mone);
-        const p_2 = avx.mm256_madd_epi16(p16_2, mone);
-        const scale0 = avx.mm256_set1_ps(f(y[ib + 0].d) * e8m0Half(x[ib + 0].e));
-        const scale1 = avx.mm256_set1_ps(f(y[ib + 1].d) * e8m0Half(x[ib + 1].e));
-        accum1 = avx.mm256_fmadd_ps(scale0, avx.mm256_cvtepi32_ps(p_1), accum1);
-        accum2 = avx.mm256_fmadd_ps(scale1, avx.mm256_cvtepi32_ps(p_2), accum2);
+        const p16_1 = common.mulAddEpi8(q4b_1, q8b_1);
+        const p16_2 = common.mulAddEpi8(q4b_2, q8b_2);
+        const p_1 = avx.mm256MaddEpi16(p16_1, mone);
+        const p_2 = avx.mm256MaddEpi16(p16_2, mone);
+        const scale0 = avx.mm256Set1Ps(f(y[ib + 0].d) * e8m0Half(x[ib + 0].e));
+        const scale1 = avx.mm256Set1Ps(f(y[ib + 1].d) * e8m0Half(x[ib + 1].e));
+        accum1 = avx.mm256FmaddPs(scale0, avx.mm256Cvtepi32Ps(p_1), accum1);
+        accum2 = avx.mm256FmaddPs(scale1, avx.mm256Cvtepi32Ps(p_2), accum2);
     }
 
-    sumf = common.hsum_float_8(avx.mm256_add_ps(accum1, accum2));
+    sumf = common.hsumFloat8(avx.mm256AddPs(accum1, accum2));
 
     while (ib < nb) : (ib += 1) {
         const d = f(y[ib].d) * e8m0Half(x[ib].e);
@@ -364,13 +384,17 @@ pub export fn ggml_vec_dot_mxfp4_q8_0(
     s[0] = sumf;
 }
 
+comptime {
+    @export(&ggmlVecDotNvfp4Q80, .{ .name = "ggml_vec_dot_nvfp4_q8_0" });
+}
+
 /// Ports `ggml_vec_dot_nvfp4_q8_0` (arch/x86/quants.c:1068 @cd959bae9), the
 /// `__AVX2__` arm.
 ///
 /// A 64-weight block with four UE4M3 sub-block scales over two `q8_0`
 /// blocks. The nibbles come out of `pshufb` low-then-high per sixteen bytes
 /// and are put back in weight order by the two `unpack`s.
-pub export fn ggml_vec_dot_nvfp4_q8_0(
+pub fn ggmlVecDotNvfp4Q80(
     n: c_int,
     s: [*c]f32,
     bs: usize,
@@ -379,7 +403,7 @@ pub export fn ggml_vec_dot_nvfp4_q8_0(
     vy: ?*const anyopaque,
     by: usize,
     nrc: c_int,
-) void {
+) callconv(.c) void {
     std.debug.assert(nrc == 1);
     _ = .{ bs, bx, by };
     std.debug.assert(@rem(n, c.QK_NVFP4) == 0);
@@ -389,32 +413,32 @@ pub export fn ggml_vec_dot_nvfp4_q8_0(
 
     const nb: usize = @intCast(@divTrunc(n, c.QK_NVFP4));
 
-    const values128 = avx.mm_loadu_si128(&c.kvalues_mxfp4);
-    const m4b = avx.mm_set1_epi8(0x0f);
-    const mone = avx.mm256_set1_epi16(1);
+    const values128 = avx.mmLoaduSi128(&c.kvalues_mxfp4);
+    const m4b = avx.mmSet1Epi8(0x0f);
+    const mone = avx.mm256Set1Epi16(1);
 
-    var accum = avx.mm256_setzero_ps();
+    var accum = avx.mm256SetzeroPs();
     for (0..nb) |ib| {
-        const q4bits_01 = avx.mm_loadu_si128(x[ib].qs[0..].ptr);
-        const q4bits_23 = avx.mm_loadu_si128(x[ib].qs[16..].ptr);
+        const q4bits_01 = avx.mmLoaduSi128(x[ib].qs[0..].ptr);
+        const q4bits_23 = avx.mmLoaduSi128(x[ib].qs[16..].ptr);
 
-        const q8_01 = avx.mm256_loadu_si256(&y[2 * ib + 0].qs);
-        const q8_23 = avx.mm256_loadu_si256(&y[2 * ib + 1].qs);
+        const q8_01 = avx.mm256LoaduSi256(&y[2 * ib + 0].qs);
+        const q8_23 = avx.mm256LoaduSi256(&y[2 * ib + 1].qs);
 
-        const q4_01_lo = avx.mm_shuffle_epi8(values128, avx.mm_and_si128(q4bits_01, m4b));
-        const q4_01_hi = avx.mm_shuffle_epi8(values128, avx.mm_and_si128(avx.mm_srli_epi16(q4bits_01, 4), m4b));
-        const q4_23_lo = avx.mm_shuffle_epi8(values128, avx.mm_and_si128(q4bits_23, m4b));
-        const q4_23_hi = avx.mm_shuffle_epi8(values128, avx.mm_and_si128(avx.mm_srli_epi16(q4bits_23, 4), m4b));
+        const q4_01_lo = avx.mmShuffleEpi8(values128, avx.mmAndSi128(q4bits_01, m4b));
+        const q4_01_hi = avx.mmShuffleEpi8(values128, avx.mmAndSi128(avx.mmSrliEpi16(q4bits_01, 4), m4b));
+        const q4_23_lo = avx.mmShuffleEpi8(values128, avx.mmAndSi128(q4bits_23, m4b));
+        const q4_23_hi = avx.mmShuffleEpi8(values128, avx.mmAndSi128(avx.mmSrliEpi16(q4bits_23, 4), m4b));
 
         // reordering
-        const q4_01 = avx.mm256_set_m128i(avx.mm_unpackhi_epi64(q4_01_lo, q4_01_hi), avx.mm_unpacklo_epi64(q4_01_lo, q4_01_hi));
-        const q4_23 = avx.mm256_set_m128i(avx.mm_unpackhi_epi64(q4_23_lo, q4_23_hi), avx.mm_unpacklo_epi64(q4_23_lo, q4_23_hi));
+        const q4_01 = avx.mm256SetM128i(avx.mmUnpackhiEpi64(q4_01_lo, q4_01_hi), avx.mmUnpackloEpi64(q4_01_lo, q4_01_hi));
+        const q4_23 = avx.mm256SetM128i(avx.mmUnpackhiEpi64(q4_23_lo, q4_23_hi), avx.mmUnpackloEpi64(q4_23_lo, q4_23_hi));
 
-        const p01 = common.mul_add_epi8(q4_01, q8_01);
-        const p_1 = avx.mm256_madd_epi16(p01, mone);
+        const p01 = common.mulAddEpi8(q4_01, q8_01);
+        const p_1 = avx.mm256MaddEpi16(p01, mone);
 
-        const p23 = common.mul_add_epi8(q4_23, q8_23);
-        const p_2 = avx.mm256_madd_epi16(p23, mone);
+        const p23 = common.mulAddEpi8(q4_23, q8_23);
+        const p_2 = avx.mm256MaddEpi16(p23, mone);
 
         const dy0 = f(y[2 * ib].d);
         const dy1 = f(y[2 * ib + 1].d);
@@ -424,13 +448,17 @@ pub export fn ggml_vec_dot_nvfp4_q8_0(
         const s2 = ue4m3(x[ib].d[2]) * dy1;
         const s3 = ue4m3(x[ib].d[3]) * dy1;
 
-        const scales01 = avx.mm256_set_m128(avx.mm_set1_ps(s1), avx.mm_set1_ps(s0));
-        const scales23 = avx.mm256_set_m128(avx.mm_set1_ps(s3), avx.mm_set1_ps(s2));
+        const scales01 = avx.mm256SetM128(avx.mmSet1Ps(s1), avx.mmSet1Ps(s0));
+        const scales23 = avx.mm256SetM128(avx.mmSet1Ps(s3), avx.mmSet1Ps(s2));
 
-        accum = avx.mm256_fmadd_ps(scales01, avx.mm256_cvtepi32_ps(p_1), accum);
-        accum = avx.mm256_fmadd_ps(scales23, avx.mm256_cvtepi32_ps(p_2), accum);
+        accum = avx.mm256FmaddPs(scales01, avx.mm256Cvtepi32Ps(p_1), accum);
+        accum = avx.mm256FmaddPs(scales23, avx.mm256Cvtepi32Ps(p_2), accum);
     }
-    s[0] = common.hsum_float_8(accum);
+    s[0] = common.hsumFloat8(accum);
+}
+
+comptime {
+    @export(&ggmlVecDotQ50Q80, .{ .name = "ggml_vec_dot_q5_0_q8_0" });
 }
 
 /// Ports `ggml_vec_dot_q5_0_q8_0` (arch/x86/quants.c:1206 @cd959bae9), the
@@ -438,7 +466,7 @@ pub export fn ggml_vec_dot_nvfp4_q8_0(
 ///
 /// The fifth bit is folded in as a sign: `andnot` leaves `0xF0` where the
 /// bit is clear, so `qx | bxhi` is the nibble minus 16 as a signed byte.
-pub export fn ggml_vec_dot_q5_0_q8_0(
+pub fn ggmlVecDotQ50Q80(
     n: c_int,
     s: [*c]f32,
     bs: usize,
@@ -447,7 +475,7 @@ pub export fn ggml_vec_dot_q5_0_q8_0(
     vy: ?*const anyopaque,
     by: usize,
     nrc: c_int,
-) void {
+) callconv(.c) void {
     const qk = c.QK8_0;
     const nb: usize = @intCast(@divTrunc(n, qk));
 
@@ -460,27 +488,31 @@ pub export fn ggml_vec_dot_q5_0_q8_0(
     const y = as(blocks.Q8_0, vy);
 
     // Initialize accumulator with zeros
-    var acc = avx.mm256_setzero_ps();
+    var acc = avx.mm256SetzeroPs();
 
     // Main loop
     for (0..nb) |ib| {
         // Compute combined scale for the block
-        const d = avx.mm256_set1_ps(f(x[ib].d) * f(y[ib].d));
+        const d = avx.mm256Set1Ps(f(x[ib].d) * f(y[ib].d));
 
-        var qx = common.bytes_from_nibbles_32(&x[ib].qs);
-        var bxhi = common.bytes_from_bits_32(&x[ib].qh);
-        bxhi = avx.mm256_andnot_si256(bxhi, avx.mm256_set1_epi8(@bitCast(@as(u8, 0xF0))));
-        qx = avx.mm256_or_si256(qx, bxhi);
+        var qx = common.bytesFromNibbles32(&x[ib].qs);
+        var bxhi = common.bytesFromBits32(&x[ib].qh);
+        bxhi = avx.mm256AndnotSi256(bxhi, avx.mm256Set1Epi8(@bitCast(@as(u8, 0xF0))));
+        qx = avx.mm256OrSi256(qx, bxhi);
 
-        const qy = avx.mm256_loadu_si256(&y[ib].qs);
+        const qy = avx.mm256LoaduSi256(&y[ib].qs);
 
-        const q = common.mul_sum_i8_pairs_float(qx, qy);
+        const q = common.mulSumI8PairsFloat(qx, qy);
 
         // Multiply q with scale and accumulate
-        acc = avx.mm256_fmadd_ps(d, q, acc);
+        acc = avx.mm256FmaddPs(d, q, acc);
     }
 
-    s[0] = common.hsum_float_8(acc);
+    s[0] = common.hsumFloat8(acc);
+}
+
+comptime {
+    @export(&ggmlVecDotQ51Q81, .{ .name = "ggml_vec_dot_q5_1_q8_1" });
 }
 
 /// Ports `ggml_vec_dot_q5_1_q8_1` (arch/x86/quants.c:1286 @cd959bae9), the
@@ -488,7 +520,7 @@ pub export fn ggml_vec_dot_q5_0_q8_0(
 ///
 /// Unsigned five-bit weights, so the fifth bit is OR-ed in as `0x10`.
 /// Note the operand order of the fused accumulate, `q * (dx * dy) + acc`.
-pub export fn ggml_vec_dot_q5_1_q8_1(
+pub fn ggmlVecDotQ51Q81(
     n: c_int,
     s: [*c]f32,
     bs: usize,
@@ -497,7 +529,7 @@ pub export fn ggml_vec_dot_q5_1_q8_1(
     vy: ?*const anyopaque,
     by: usize,
     nrc: c_int,
-) void {
+) callconv(.c) void {
     const qk = c.QK8_1;
     const nb: usize = @intCast(@divTrunc(n, qk));
 
@@ -510,35 +542,39 @@ pub export fn ggml_vec_dot_q5_1_q8_1(
     const y = as(blocks.Q8_1, vy);
 
     // Initialize accumulator with zeros
-    var acc = avx.mm256_setzero_ps();
+    var acc = avx.mm256SetzeroPs();
 
     var summs: f32 = 0;
 
     // Main loop
     for (0..nb) |ib| {
-        const dx = avx.mm256_set1_ps(f(x[ib].d));
+        const dx = avx.mm256Set1Ps(f(x[ib].d));
 
         summs = @mulAdd(f32, f(x[ib].m), f(y[ib].s), summs);
 
-        var qx = common.bytes_from_nibbles_32(&x[ib].qs);
-        var bxhi = common.bytes_from_bits_32(&x[ib].qh);
-        bxhi = avx.mm256_and_si256(bxhi, avx.mm256_set1_epi8(0x10));
-        qx = avx.mm256_or_si256(qx, bxhi);
+        var qx = common.bytesFromNibbles32(&x[ib].qs);
+        var bxhi = common.bytesFromBits32(&x[ib].qh);
+        bxhi = avx.mm256AndSi256(bxhi, avx.mm256Set1Epi8(0x10));
+        qx = avx.mm256OrSi256(qx, bxhi);
 
-        const dy = avx.mm256_set1_ps(f(y[ib].d));
-        const qy = avx.mm256_loadu_si256(&y[ib].qs);
+        const dy = avx.mm256Set1Ps(f(y[ib].d));
+        const qy = avx.mm256LoaduSi256(&y[ib].qs);
 
-        const q = common.mul_sum_us8_pairs_float(qx, qy);
+        const q = common.mulSumUs8PairsFloat(qx, qy);
 
-        acc = avx.mm256_fmadd_ps(q, avx.mm256_mul_ps(dx, dy), acc);
+        acc = avx.mm256FmaddPs(q, avx.mm256MulPs(dx, dy), acc);
     }
 
-    s[0] = common.hsum_float_8(acc) + summs;
+    s[0] = common.hsumFloat8(acc) + summs;
+}
+
+comptime {
+    @export(&ggmlVecDotQ80Q80, .{ .name = "ggml_vec_dot_q8_0_q8_0" });
 }
 
 /// Ports `ggml_vec_dot_q8_0_q8_0` (arch/x86/quants.c:1372 @cd959bae9), the
 /// `__AVX2__` arm.
-pub export fn ggml_vec_dot_q8_0_q8_0(
+pub fn ggmlVecDotQ80Q80(
     n: c_int,
     s: [*c]f32,
     bs: usize,
@@ -547,7 +583,7 @@ pub export fn ggml_vec_dot_q8_0_q8_0(
     vy: ?*const anyopaque,
     by: usize,
     nrc: c_int,
-) void {
+) callconv(.c) void {
     const qk = c.QK8_0;
     const nb: usize = @intCast(@divTrunc(n, qk));
 
@@ -559,22 +595,26 @@ pub export fn ggml_vec_dot_q8_0_q8_0(
     const y = as(blocks.Q8_0, vy);
 
     // Initialize accumulator with zeros
-    var acc = avx.mm256_setzero_ps();
+    var acc = avx.mm256SetzeroPs();
 
     // Main loop
     for (0..nb) |ib| {
         // Compute combined scale for the block
-        const d = avx.mm256_set1_ps(f(x[ib].d) * f(y[ib].d));
-        const qx = avx.mm256_loadu_si256(&x[ib].qs);
-        const qy = avx.mm256_loadu_si256(&y[ib].qs);
+        const d = avx.mm256Set1Ps(f(x[ib].d) * f(y[ib].d));
+        const qx = avx.mm256LoaduSi256(&x[ib].qs);
+        const qy = avx.mm256LoaduSi256(&y[ib].qs);
 
-        const q = common.mul_sum_i8_pairs_float(qx, qy);
+        const q = common.mulSumI8PairsFloat(qx, qy);
 
         // Multiply q with scale and accumulate
-        acc = avx.mm256_fmadd_ps(d, q, acc);
+        acc = avx.mm256FmaddPs(d, q, acc);
     }
 
-    s[0] = common.hsum_float_8(acc);
+    s[0] = common.hsumFloat8(acc);
+}
+
+comptime {
+    @export(&ggmlVecDotIq4NlQ80, .{ .name = "ggml_vec_dot_iq4_nl_q8_0" });
 }
 
 /// Ports `ggml_vec_dot_iq4_nl_q8_0` (arch/x86/quants.c:3984 @cd959bae9), the
@@ -582,7 +622,7 @@ pub export fn ggml_vec_dot_q8_0_q8_0(
 ///
 /// `mxfp4`'s shape over `kvalues_iq4nl`, with an fp16 delta in place of the
 /// E8M0 exponent.
-pub export fn ggml_vec_dot_iq4_nl_q8_0(
+pub fn ggmlVecDotIq4NlQ80(
     n: c_int,
     s: [*c]f32,
     bs: usize,
@@ -591,7 +631,7 @@ pub export fn ggml_vec_dot_iq4_nl_q8_0(
     vy: ?*const anyopaque,
     by: usize,
     nrc: c_int,
-) void {
+) callconv(.c) void {
     std.debug.assert(nrc == 1);
     _ = .{ bs, bx, by };
     std.debug.assert(@rem(n, c.QK4_NL) == 0);
@@ -605,34 +645,34 @@ pub export fn ggml_vec_dot_iq4_nl_q8_0(
     var ib: usize = 0;
     var sumf: f32 = 0;
 
-    const values128 = avx.mm_loadu_si128(&c.kvalues_iq4nl);
-    const m4b = avx.mm_set1_epi8(0x0f);
-    const mone = avx.mm256_set1_epi16(1);
+    const values128 = avx.mmLoaduSi128(&c.kvalues_iq4nl);
+    const m4b = avx.mmSet1Epi8(0x0f);
+    const mone = avx.mm256Set1Epi16(1);
 
-    var accum1 = avx.mm256_setzero_ps();
-    var accum2 = avx.mm256_setzero_ps();
+    var accum1 = avx.mm256SetzeroPs();
+    var accum2 = avx.mm256SetzeroPs();
     while (ib + 1 < nb) : (ib += 2) {
-        const q4bits_1 = avx.mm_loadu_si128(&x[ib + 0].qs);
-        const q4bits_2 = avx.mm_loadu_si128(&x[ib + 1].qs);
-        const q8b_1 = avx.mm256_loadu_si256(&y[ib + 0].qs);
-        const q8b_2 = avx.mm256_loadu_si256(&y[ib + 1].qs);
-        const q4b_1 = avx.mm256_set_m128i(
-            avx.mm_shuffle_epi8(values128, avx.mm_and_si128(avx.mm_srli_epi16(q4bits_1, 4), m4b)),
-            avx.mm_shuffle_epi8(values128, avx.mm_and_si128(q4bits_1, m4b)),
+        const q4bits_1 = avx.mmLoaduSi128(&x[ib + 0].qs);
+        const q4bits_2 = avx.mmLoaduSi128(&x[ib + 1].qs);
+        const q8b_1 = avx.mm256LoaduSi256(&y[ib + 0].qs);
+        const q8b_2 = avx.mm256LoaduSi256(&y[ib + 1].qs);
+        const q4b_1 = avx.mm256SetM128i(
+            avx.mmShuffleEpi8(values128, avx.mmAndSi128(avx.mmSrliEpi16(q4bits_1, 4), m4b)),
+            avx.mmShuffleEpi8(values128, avx.mmAndSi128(q4bits_1, m4b)),
         );
-        const q4b_2 = avx.mm256_set_m128i(
-            avx.mm_shuffle_epi8(values128, avx.mm_and_si128(avx.mm_srli_epi16(q4bits_2, 4), m4b)),
-            avx.mm_shuffle_epi8(values128, avx.mm_and_si128(q4bits_2, m4b)),
+        const q4b_2 = avx.mm256SetM128i(
+            avx.mmShuffleEpi8(values128, avx.mmAndSi128(avx.mmSrliEpi16(q4bits_2, 4), m4b)),
+            avx.mmShuffleEpi8(values128, avx.mmAndSi128(q4bits_2, m4b)),
         );
-        const p16_1 = common.mul_add_epi8(q4b_1, q8b_1);
-        const p16_2 = common.mul_add_epi8(q4b_2, q8b_2);
-        const p_1 = avx.mm256_madd_epi16(p16_1, mone);
-        const p_2 = avx.mm256_madd_epi16(p16_2, mone);
-        accum1 = avx.mm256_fmadd_ps(avx.mm256_set1_ps(f(y[ib + 0].d) * f(x[ib + 0].d)), avx.mm256_cvtepi32_ps(p_1), accum1);
-        accum2 = avx.mm256_fmadd_ps(avx.mm256_set1_ps(f(y[ib + 1].d) * f(x[ib + 1].d)), avx.mm256_cvtepi32_ps(p_2), accum2);
+        const p16_1 = common.mulAddEpi8(q4b_1, q8b_1);
+        const p16_2 = common.mulAddEpi8(q4b_2, q8b_2);
+        const p_1 = avx.mm256MaddEpi16(p16_1, mone);
+        const p_2 = avx.mm256MaddEpi16(p16_2, mone);
+        accum1 = avx.mm256FmaddPs(avx.mm256Set1Ps(f(y[ib + 0].d) * f(x[ib + 0].d)), avx.mm256Cvtepi32Ps(p_1), accum1);
+        accum2 = avx.mm256FmaddPs(avx.mm256Set1Ps(f(y[ib + 1].d) * f(x[ib + 1].d)), avx.mm256Cvtepi32Ps(p_2), accum2);
     }
 
-    sumf = common.hsum_float_8(avx.mm256_add_ps(accum1, accum2));
+    sumf = common.hsumFloat8(avx.mm256AddPs(accum1, accum2));
 
     while (ib < nb) : (ib += 1) {
         const d = f(y[ib].d) * f(x[ib].d);

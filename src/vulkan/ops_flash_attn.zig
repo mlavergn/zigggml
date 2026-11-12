@@ -298,7 +298,7 @@ fn dynamicPipeline(ctx: *BackendCtx, map: anytype, key: anytype) *Pipeline {
     const dev = ctx.device;
     _ = std.c.pthread_mutex_lock(&dev.compile_mutex);
     defer _ = std.c.pthread_mutex_unlock(&dev.compile_mutex);
-    const gop = map.getOrPut(m.common.allocator, key) catch impl.abort("ggml_vulkan: out of memory");
+    const gop = map.getOrPut(std.heap.c_allocator, key) catch impl.abort("ggml_vulkan: out of memory");
     if (!gop.found_existing or gop.value_ptr.* == null) gop.value_ptr.* = Pipeline.create();
     return gop.value_ptr.*.?;
 }
@@ -532,7 +532,7 @@ pub fn flashAttn(ctx: *BackendCtx, subctx: *Context, q: *const Tensor, k: *const
             };
             if (have_xe_pipelines) {
                 const xe_key: m.device.XeFaDecodeKey = .{ u(q.ne[0]), u(v.ne[0]), qk_ratio, u(q.ne[1]) };
-                const gop = dev.pipeline_xe_fa_decode_dual_phases.getOrPut(m.common.allocator, xe_key) catch impl.abort("ggml_vulkan: out of memory");
+                const gop = dev.pipeline_xe_fa_decode_dual_phases.getOrPut(std.heap.c_allocator, xe_key) catch impl.abort("ggml_vulkan: out of memory");
                 if (!gop.found_existing) gop.value_ptr.* = .{ .first = Pipeline.create(), .second = Pipeline.create() };
                 xe_fa_pipeline_dual_phases = gop.value_ptr.*;
             }

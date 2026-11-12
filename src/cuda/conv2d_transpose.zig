@@ -7,7 +7,6 @@
 //! `llama.cpp/ggml/src/ggml-cuda/conv2d-transpose.cuh` at v0.9.0
 //! (`cd959bae9`). The kernel, `conv2d_transpose_kernel`, stays CUDA.
 
-const std = @import("std");
 const impl = @import("../impl.zig");
 const common = @import("common.zig");
 const kernels = @import("kernels.zig");

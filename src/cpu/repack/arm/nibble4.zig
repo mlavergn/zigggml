@@ -65,7 +65,7 @@ inline fn loadqu(p: [*]const u8) u8x16 {
 /// one at a time.
 inline fn colScales(comptime fmt: Fmt, bl: anytype) f32x4 {
     return switch (fmt) {
-        .iq4_nl => neon.cvt_f32_f16(neon.load_f16x4(@ptrCast(&bl.d))),
+        .iq4_nl => neon.cvtF32F16(neon.loadF16x4(@ptrCast(&bl.d))),
         .mxfp4 => f32x4{
             impl.e8m0ToFp32Half(bl.e[0]),
             impl.e8m0ToFp32Half(bl.e[1]),
@@ -101,8 +101,8 @@ fn gemv(comptime fmt: Fmt, comptime BlockX: type, n: c_int, s: [*]f32, bs: usize
             var b_hi: [4]i8x16 = undefined;
             inline for (0..4) |i| {
                 const bq = loadqu(qs + i * 16);
-                b_hi[i] = neon.qtbl1q_s8(kvalues, bq >> @as(@Vector(16, u3), @splat(4)));
-                b_lo[i] = neon.qtbl1q_s8(kvalues, bq & @as(u8x16, @splat(0x0F)));
+                b_hi[i] = neon.qtbl1qS8(kvalues, bq >> @as(@Vector(16, u3), @splat(4)));
+                b_lo[i] = neon.qtbl1qS8(kvalues, bq & @as(u8x16, @splat(0x0F)));
             }
 
             const aqs: [*]const i8 = @ptrCast(&a_ptr[l].qs);
@@ -111,14 +111,14 @@ fn gemv(comptime fmt: Fmt, comptime BlockX: type, n: c_int, s: [*]f32, bs: usize
 
             var sumi: i32x4 = @splat(0);
             inline for (0..4) |i| {
-                sumi = neon.dotq_laneq_s32(sumi, b_lo[i], a_0, i);
-                sumi = neon.dotq_laneq_s32(sumi, b_hi[i], a_1, i);
+                sumi = neon.dotqLaneqS32(sumi, b_lo[i], a_0, i);
+                sumi = neon.dotqLaneqS32(sumi, b_hi[i], a_1, i);
             }
 
-            const a_d = neon.cvt_f32_f16(neon.dup_f16x4(a_ptr[l].d));
+            const a_d = neon.cvtF32F16(neon.dupF16x4(a_ptr[l].d));
             const b_d = colScales(fmt, &b_ptr[l]);
             const d = a_d * b_d;
-            sumf = neon.fma_f32(sumf, d, neon.cvt_f32_s32(sumi));
+            sumf = neon.fmaF32(sumf, d, neon.cvtF32S32(sumi));
         }
         (res_ptr + @as(usize, @intCast(x * 4)))[0..4].* = sumf;
     }
@@ -144,7 +144,7 @@ fn gemm(comptime fmt: Fmt, comptime BlockX: type, n: c_int, s: [*]f32, bs: usize
 
             var l: usize = 0;
             while (l < @as(usize, @intCast(nb))) : (l += 1) {
-                const a_d = neon.cvt_f32_f16(neon.load_f16x4(@ptrCast(&a_ptr[l].d)));
+                const a_d = neon.cvtF32F16(neon.loadF16x4(@ptrCast(&a_ptr[l].d)));
                 const b_d = colScales(fmt, &b_ptr[l]);
 
                 var sumi: [4]i32x4 = @splat(@as(i32x4, @splat(0)));
@@ -153,19 +153,19 @@ fn gemm(comptime fmt: Fmt, comptime BlockX: type, n: c_int, s: [*]f32, bs: usize
                 const aqs: [*]const i8 = @ptrCast(&a_ptr[l].qs);
                 for (0..4) |k| {
                     const bq = loadqu(qs + 16 * k);
-                    const b_hi = neon.qtbl1q_s8(kvalues, bq >> @as(@Vector(16, u3), @splat(4)));
-                    const b_lo = neon.qtbl1q_s8(kvalues, bq & @as(u8x16, @splat(0x0F)));
+                    const b_hi = neon.qtbl1qS8(kvalues, bq >> @as(@Vector(16, u3), @splat(4)));
+                    const b_lo = neon.qtbl1qS8(kvalues, bq & @as(u8x16, @splat(0x0F)));
 
                     const a_0 = loadq(aqs + 16 * k);
                     const a_1 = loadq(aqs + 16 * k + 64);
 
-                    inline for (0..4) |m| sumi[m] = neon.dotq_laneq_s32(sumi[m], b_lo, a_0, m);
-                    inline for (0..4) |m| sumi[m] = neon.dotq_laneq_s32(sumi[m], b_hi, a_1, m);
+                    inline for (0..4) |m| sumi[m] = neon.dotqLaneqS32(sumi[m], b_lo, a_0, m);
+                    inline for (0..4) |m| sumi[m] = neon.dotqLaneqS32(sumi[m], b_hi, a_1, m);
                 }
 
                 inline for (0..4) |m| {
                     const scale = b_d * @as(f32x4, @splat(a_d[m]));
-                    sumf[m] = neon.fma_f32(sumf[m], scale, neon.cvt_f32_s32(sumi[m]));
+                    sumf[m] = neon.fmaF32(sumf[m], scale, neon.cvtF32S32(sumi[m]));
                 }
             }
 
@@ -177,19 +177,35 @@ fn gemm(comptime fmt: Fmt, comptime BlockX: type, n: c_int, s: [*]f32, bs: usize
     }
 }
 
-pub export fn ggml_gemv_iq4_nl_4x4_q8_0(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+comptime {
+    @export(&ggmlGemvIq4Nl4x4Q80, .{ .name = "ggml_gemv_iq4_nl_4x4_q8_0" });
+}
+
+pub fn ggmlGemvIq4Nl4x4Q80(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
     if (comptime !neon.has_dotprod) return ggml_gemv_iq4_nl_4x4_q8_0_generic(n, s, bs, vx, vy, nr, nc);
     gemv(.iq4_nl, blocks.block_iq4_nlx4, n, s, bs, vx, vy, nr, nc);
 }
-pub export fn ggml_gemv_mxfp4_4x4_q8_0(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+comptime {
+    @export(&ggmlGemvMxfp44x4Q80, .{ .name = "ggml_gemv_mxfp4_4x4_q8_0" });
+}
+
+pub fn ggmlGemvMxfp44x4Q80(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
     if (comptime !neon.has_dotprod) return ggml_gemv_mxfp4_4x4_q8_0_generic(n, s, bs, vx, vy, nr, nc);
     gemv(.mxfp4, blocks.block_mxfp4x4, n, s, bs, vx, vy, nr, nc);
 }
-pub export fn ggml_gemm_iq4_nl_4x4_q8_0(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+comptime {
+    @export(&ggmlGemmIq4Nl4x4Q80, .{ .name = "ggml_gemm_iq4_nl_4x4_q8_0" });
+}
+
+pub fn ggmlGemmIq4Nl4x4Q80(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
     if (comptime !neon.has_dotprod) return ggml_gemm_iq4_nl_4x4_q8_0_generic(n, s, bs, vx, vy, nr, nc);
     gemm(.iq4_nl, blocks.block_iq4_nlx4, n, s, bs, vx, vy, nr, nc);
 }
-pub export fn ggml_gemm_mxfp4_4x4_q8_0(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+comptime {
+    @export(&ggmlGemmMxfp44x4Q80, .{ .name = "ggml_gemm_mxfp4_4x4_q8_0" });
+}
+
+pub fn ggmlGemmMxfp44x4Q80(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
     if (comptime !neon.has_dotprod) return ggml_gemm_mxfp4_4x4_q8_0_generic(n, s, bs, vx, vy, nr, nc);
     gemm(.mxfp4, blocks.block_mxfp4x4, n, s, bs, vx, vy, nr, nc);
 }

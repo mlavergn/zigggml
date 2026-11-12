@@ -14,7 +14,6 @@
 //! behind a C ABI (PLAN.md, Decision 47). Only `float` is instantiated:
 //! upstream comments out the `F16` and `BF16` cases.
 
-const std = @import("std");
 const impl = @import("../impl.zig");
 const common = @import("common.zig");
 const kernels = @import("kernels.zig");

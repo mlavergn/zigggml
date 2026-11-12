@@ -78,162 +78,274 @@ inline fn x86Has(comptime name: []const u8) bool {
     );
 }
 
+comptime {
+    @export(&ggmlCpuHasAvx, .{ .name = "ggml_cpu_has_avx" });
+}
+
 /// Ports `ggml_cpu_has_avx` (ggml-cpu.c:3660 @cd959bae9).
-pub export fn ggml_cpu_has_avx() c_int {
+pub fn ggmlCpuHasAvx() callconv(.c) c_int {
     return @intFromBool(x86Has("avx"));
 }
 
+comptime {
+    @export(&ggmlCpuHasAvxVnni, .{ .name = "ggml_cpu_has_avx_vnni" });
+}
+
 /// Ports `ggml_cpu_has_avx_vnni` (ggml-cpu.c:3668 @cd959bae9).
-pub export fn ggml_cpu_has_avx_vnni() c_int {
+pub fn ggmlCpuHasAvxVnni() callconv(.c) c_int {
     return @intFromBool(x86Has("avxvnni"));
 }
 
+comptime {
+    @export(&ggmlCpuHasAvx2, .{ .name = "ggml_cpu_has_avx2" });
+}
+
 /// Ports `ggml_cpu_has_avx2` (ggml-cpu.c:3676 @cd959bae9).
-pub export fn ggml_cpu_has_avx2() c_int {
+pub fn ggmlCpuHasAvx2() callconv(.c) c_int {
     return @intFromBool(x86Has("avx2"));
 }
 
+comptime {
+    @export(&ggmlCpuHasAvx512, .{ .name = "ggml_cpu_has_avx512" });
+}
+
 /// Ports `ggml_cpu_has_avx512` (ggml-cpu.c:3684 @cd959bae9).
-pub export fn ggml_cpu_has_avx512() c_int {
+pub fn ggmlCpuHasAvx512() callconv(.c) c_int {
     return @intFromBool(x86Has("avx512f"));
 }
 
+comptime {
+    @export(&ggmlCpuHasAvx512Vbmi, .{ .name = "ggml_cpu_has_avx512_vbmi" });
+}
+
 /// Ports `ggml_cpu_has_avx512_vbmi` (ggml-cpu.c:3692 @cd959bae9).
-pub export fn ggml_cpu_has_avx512_vbmi() c_int {
+pub fn ggmlCpuHasAvx512Vbmi() callconv(.c) c_int {
     return @intFromBool(x86Has("avx512vbmi"));
 }
 
+comptime {
+    @export(&ggmlCpuHasAvx512Vnni, .{ .name = "ggml_cpu_has_avx512_vnni" });
+}
+
 /// Ports `ggml_cpu_has_avx512_vnni` (ggml-cpu.c:3700 @cd959bae9).
-pub export fn ggml_cpu_has_avx512_vnni() c_int {
+pub fn ggmlCpuHasAvx512Vnni() callconv(.c) c_int {
     return @intFromBool(x86Has("avx512vnni"));
 }
 
+comptime {
+    @export(&ggmlCpuHasAvx512Bf16, .{ .name = "ggml_cpu_has_avx512_bf16" });
+}
+
 /// Ports `ggml_cpu_has_avx512_bf16` (ggml-cpu.c:3708 @cd959bae9).
-pub export fn ggml_cpu_has_avx512_bf16() c_int {
+pub fn ggmlCpuHasAvx512Bf16() callconv(.c) c_int {
     return @intFromBool(x86Has("avx512bf16"));
 }
 
+comptime {
+    @export(&ggmlCpuHasAmxInt8, .{ .name = "ggml_cpu_has_amx_int8" });
+}
+
 /// Ports `ggml_cpu_has_amx_int8` (ggml-cpu.c:3716 @cd959bae9).
-pub export fn ggml_cpu_has_amx_int8() c_int {
+pub fn ggmlCpuHasAmxInt8() callconv(.c) c_int {
     return @intFromBool(x86Has("amx_int8"));
 }
 
+comptime {
+    @export(&ggmlCpuHasBmi2, .{ .name = "ggml_cpu_has_bmi2" });
+}
+
 /// Ports `ggml_cpu_has_bmi2` (ggml-cpu.c:3724 @cd959bae9).
-pub export fn ggml_cpu_has_bmi2() c_int {
+pub fn ggmlCpuHasBmi2() callconv(.c) c_int {
     return @intFromBool(x86Has("bmi2"));
 }
 
+comptime {
+    @export(&ggmlCpuHasFma, .{ .name = "ggml_cpu_has_fma" });
+}
+
 /// Ports `ggml_cpu_has_fma` (ggml-cpu.c:3732 @cd959bae9). The x86 `__FMA__`, not ARM's.
-pub export fn ggml_cpu_has_fma() c_int {
+pub fn ggmlCpuHasFma() callconv(.c) c_int {
     return @intFromBool(x86Has("fma"));
 }
 
+comptime {
+    @export(&ggmlCpuHasF16c, .{ .name = "ggml_cpu_has_f16c" });
+}
+
 /// Ports `ggml_cpu_has_f16c` (ggml-cpu.c:3764 @cd959bae9).
-pub export fn ggml_cpu_has_f16c() c_int {
+pub fn ggmlCpuHasF16c() callconv(.c) c_int {
     return @intFromBool(x86Has("f16c"));
 }
 
+comptime {
+    @export(&ggmlCpuHasSse3, .{ .name = "ggml_cpu_has_sse3" });
+}
+
 /// Ports `ggml_cpu_has_sse3` (ggml-cpu.c:3796 @cd959bae9).
-pub export fn ggml_cpu_has_sse3() c_int {
+pub fn ggmlCpuHasSse3() callconv(.c) c_int {
     return @intFromBool(x86Has("sse3"));
 }
 
+comptime {
+    @export(&ggmlCpuHasSsse3, .{ .name = "ggml_cpu_has_ssse3" });
+}
+
 /// Ports `ggml_cpu_has_ssse3` (ggml-cpu.c:3804 @cd959bae9).
-pub export fn ggml_cpu_has_ssse3() c_int {
+pub fn ggmlCpuHasSsse3() callconv(.c) c_int {
     return @intFromBool(x86Has("ssse3"));
 }
 
+comptime {
+    @export(&ggmlCpuHasVsx, .{ .name = "ggml_cpu_has_vsx" });
+}
+
 /// Ports `ggml_cpu_has_vsx` (ggml-cpu.c:3812 @cd959bae9), POWER9.
-pub export fn ggml_cpu_has_vsx() c_int {
+pub fn ggmlCpuHasVsx() callconv(.c) c_int {
     return 0;
+}
+
+comptime {
+    @export(&ggmlCpuHasVxe, .{ .name = "ggml_cpu_has_vxe" });
 }
 
 /// Ports `ggml_cpu_has_vxe` (ggml-cpu.c:3820 @cd959bae9), s390x.
-pub export fn ggml_cpu_has_vxe() c_int {
+pub fn ggmlCpuHasVxe() callconv(.c) c_int {
     return 0;
+}
+
+comptime {
+    @export(&ggmlCpuHasWasmSimd, .{ .name = "ggml_cpu_has_wasm_simd" });
 }
 
 /// Ports `ggml_cpu_has_wasm_simd` (ggml-cpu.c:3780 @cd959bae9).
-pub export fn ggml_cpu_has_wasm_simd() c_int {
+pub fn ggmlCpuHasWasmSimd() callconv(.c) c_int {
     return 0;
+}
+
+comptime {
+    @export(&ggmlCpuHasRiscvV, .{ .name = "ggml_cpu_has_riscv_v" });
 }
 
 /// Ports `ggml_cpu_has_riscv_v` (ggml-cpu.c:3748 @cd959bae9).
-pub export fn ggml_cpu_has_riscv_v() c_int {
+pub fn ggmlCpuHasRiscvV() callconv(.c) c_int {
     return 0;
 }
 
+comptime {
+    @export(&ggmlCpuGetRvvVlen, .{ .name = "ggml_cpu_get_rvv_vlen" });
+}
+
 /// Ports `ggml_cpu_get_rvv_vlen` (ggml-cpu.c:3756 @cd959bae9).
-pub export fn ggml_cpu_get_rvv_vlen() c_int {
+pub fn ggmlCpuGetRvvVlen() callconv(.c) c_int {
     return 0;
 }
 
 // -----------------------------------------------------------------------------
 // ARM
 
+comptime {
+    @export(&ggmlCpuHasArmFma, .{ .name = "ggml_cpu_has_arm_fma" });
+}
+
 /// Ports `ggml_cpu_has_arm_fma` (ggml-cpu.c:3740 @cd959bae9).
 ///
 /// The C tests `__ARM_FEATURE_FMA`, which clang defines whenever the ARM
 /// floating-point unit is available -- always, on AArch64.
-pub export fn ggml_cpu_has_arm_fma() c_int {
+pub fn ggmlCpuHasArmFma() callconv(.c) c_int {
     return @intFromBool(armHas("fp_armv8"));
+}
+
+comptime {
+    @export(&ggmlCpuHasFp16Va, .{ .name = "ggml_cpu_has_fp16_va" });
 }
 
 /// Ports `ggml_cpu_has_fp16_va` (ggml-cpu.c:3772 @cd959bae9).
 ///
 /// `__ARM_FEATURE_FP16_VECTOR_ARITHMETIC`, which clang ties to FullFP16.
-pub export fn ggml_cpu_has_fp16_va() c_int {
+pub fn ggmlCpuHasFp16Va() callconv(.c) c_int {
     return @intFromBool(armHas("fullfp16"));
 }
 
+comptime {
+    @export(&ggmlCpuHasNeon, .{ .name = "ggml_cpu_has_neon" });
+}
+
 /// Ports `ggml_cpu_has_neon` (ggml-cpu.c:3828 @cd959bae9).
-pub export fn ggml_cpu_has_neon() c_int {
+pub fn ggmlCpuHasNeon() callconv(.c) c_int {
     return @intFromBool(armHas("neon"));
 }
 
+comptime {
+    @export(&ggmlCpuHasDotprod, .{ .name = "ggml_cpu_has_dotprod" });
+}
+
 /// Ports `ggml_cpu_has_dotprod` (ggml-cpu.c:3836 @cd959bae9).
-pub export fn ggml_cpu_has_dotprod() c_int {
+pub fn ggmlCpuHasDotprod() callconv(.c) c_int {
     return @intFromBool(armHas("dotprod"));
 }
 
+comptime {
+    @export(&ggmlCpuHasSve, .{ .name = "ggml_cpu_has_sve" });
+}
+
 /// Ports `ggml_cpu_has_sve` (ggml-cpu.c:3844 @cd959bae9).
-pub export fn ggml_cpu_has_sve() c_int {
+pub fn ggmlCpuHasSve() callconv(.c) c_int {
     return @intFromBool(armHas("sve"));
 }
 
+comptime {
+    @export(&ggmlCpuHasMatmulInt8, .{ .name = "ggml_cpu_has_matmul_int8" });
+}
+
 /// Ports `ggml_cpu_has_matmul_int8` (ggml-cpu.c:3852 @cd959bae9).
-pub export fn ggml_cpu_has_matmul_int8() c_int {
+pub fn ggmlCpuHasMatmulInt8() callconv(.c) c_int {
     return @intFromBool(armHas("i8mm"));
+}
+
+comptime {
+    @export(&ggmlCpuGetSveCnt, .{ .name = "ggml_cpu_get_sve_cnt" });
 }
 
 /// Ports `ggml_cpu_get_sve_cnt` (ggml-cpu.c:3860 @cd959bae9).
 ///
 /// Zero unless SVE is compiled in, in which case `ggml_cpu_init` has filled
 /// it from `svcntb()`.
-pub export fn ggml_cpu_get_sve_cnt() c_int {
+pub fn ggmlCpuGetSveCnt() callconv(.c) c_int {
     if (!armHas("sve")) return 0;
     return ggml_arm_arch_features.sve_cnt;
 }
 
+comptime {
+    @export(&ggmlCpuHasSme, .{ .name = "ggml_cpu_has_sme" });
+}
+
 /// Ports `ggml_cpu_has_sme` (ggml-cpu.c:3868 @cd959bae9).
-pub export fn ggml_cpu_has_sme() c_int {
+pub fn ggmlCpuHasSme() callconv(.c) c_int {
     return @intFromBool(armHas("sme"));
 }
 
+comptime {
+    @export(&ggmlCpuHasSme2, .{ .name = "ggml_cpu_has_sme2" });
+}
+
 /// Ports `ggml_cpu_has_sme2` (ggml-cpu.c:3876 @cd959bae9).
-pub export fn ggml_cpu_has_sme2() c_int {
+pub fn ggmlCpuHasSme2() callconv(.c) c_int {
     return @intFromBool(armHas("sme2"));
 }
 
 // -----------------------------------------------------------------------------
 // Build configuration
 
+comptime {
+    @export(&ggmlCpuHasLlamafile, .{ .name = "ggml_cpu_has_llamafile" });
+}
+
 /// Ports `ggml_cpu_has_llamafile` (ggml-cpu.c:3788 @cd959bae9).
 ///
 /// Not a CPU question at all: `GGML_USE_LLAMAFILE` is a build flag, and
 /// `build/llamacpp.zig` passes it. Kept true to match, and asserted against
 /// the `mul_mat` fast path in the test below so the two cannot drift apart.
-pub export fn ggml_cpu_has_llamafile() c_int {
+pub fn ggmlCpuHasLlamafile() callconv(.c) c_int {
     return @intFromBool(use_llamafile);
 }
 
@@ -274,12 +386,16 @@ var is_first_call = true;
 extern fn ggml_time_us() i64;
 extern fn atoi(str: [*:0]const u8) c_int;
 
+comptime {
+    @export(&ggmlCpuInit, .{ .name = "ggml_cpu_init" });
+}
+
 /// Ports `ggml_cpu_init` (ggml-cpu.c:3884 @cd959bae9).
 ///
 /// Fills the lookup tables and reads `GGML_CPU_DISABLE_FUSION`, once per
 /// process. `ggml_graph_compute` calls it on every graph, so the guard is what
 /// makes that cheap.
-pub export fn ggml_cpu_init() void {
+pub fn ggmlCpuInit() callconv(.c) void {
     // Needed to initialise ggml's time base. The context is created and freed
     // purely for that side effect, which is what the C does.
     {
@@ -342,34 +458,33 @@ test "the ARM predicates agree with the build target" {
     // These are what `type_traits_cpu` and the still-C kernels branch on, so
     // they are asserted against Zig's own view of the target rather than
     // against a hardcoded expectation for this machine.
-    const has = std.Target.aarch64.featureSetHas;
     if (builtin.cpu.arch != .aarch64) return error.SkipZigTest;
 
     try std.testing.expectEqual(
-        @intFromBool(has(builtin.cpu.features, .neon)),
-        ggml_cpu_has_neon(),
+        @intFromBool(std.Target.aarch64.featureSetHas(builtin.cpu.features, .neon)),
+        ggmlCpuHasNeon(),
     );
     try std.testing.expectEqual(
-        @intFromBool(has(builtin.cpu.features, .dotprod)),
-        ggml_cpu_has_dotprod(),
+        @intFromBool(std.Target.aarch64.featureSetHas(builtin.cpu.features, .dotprod)),
+        ggmlCpuHasDotprod(),
     );
     try std.testing.expectEqual(
-        @intFromBool(has(builtin.cpu.features, .i8mm)),
-        ggml_cpu_has_matmul_int8(),
+        @intFromBool(std.Target.aarch64.featureSetHas(builtin.cpu.features, .i8mm)),
+        ggmlCpuHasMatmulInt8(),
     );
 }
 
 test "the x86 predicates are all false" {
-    try std.testing.expectEqual(@as(c_int, 0), ggml_cpu_has_avx());
-    try std.testing.expectEqual(@as(c_int, 0), ggml_cpu_has_avx2());
-    try std.testing.expectEqual(@as(c_int, 0), ggml_cpu_has_avx512());
-    try std.testing.expectEqual(@as(c_int, 0), ggml_cpu_has_f16c());
-    try std.testing.expectEqual(@as(c_int, 0), ggml_cpu_has_fma());
+    try std.testing.expectEqual(@as(c_int, 0), ggmlCpuHasAvx());
+    try std.testing.expectEqual(@as(c_int, 0), ggmlCpuHasAvx2());
+    try std.testing.expectEqual(@as(c_int, 0), ggmlCpuHasAvx512());
+    try std.testing.expectEqual(@as(c_int, 0), ggmlCpuHasF16c());
+    try std.testing.expectEqual(@as(c_int, 0), ggmlCpuHasFma());
 }
 
 test "sve_cnt stays zero without SVE" {
-    try std.testing.expectEqual(@as(c_int, 0), ggml_cpu_has_sve());
-    try std.testing.expectEqual(@as(c_int, 0), ggml_cpu_get_sve_cnt());
+    try std.testing.expectEqual(@as(c_int, 0), ggmlCpuHasSve());
+    try std.testing.expectEqual(@as(c_int, 0), ggmlCpuGetSveCnt());
 }
 
 test "llamafile is on unless the CPU has SVE or i8mm, as ggml-cpu.c:45 decides" {
@@ -377,16 +492,16 @@ test "llamafile is on unless the CPU has SVE or i8mm, as ggml-cpu.c:45 decides" 
     // there; off for `-Dcpu=apple_m3`, where the C undefines it because
     // `sgemm.cpp` has no kernels for i8mm.
     const expect_on = !armHas("sve") and !armHas("i8mm");
-    try std.testing.expectEqual(@as(c_int, @intFromBool(expect_on)), ggml_cpu_has_llamafile());
+    try std.testing.expectEqual(@as(c_int, @intFromBool(expect_on)), ggmlCpuHasLlamafile());
     try std.testing.expectEqual(expect_on, use_llamafile);
 }
 
 test "init is idempotent and fills the tables" {
-    ggml_cpu_init();
+    ggmlCpuInit();
     const first = convert.ggml_table_f32_f16[0x3C00]; // 1.0 as a half
     try std.testing.expectEqual(@as(f32, 1.0), first);
 
-    ggml_cpu_init();
+    ggmlCpuInit();
     try std.testing.expectEqual(first, convert.ggml_table_f32_f16[0x3C00]);
     try std.testing.expectEqual(@as(f32, 0.5), convert.ggml_table_f32_ue4m3[0x38]);
 }

@@ -60,14 +60,13 @@ inline fn min(a: i64, b: i64) i64 {
 
 /// Ports `ggml_get_n_tasks` (ggml-cpu.c:2267 @cd959bae9).
 ///
-/// Parameters:
 /// - `node`: the graph node to plan for.
 /// - `n_threads`: the thread budget for the graph.
 ///
-/// Return: how many threads this node's kernel can use, at least 1.
+/// - Returns: how many threads this node's kernel can use, at least 1.
 pub fn getNTasks(node: *Tensor, n_threads: c_int) c_int {
     // No point multi-threading a no-op.
-    if (types.ggml_is_empty(node)) return 1;
+    if (types.ggmlIsEmpty(node)) return 1;
 
     const n_tasks: c_int = switch (node.op) {
         // Parallel over rows: every one of these splits its work by thread.
@@ -81,7 +80,7 @@ pub fn getNTasks(node: *Tensor, n_threads: c_int) c_int {
         // for one thread while every thread ran it.
         c.GGML_OP_GET_ROWS, c.GGML_OP_SUB, c.GGML_OP_SQR, c.GGML_OP_SQRT, c.GGML_OP_LOG, c.GGML_OP_SIN, c.GGML_OP_COS, c.GGML_OP_SUM, c.GGML_OP_SUM_ROWS, c.GGML_OP_MEAN, c.GGML_OP_ARGMAX, c.GGML_OP_REPEAT, c.GGML_OP_REPEAT_BACK, c.GGML_OP_LEAKY_RELU, c.GGML_OP_SCALE, c.GGML_OP_SET, c.GGML_OP_RESHAPE, c.GGML_OP_VIEW, c.GGML_OP_PERMUTE, c.GGML_OP_TRANSPOSE, c.GGML_OP_GET_ROWS_BACK, c.GGML_OP_DIAG, c.GGML_OP_CLAMP, c.GGML_OP_POOL_1D, c.GGML_OP_POOL_2D, c.GGML_OP_POOL_2D_BACK, c.GGML_OP_WIN_PART, c.GGML_OP_WIN_UNPART, c.GGML_OP_GET_REL_POS, c.GGML_OP_NONE => 1,
 
-        c.GGML_OP_UNARY => switch (types.ggml_get_unary_op(node)) {
+        c.GGML_OP_UNARY => switch (types.ggmlGetUnaryOp(node)) {
             c.GGML_UNARY_OP_ABS,
             c.GGML_UNARY_OP_SGN,
             c.GGML_UNARY_OP_NEG,
@@ -112,7 +111,7 @@ pub fn getNTasks(node: *Tensor, n_threads: c_int) c_int {
             else => impl.abort("fatal error"),
         },
 
-        c.GGML_OP_GLU => switch (types.ggml_get_glu_op(node)) {
+        c.GGML_OP_GLU => switch (types.ggmlGetGluOp(node)) {
             c.GGML_GLU_OP_REGLU,
             c.GGML_GLU_OP_GEGLU,
             c.GGML_GLU_OP_SWIGLU,
@@ -126,7 +125,7 @@ pub fn getNTasks(node: *Tensor, n_threads: c_int) c_int {
         },
 
         // Bounded by the rows there are to split.
-        c.GGML_OP_SOFT_MAX => @intCast(min(n_threads, types.ggml_nrows(impl.one(Tensor, node.src[0])))),
+        c.GGML_OP_SOFT_MAX => @intCast(min(n_threads, types.ggmlNrows(impl.one(Tensor, node.src[0])))),
 
         // Bounded by the head count, which is where these parallelise.
         c.GGML_OP_RWKV_WKV6,
@@ -152,7 +151,7 @@ pub fn getNTasks(node: *Tensor, n_threads: c_int) c_int {
             // The C prints the op's name before aborting, so an op added
             // upstream and forgotten here says which one it was.
             if (node.op < c.GGML_OP_COUNT) {
-                impl.fprintfStderr("ggml_get_n_tasks: op not implemented: %s\n", .{types.ggml_op_name(node.op)});
+                impl.fprintfStderr("ggml_get_n_tasks: op not implemented: %s\n", .{types.ggmlOpName(node.op)});
             } else {
                 impl.fprintfStderr("ggml_get_n_tasks: op not implemented: %d\n", .{node.op});
             }
@@ -164,21 +163,24 @@ pub fn getNTasks(node: *Tensor, n_threads: c_int) c_int {
     return n_tasks;
 }
 
+comptime {
+    @export(&ggmlGraphPlan, .{ .name = "ggml_graph_plan" });
+}
+
 /// Ports `ggml_graph_plan` (ggml-cpu.c:2830 @cd959bae9).
 ///
-/// Parameters:
 /// - `cgraph`: the graph to plan.
 /// - `n_threads_in`: requested thread count; 0 or less takes the threadpool's,
 ///   or `GGML_DEFAULT_N_THREADS` when there is no pool.
 /// - `threadpool`: the pool the plan will run on, or null for a disposable one.
 ///
-/// Return: the plan, by value. `work_data` is left null for the caller to
+/// - Returns: the plan, by value. `work_data` is left null for the caller to
 /// allocate `work_size` bytes into.
-pub export fn ggml_graph_plan(
+pub fn ggmlGraphPlan(
     cgraph: *const CGraph,
     n_threads_in: c_int,
     threadpool: ?*defs.Threadpool,
-) c.struct_ggml_cplan {
+) callconv(.c) c.struct_ggml_cplan {
     var n_threads = n_threads_in;
     if (n_threads <= 0) {
         n_threads = if (threadpool) |tp| tp.n_threads else c.GGML_DEFAULT_N_THREADS;
@@ -228,13 +230,12 @@ pub export fn ggml_graph_plan(
 /// `switch` nested inside a `for` inside an `if`, which in Zig would run four
 /// levels deep before the first case.
 ///
-/// Parameters:
 /// - `node`: the node to size.
 /// - `n_tasks`: how many threads will run it, from `getNTasks`.
 ///
-/// Return: bytes of work buffer the node's kernel will use.
+/// - Returns: bytes of work buffer the node's kernel will use.
 fn nodeWorkSize(node: *const Tensor, n_tasks: i64) usize {
-    const f32_size = types.ggml_type_size(c.GGML_TYPE_F32);
+    const f32_size = types.ggmlTypeSize(c.GGML_TYPE_F32);
 
     switch (node.op) {
         c.GGML_OP_CPY, c.GGML_OP_DUP => {
@@ -244,7 +245,7 @@ fn nodeWorkSize(node: *const Tensor, n_tasks: i64) usize {
             const src1_type: ?c.enum_ggml_type =
                 if (node.src[1] == null) null else impl.one(Tensor, node.src[1]).type;
 
-            const via_f32 = types.ggml_is_quantized(node.type) or
+            const via_f32 = types.ggmlIsQuantized(node.type) or
                 // F16 <-> BF16 copies go through an intermediate F32.
                 (src0.type == c.GGML_TYPE_F16 and src1_type == c.GGML_TYPE_BF16) or
                 (src0.type == c.GGML_TYPE_BF16 and src1_type == c.GGML_TYPE_F16) or
@@ -258,7 +259,7 @@ fn nodeWorkSize(node: *const Tensor, n_tasks: i64) usize {
 
         c.GGML_OP_ADD, c.GGML_OP_ADD_ID, c.GGML_OP_ADD1 => {
             const src0 = impl.one(Tensor, node.src[0]);
-            if (types.ggml_is_quantized(src0.type) or src0.type == c.GGML_TYPE_F8_E4M3) {
+            if (types.ggmlIsQuantized(src0.type) or src0.type == c.GGML_TYPE_F8_E4M3) {
                 return f32_size * @as(usize, @intCast(src0.ne[0] * n_tasks));
             }
             return 0;
@@ -266,13 +267,13 @@ fn nodeWorkSize(node: *const Tensor, n_tasks: i64) usize {
 
         c.GGML_OP_ACC => {
             // Sized from `src[1]`, the block being written, not `src[0]`.
-            if (types.ggml_is_quantized(impl.one(Tensor, node.src[0]).type)) {
+            if (types.ggmlIsQuantized(impl.one(Tensor, node.src[0]).type)) {
                 return f32_size * @as(usize, @intCast(impl.one(Tensor, node.src[1]).ne[0] * n_tasks));
             }
             return 0;
         },
 
-        c.GGML_OP_COUNT_EQUAL => return types.ggml_type_size(node.type) * @as(usize, @intCast(n_tasks)),
+        c.GGML_OP_COUNT_EQUAL => return types.ggmlTypeSize(node.type) * @as(usize, @intCast(n_tasks)),
 
         c.GGML_OP_MUL_MAT => {
             const src1 = impl.one(Tensor, node.src[1]);
@@ -280,12 +281,12 @@ fn nodeWorkSize(node: *const Tensor, n_tasks: i64) usize {
 
             var cur: usize = 0;
             if (src1.type != vec_dot_type) {
-                cur = types.ggml_row_size(vec_dot_type, types.ggml_nelements(src1));
+                cur = types.ggmlRowSize(vec_dot_type, types.ggmlNelements(src1));
             }
 
             // Workspace for tiled (see tiled.h)
             cur = impl.pad(cur, 64);
-            cur += tiled.ggml_tiled_wdata_size(@intCast(n_tasks), node);
+            cur += tiled.ggmlTiledWdataSize(@intCast(n_tasks), node);
             return cur;
         },
 
@@ -304,7 +305,7 @@ fn nodeWorkSize(node: *const Tensor, n_tasks: i64) usize {
 
             // src1, staged into the kernel's type.
             if (src1.type != vec_dot_type) {
-                cur += types.ggml_row_size(vec_dot_type, types.ggml_nelements(src1)) + @sizeOf(i64);
+                cur += types.ggmlRowSize(vec_dot_type, types.ggmlNelements(src1)) + @sizeOf(i64);
             }
             // matrix_row_counts
             cur += n_as * @sizeOf(i64) + @sizeOf(i64);
@@ -315,14 +316,14 @@ fn nodeWorkSize(node: *const Tensor, n_tasks: i64) usize {
             cur += defs.cache_line_size * n_as + defs.cache_line_size;
             // Workspace for tiled (see tiled.h)
             cur = impl.pad(cur, 64);
-            cur += tiled.ggml_tiled_wdata_size(@intCast(n_tasks), node);
+            cur += tiled.ggmlTiledWdataSize(@intCast(n_tasks), node);
 
             return cur;
         },
 
         c.GGML_OP_OUT_PROD => {
             const src0 = impl.one(Tensor, node.src[0]);
-            if (types.ggml_is_quantized(src0.type) or src0.type == c.GGML_TYPE_F8_E4M3 or
+            if (types.ggmlIsQuantized(src0.type) or src0.type == c.GGML_TYPE_F8_E4M3 or
                 src0.type == c.GGML_TYPE_F16)
             {
                 return f32_size * @as(usize, @intCast(src0.ne[0] * n_tasks));
@@ -388,7 +389,7 @@ fn nodeWorkSize(node: *const Tensor, n_tasks: i64) usize {
             );
             impl.assert(src1.type == c.GGML_TYPE_F32, "node->src[1]->type == GGML_TYPE_F32");
 
-            return types.ggml_type_size(src0.type) *
+            return types.ggmlTypeSize(src0.type) *
                 @as(usize, @intCast(ne00 * ne01 * ne02 * ne03 + ne10 * ne11 * ne12 * ne13));
         },
 
@@ -432,7 +433,7 @@ fn nodeWorkSize(node: *const Tensor, n_tasks: i64) usize {
         },
 
         c.GGML_OP_CROSS_ENTROPY_LOSS => {
-            return types.ggml_type_size(node.type) *
+            return types.ggmlTypeSize(node.type) *
                 @as(usize, @intCast(n_tasks + impl.one(Tensor, node.src[0]).ne[0] * n_tasks));
         },
 
@@ -557,8 +558,8 @@ test "mul_mat_id reserves room for all four sub-allocations" {
     const chunks = defs.cache_line_size * 3 + defs.cache_line_size;
     // Since v0.6.0 padded to 64 for the tiled workspace, which an F32 src0
     // never gets.
-    try std.testing.expectEqual(impl.pad(counts + rows + chunks, 64) + tiled.ggml_tiled_wdata_size(4, &node), size);
-    try std.testing.expectEqual(@as(usize, 0), tiled.ggml_tiled_wdata_size(4, &node));
+    try std.testing.expectEqual(impl.pad(counts + rows + chunks, 64) + tiled.ggmlTiledWdataSize(4, &node), size);
+    try std.testing.expectEqual(@as(usize, 0), tiled.ggmlTiledWdataSize(4, &node));
 }
 
 test "a node with no scratch needs none" {

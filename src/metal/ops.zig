@@ -42,10 +42,6 @@ const fusion = @import("fusion.zig");
 const Tensor = c.ggml_tensor;
 const Pwp = mc.PipelineWithParams;
 
-/// The allocator ported ggml uses — libc's, which is what a C entry point
-/// can reach, so memory crossing the C ABI can be freed by either side.
-const allocator = std.heap.c_allocator;
-
 /// Ports `GGML_METAL_MIN_THREADGROUPS` (ggml-metal-ops.cpp:20 @cd959bae9):
 /// the threadgroups needed to fill the GPU.
 const min_threadgroups: i64 = 128;
@@ -74,7 +70,7 @@ inline fn srcOpt(op: *const Tensor, i: usize) ?*const Tensor {
 
 /// Ports `ggml_metal_get_buffer_id` (ggml-metal-ops.cpp:22 @cd959bae9).
 ///
-/// Return: the Metal buffer and offset backing `t`, or a null handle when
+/// - Returns: the Metal buffer and offset backing `t`, or a null handle when
 /// `t` is absent. A view reads its source's buffer.
 fn getBufferId(t: ?*const Tensor) mc.BufferId {
     const tensor = t orelse return .{ .metal = null, .offs = 0 };
@@ -151,14 +147,14 @@ pub const Op = struct {
         use_capture: bool,
         debug_graph: c_int,
     ) *Op {
-        const self = allocator.create(Op) catch impl.abort("metal: out of memory allocating the op context");
+        const self = std.heap.c_allocator.create(Op) catch impl.abort("metal: out of memory allocating the op context");
 
         self.* = .{
             .dev = dev,
             .lib = mc.ggml_metal_device_get_library(dev) orelse impl.abort("metal: device has no library"),
             .enc = mc.ggml_metal_encoder_init(cmd_buf, use_concurrency) orelse
                 impl.abort("metal: could not create a command encoder"),
-            .mem_ranges = common.ggml_mem_ranges_init(debug_graph),
+            .mem_ranges = common.ggmlMemRangesInit(debug_graph),
             .finfo = finfo,
             .use_concurrency = use_concurrency,
             .use_capture = use_capture,
@@ -166,7 +162,7 @@ pub const Op = struct {
             .gf = gf,
             .idx_start = idx_start,
             .idx_end = idx_end,
-            .idxs = allocator.alloc(c_int, @intCast(@max(gf.n_nodes, 0))) catch
+            .idxs = std.heap.c_allocator.alloc(c_int, @intCast(@max(gf.n_nodes, 0))) catch
                 impl.abort("metal: out of memory allocating the node index list"),
             .n_idxs = 0,
         };
@@ -191,9 +187,9 @@ pub const Op = struct {
     fn deinit(self: *Op) void {
         mc.ggml_metal_encoder_end_encoding(self.enc);
         mc.ggml_metal_encoder_free(self.enc);
-        if (self.mem_ranges) |mr| common.ggml_mem_ranges_free(mr);
-        allocator.free(self.idxs);
-        allocator.destroy(self);
+        if (self.mem_ranges) |mr| common.ggmlMemRangesFree(mr);
+        std.heap.c_allocator.free(self.idxs);
+        std.heap.c_allocator.destroy(self);
     }
 
     /// Ports `n_nodes` (ggml-metal-ops.cpp:75 @cd959bae9).
@@ -215,13 +211,13 @@ pub const Op = struct {
     /// `i0` is renamed `j0`: Zig reserves every `iN` as an integer type
     /// name. Digit for digit, per the convention in `CLAUDE.md`.
     ///
-    /// Return: the matching pattern, or null; `n_out` receives the
+    /// - Returns: the matching pattern, or null; `n_out` receives the
     /// number of nodes it covers.
     fn canFuse(self: *const Op, j0: c_int, mode: fusion.Mode, n_out: *c_int) ?*const fusion.Fusion {
         // the C's `assert(use_fusion())` and `assert(i0 >= 0 && i0 < n_nodes())`
         // compile out in the reference's release build, as here
 
-        return fusion.ggml_metal_fusion_next(self.gf, self.idxs.ptr, self.nNodes(), j0, mode, n_out);
+        return fusion.ggmlMetalFusionNext(self.gf, self.idxs.ptr, self.nNodes(), j0, mode, n_out);
     }
 
     /// Ports `use_fusion` (ggml-metal-ops.cpp:95 @cd959bae9): whether to
@@ -229,24 +225,28 @@ pub const Op = struct {
     /// info, set from `GGML_METAL_FUSION_DISABLE` and overridable through
     /// `ggml_backend_fusion_set_enabled`.
     fn useFusion(self: *const Op) bool {
-        return fusion.ggml_metal_fusion_info_enabled(self.finfo);
+        return fusion.ggmlMetalFusionInfoEnabled(self.finfo);
     }
 
     /// Ports `count_fusions` (ggml-metal-ops.cpp:100 @cd959bae9): record
     /// that a fusion fired, indexed by its table entry.
     fn countFusions(self: *const Op, f: *const fusion.Fusion) void {
-        fusion.ggml_metal_fusion_info_count_fusion(self.finfo, f);
+        fusion.ggmlMetalFusionInfoCountFusion(self.finfo, f);
     }
 
     /// `ggml_metal_fusion_info_debug(ctx->finfo)`, which the encoders read
     /// where they used to read `ctx->debug_fusion`.
     fn debugFusion(self: *const Op) c_int {
-        return fusion.ggml_metal_fusion_info_debug(self.finfo);
+        return fusion.ggmlMetalFusionInfoDebug(self.finfo);
     }
 };
 
+comptime {
+    @export(&ggmlMetalOpInit, .{ .name = "ggml_metal_op_init" });
+}
+
 /// Ports `ggml_metal_op_init` (ggml-metal-ops.cpp:127 @cd959bae9).
-pub export fn ggml_metal_op_init(
+pub fn ggmlMetalOpInit(
     dev: *mc.Device,
     cmd_buf: mc.CmdBuf,
     gf: *impl.CGraph,
@@ -270,13 +270,21 @@ pub export fn ggml_metal_op_init(
     );
 }
 
+comptime {
+    @export(&ggmlMetalOpFree, .{ .name = "ggml_metal_op_free" });
+}
+
 /// Ports `ggml_metal_op_free` (ggml-metal-ops.cpp:151 @cd959bae9).
-pub export fn ggml_metal_op_free(ctx: *Op) callconv(.c) void {
+pub fn ggmlMetalOpFree(ctx: *Op) callconv(.c) void {
     ctx.deinit();
 }
 
+comptime {
+    @export(&ggmlMetalOpNNodes, .{ .name = "ggml_metal_op_n_nodes" });
+}
+
 /// Ports `ggml_metal_op_n_nodes` (ggml-metal-ops.cpp:155 @cd959bae9).
-pub export fn ggml_metal_op_n_nodes(ctx: *Op) callconv(.c) c_int {
+pub fn ggmlMetalOpNNodes(ctx: *Op) callconv(.c) c_int {
     return ctx.nNodes();
 }
 
@@ -287,7 +295,7 @@ fn concurrencyReset(ctx: *Op) bool {
 
     mc.ggml_metal_encoder_memory_barrier(ctx.enc);
 
-    common.ggml_mem_ranges_reset(mr);
+    common.ggmlMemRangesReset(mr);
 
     return true;
 }
@@ -297,14 +305,18 @@ fn concurrencyReset(ctx: *Op) bool {
 fn concurrencyCheck(ctx: *Op, node: *const Tensor) bool {
     const mr = ctx.mem_ranges orelse return false;
 
-    return common.ggml_mem_ranges_check(mr, node);
+    return common.ggmlMemRangesCheck(mr, node);
+}
+
+comptime {
+    @export(&ggmlMetalOpEncode, .{ .name = "ggml_metal_op_encode" });
 }
 
 /// Ports `ggml_metal_op_encode` (ggml-metal-ops.cpp:546 @cd959bae9).
 ///
-/// Return: how many nodes were consumed — more than one when the encoder
+/// - Returns: how many nodes were consumed — more than one when the encoder
 /// fused a run of them.
-pub export fn ggml_metal_op_encode(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpEncode(ctx: *Op, idx: c_int) callconv(.c) c_int {
     if (ctx.use_capture) {
         mc.ggml_metal_encoder_debug_group_push(ctx.enc, c.ggml_op_desc(ctx.node(idx)));
     }
@@ -328,7 +340,7 @@ pub export fn ggml_metal_op_encode(ctx: *Op, idx: c_int) callconv(.c) c_int {
 fn concurrencyAdd(ctx: *Op, node: *const Tensor) bool {
     const mr = ctx.mem_ranges orelse return true;
 
-    return common.ggml_mem_ranges_add(mr, node);
+    return common.ggmlMemRangesAdd(mr, node);
 }
 
 /// Ports the dispatch switch of `ggml_metal_op_encode_impl`
@@ -339,11 +351,11 @@ fn concurrencyAdd(ctx: *Op, node: *const Tensor) bool {
 /// the C would fall to its `default` and abort at run time.
 fn dispatch(ctx: *Op, node: *const Tensor, idx: c_int) c_int {
     return switch (node.op) {
-        c.GGML_OP_CONCAT => ggml_metal_op_concat(ctx, idx),
-        c.GGML_OP_ADD, c.GGML_OP_SUB, c.GGML_OP_MUL, c.GGML_OP_DIV => ggml_metal_op_bin(ctx, idx),
-        c.GGML_OP_ADD_ID => ggml_metal_op_add_id(ctx, idx),
-        c.GGML_OP_REPEAT => ggml_metal_op_repeat(ctx, idx),
-        c.GGML_OP_ACC => ggml_metal_op_acc(ctx, idx),
+        c.GGML_OP_CONCAT => ggmlMetalOpConcat(ctx, idx),
+        c.GGML_OP_ADD, c.GGML_OP_SUB, c.GGML_OP_MUL, c.GGML_OP_DIV => ggmlMetalOpBin(ctx, idx),
+        c.GGML_OP_ADD_ID => ggmlMetalOpAddId(ctx, idx),
+        c.GGML_OP_REPEAT => ggmlMetalOpRepeat(ctx, idx),
+        c.GGML_OP_ACC => ggmlMetalOpAcc(ctx, idx),
         c.GGML_OP_SCALE,
         c.GGML_OP_FILL,
         c.GGML_OP_CLAMP,
@@ -354,58 +366,58 @@ fn dispatch(ctx: *Op, node: *const Tensor, idx: c_int) c_int {
         c.GGML_OP_COS,
         c.GGML_OP_LOG,
         c.GGML_OP_UNARY,
-        => ggml_metal_op_unary(ctx, idx),
-        c.GGML_OP_SILU_BACK => ggml_metal_op_silu_back(ctx, idx),
-        c.GGML_OP_GLU => ggml_metal_op_glu(ctx, idx),
-        c.GGML_OP_SUM => ggml_metal_op_sum(ctx, idx),
-        c.GGML_OP_SUM_ROWS, c.GGML_OP_MEAN => ggml_metal_op_sum_rows(ctx, idx),
-        c.GGML_OP_CUMSUM => ggml_metal_op_cumsum(ctx, idx),
-        c.GGML_OP_LIGHTNING_INDEXER => ggml_metal_op_lightning_indexer(ctx, idx),
-        c.GGML_OP_TOP_K_MASK => ggml_metal_op_top_k_mask(ctx, idx),
+        => ggmlMetalOpUnary(ctx, idx),
+        c.GGML_OP_SILU_BACK => ggmlMetalOpSiluBack(ctx, idx),
+        c.GGML_OP_GLU => ggmlMetalOpGlu(ctx, idx),
+        c.GGML_OP_SUM => ggmlMetalOpSum(ctx, idx),
+        c.GGML_OP_SUM_ROWS, c.GGML_OP_MEAN => ggmlMetalOpSumRows(ctx, idx),
+        c.GGML_OP_CUMSUM => ggmlMetalOpCumsum(ctx, idx),
+        c.GGML_OP_LIGHTNING_INDEXER => ggmlMetalOpLightningIndexer(ctx, idx),
+        c.GGML_OP_TOP_K_MASK => ggmlMetalOpTopKMask(ctx, idx),
         c.GGML_OP_DSV4_HC_COMB,
         c.GGML_OP_DSV4_HC_PRE,
         c.GGML_OP_DSV4_HC_POST,
-        => ggml_metal_op_dsv4_hc(ctx, idx),
-        c.GGML_OP_SOFT_MAX => ggml_metal_op_soft_max(ctx, idx),
-        c.GGML_OP_SSM_CONV => ggml_metal_op_ssm_conv(ctx, idx),
-        c.GGML_OP_SSM_SCAN => ggml_metal_op_ssm_scan(ctx, idx),
-        c.GGML_OP_RWKV_WKV6, c.GGML_OP_RWKV_WKV7 => ggml_metal_op_rwkv(ctx, idx),
-        c.GGML_OP_GATED_DELTA_NET => ggml_metal_op_gated_delta_net(ctx, idx),
-        c.GGML_OP_SOLVE_TRI => ggml_metal_op_solve_tri(ctx, idx),
-        c.GGML_OP_MUL_MAT => ggml_metal_op_mul_mat(ctx, idx),
-        c.GGML_OP_MUL_MAT_ID => ggml_metal_op_mul_mat_id(ctx, idx),
-        c.GGML_OP_GET_ROWS => ggml_metal_op_get_rows(ctx, idx),
-        c.GGML_OP_SET_ROWS => ggml_metal_op_set_rows(ctx, idx),
-        c.GGML_OP_DIAG => ggml_metal_op_diag(ctx, idx),
-        c.GGML_OP_L2_NORM => ggml_metal_op_l2_norm(ctx, idx),
-        c.GGML_OP_GROUP_NORM => ggml_metal_op_group_norm(ctx, idx),
-        c.GGML_OP_NORM, c.GGML_OP_RMS_NORM => ggml_metal_op_norm(ctx, idx),
-        c.GGML_OP_ROPE, c.GGML_OP_ROPE_BACK => ggml_metal_op_rope(ctx, idx),
-        c.GGML_OP_IM2COL => ggml_metal_op_im2col(ctx, idx),
-        c.GGML_OP_CONV_2D => ggml_metal_op_conv_2d(ctx, idx),
-        c.GGML_OP_CONV_2D_DW => ggml_metal_op_conv_2d_dw(ctx, idx),
-        c.GGML_OP_CONV_TRANSPOSE_1D => ggml_metal_op_conv_transpose_1d(ctx, idx),
-        c.GGML_OP_CONV_TRANSPOSE_2D => ggml_metal_op_conv_transpose_2d(ctx, idx),
-        c.GGML_OP_COL2IM_1D => ggml_metal_op_col2im_1d(ctx, idx),
-        c.GGML_OP_CONV_3D => ggml_metal_op_conv_3d(ctx, idx),
-        c.GGML_OP_UPSCALE => ggml_metal_op_upscale(ctx, idx),
-        c.GGML_OP_PAD => ggml_metal_op_pad(ctx, idx),
-        c.GGML_OP_PAD_REFLECT_1D => ggml_metal_op_pad_reflect_1d(ctx, idx),
-        c.GGML_OP_ROLL => ggml_metal_op_roll(ctx, idx),
-        c.GGML_OP_ARANGE => ggml_metal_op_arange(ctx, idx),
-        c.GGML_OP_TIMESTEP_EMBEDDING => ggml_metal_op_timestep_embedding(ctx, idx),
-        c.GGML_OP_ARGSORT => ggml_metal_op_argsort(ctx, idx),
-        c.GGML_OP_TOP_K => ggml_metal_op_top_k(ctx, idx),
-        c.GGML_OP_TRI => ggml_metal_op_tri(ctx, idx),
-        c.GGML_OP_FLASH_ATTN_EXT => ggml_metal_op_flash_attn_ext(ctx, idx),
-        c.GGML_OP_SET => ggml_metal_op_set(ctx, idx),
-        c.GGML_OP_DUP, c.GGML_OP_CPY, c.GGML_OP_CONT => ggml_metal_op_cpy(ctx, idx),
-        c.GGML_OP_POOL_1D => ggml_metal_op_pool_1d(ctx, idx),
-        c.GGML_OP_POOL_2D => ggml_metal_op_pool_2d(ctx, idx),
-        c.GGML_OP_ARGMAX => ggml_metal_op_argmax(ctx, idx),
-        c.GGML_OP_OPT_STEP_ADAMW => ggml_metal_op_opt_step_adamw(ctx, idx),
-        c.GGML_OP_OPT_STEP_SGD => ggml_metal_op_opt_step_sgd(ctx, idx),
-        c.GGML_OP_COUNT_EQUAL => ggml_metal_op_count_equal(ctx, idx),
+        => ggmlMetalOpDsv4Hc(ctx, idx),
+        c.GGML_OP_SOFT_MAX => ggmlMetalOpSoftMax(ctx, idx),
+        c.GGML_OP_SSM_CONV => ggmlMetalOpSsmConv(ctx, idx),
+        c.GGML_OP_SSM_SCAN => ggmlMetalOpSsmScan(ctx, idx),
+        c.GGML_OP_RWKV_WKV6, c.GGML_OP_RWKV_WKV7 => ggmlMetalOpRwkv(ctx, idx),
+        c.GGML_OP_GATED_DELTA_NET => ggmlMetalOpGatedDeltaNet(ctx, idx),
+        c.GGML_OP_SOLVE_TRI => ggmlMetalOpSolveTri(ctx, idx),
+        c.GGML_OP_MUL_MAT => ggmlMetalOpMulMat(ctx, idx),
+        c.GGML_OP_MUL_MAT_ID => ggmlMetalOpMulMatId(ctx, idx),
+        c.GGML_OP_GET_ROWS => ggmlMetalOpGetRows(ctx, idx),
+        c.GGML_OP_SET_ROWS => ggmlMetalOpSetRows(ctx, idx),
+        c.GGML_OP_DIAG => ggmlMetalOpDiag(ctx, idx),
+        c.GGML_OP_L2_NORM => ggmlMetalOpL2Norm(ctx, idx),
+        c.GGML_OP_GROUP_NORM => ggmlMetalOpGroupNorm(ctx, idx),
+        c.GGML_OP_NORM, c.GGML_OP_RMS_NORM => ggmlMetalOpNorm(ctx, idx),
+        c.GGML_OP_ROPE, c.GGML_OP_ROPE_BACK => ggmlMetalOpRope(ctx, idx),
+        c.GGML_OP_IM2COL => ggmlMetalOpIm2col(ctx, idx),
+        c.GGML_OP_CONV_2D => ggmlMetalOpConv2d(ctx, idx),
+        c.GGML_OP_CONV_2D_DW => ggmlMetalOpConv2dDw(ctx, idx),
+        c.GGML_OP_CONV_TRANSPOSE_1D => ggmlMetalOpConvTranspose1d(ctx, idx),
+        c.GGML_OP_CONV_TRANSPOSE_2D => ggmlMetalOpConvTranspose2d(ctx, idx),
+        c.GGML_OP_COL2IM_1D => ggmlMetalOpCol2im1d(ctx, idx),
+        c.GGML_OP_CONV_3D => ggmlMetalOpConv3d(ctx, idx),
+        c.GGML_OP_UPSCALE => ggmlMetalOpUpscale(ctx, idx),
+        c.GGML_OP_PAD => ggmlMetalOpPad(ctx, idx),
+        c.GGML_OP_PAD_REFLECT_1D => ggmlMetalOpPadReflect1d(ctx, idx),
+        c.GGML_OP_ROLL => ggmlMetalOpRoll(ctx, idx),
+        c.GGML_OP_ARANGE => ggmlMetalOpArange(ctx, idx),
+        c.GGML_OP_TIMESTEP_EMBEDDING => ggmlMetalOpTimestepEmbedding(ctx, idx),
+        c.GGML_OP_ARGSORT => ggmlMetalOpArgsort(ctx, idx),
+        c.GGML_OP_TOP_K => ggmlMetalOpTopK(ctx, idx),
+        c.GGML_OP_TRI => ggmlMetalOpTri(ctx, idx),
+        c.GGML_OP_FLASH_ATTN_EXT => ggmlMetalOpFlashAttnExt(ctx, idx),
+        c.GGML_OP_SET => ggmlMetalOpSet(ctx, idx),
+        c.GGML_OP_DUP, c.GGML_OP_CPY, c.GGML_OP_CONT => ggmlMetalOpCpy(ctx, idx),
+        c.GGML_OP_POOL_1D => ggmlMetalOpPool1d(ctx, idx),
+        c.GGML_OP_POOL_2D => ggmlMetalOpPool2d(ctx, idx),
+        c.GGML_OP_ARGMAX => ggmlMetalOpArgmax(ctx, idx),
+        c.GGML_OP_OPT_STEP_ADAMW => ggmlMetalOpOptStepAdamw(ctx, idx),
+        c.GGML_OP_OPT_STEP_SGD => ggmlMetalOpOptStepSgd(ctx, idx),
+        c.GGML_OP_COUNT_EQUAL => ggmlMetalOpCountEqual(ctx, idx),
         else => {
             impl.logError("%s: error: node %3d, op = %8s not implemented\n", .{
                 "ggml_metal_op_encode_impl", idx, c.ggml_op_name(node.op),
@@ -467,7 +479,7 @@ fn encodeImpl(ctx: *Op, idx: c_int) c_int {
             var n_fuse: c_int = 1;
             if (ctx.canFuse(idx, .full, &n_fuse) != null) {
                 // fused kernels write to the last node of the group, not necessarily to the first node's dst
-                is_concurrent = common.ggml_mem_ranges_check(ctx.mem_ranges.?, ctx.node(idx + n_fuse - 1));
+                is_concurrent = common.ggmlMemRangesCheck(ctx.mem_ranges.?, ctx.node(idx + n_fuse - 1));
             }
         }
 
@@ -550,25 +562,15 @@ fn debugLogShapes(node: *const Tensor) void {
 /// the swap happens.
 pub const encoders_implemented = true;
 
-/// The 53 per-op encoders are the bulk of what remains.
-///
-/// They are stubs that abort, rather than left out, so the dispatch
-/// switch above compiles and can be diffed against the C's — which it
-/// has been, label for label. This is safe only because `module.zig`
-/// does not import this file: nothing can reach them. Wired in as they
-/// stand, the first node of any graph aborts loudly, which is a
-/// deliberately loud failure and not a silent fallback.
-const todo = struct {
-    fn notPorted(comptime what: []const u8) noreturn {
-        impl.abort("metal: ggml_metal_op_" ++ what ++ " is not ported yet");
-    }
-};
+comptime {
+    @export(&ggmlMetalOpConcat, .{ .name = "ggml_metal_op_concat" });
+}
 
 /// Ports `ggml_metal_op_concat` (ggml-metal-ops.cpp:564 @cd959bae9).
 ///
 /// A quantized type concatenates whole blocks: its row lengths are passed
 /// in blocks, so `nb0 == type_size` is the block's size.
-pub export fn ggml_metal_op_concat(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpConcat(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     const lib = ctx.lib;
@@ -647,7 +649,7 @@ pub export fn ggml_metal_op_concat(ctx: *Op, idx: c_int) callconv(.c) c_int {
         .nc0 = nc0,
     };
 
-    const pipeline = library.ggml_metal_library_get_pipeline_concat(lib, op.type);
+    const pipeline = library.ggmlMetalLibraryGetPipelineConcat(lib, op.type);
 
     mc.ggml_metal_encoder_set_pipeline(enc, pipeline);
     setBytes(enc, &args, 0);
@@ -660,6 +662,10 @@ pub export fn ggml_metal_op_concat(ctx: *Op, idx: c_int) callconv(.c) c_int {
     return 1;
 }
 
+comptime {
+    @export(&ggmlMetalOpBin, .{ .name = "ggml_metal_op_bin" });
+}
+
 /// Ports `ggml_metal_op_bin` (ggml-metal-ops.cpp:4341 @cd959bae9).
 ///
 /// Fuses a run of up to **seven** `ADD`s into one kernel by passing each
@@ -669,7 +675,7 @@ pub export fn ggml_metal_op_concat(ctx: *Op, idx: c_int) callconv(.c) c_int {
 /// `ggml_metal_op_snake_fused` instead, and one opening the MoE output
 /// reduction to `ggml_metal_op_moe_reduce`. Which run fuses is the fusion
 /// table's answer (`fusion.zig`), the same one the optimizer packed by.
-pub export fn ggml_metal_op_bin(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpBin(ctx: *Op, idx: c_int) callconv(.c) c_int {
     var n_fuse: c_int = 1;
     var fus: ?*const fusion.Fusion = null;
 
@@ -682,17 +688,17 @@ pub export fn ggml_metal_op_bin(ctx: *Op, idx: c_int) callconv(.c) c_int {
 
         // snake activation autofuse: mul -> sin -> sqr -> mul -> add
         if (fus) |f| {
-            if (fusion.ggml_metal_fusion_get_id(f) == .snake) {
+            if (fusion.ggmlMetalFusionGetId(f) == .snake) {
                 ctx.countFusions(f);
-                return ggml_metal_op_snake_fused(ctx, idx);
+                return ggmlMetalOpSnakeFused(ctx, idx);
             }
         }
 
         // MoE output reduction: experts * weights -> weighted sum
         if (fus) |f| {
-            if (fusion.ggml_metal_fusion_get_id(f) == .moe_reduce) {
+            if (fusion.ggmlMetalFusionGetId(f) == .moe_reduce) {
                 ctx.countFusions(f);
-                return ggml_metal_op_moe_reduce(ctx, idx);
+                return ggmlMetalOpMoeReduce(ctx, idx);
             }
         }
     }
@@ -752,7 +758,7 @@ pub export fn ggml_metal_op_bin(ctx: *Op, idx: c_int) callconv(.c) c_int {
     // c[1] = add(c[0], b[1])
     // c[2] = add(c[1], b[2])
     // ...
-    if (use_fusion and fus != null and fusion.ggml_metal_fusion_get_id(fus.?) == .add_chain) {
+    if (use_fusion and fus != null and fusion.ggmlMetalFusionGetId(fus.?) == .add_chain) {
         // the offsets of the fused addends are relative to the start of the src1 buffer
         var i: c_int = 1;
         while (i < n_fuse) : (i += 1) {
@@ -769,7 +775,7 @@ pub export fn ggml_metal_op_bin(ctx: *Op, idx: c_int) callconv(.c) c_int {
     // the offsets of src1 and all fused buffers are relative to the start of the src1 buffer
     bid_src1.offs = 0;
 
-    const pipeline = library.ggml_metal_library_get_pipeline_bin(lib, op, n_fuse);
+    const pipeline = library.ggmlMetalLibraryGetPipelineBin(lib, op, n_fuse);
 
     if (n_fuse > 1) {
         bid_dst = getBufferId(ctx.node(idx + n_fuse - 1));
@@ -832,11 +838,15 @@ pub export fn ggml_metal_op_bin(ctx: *Op, idx: c_int) callconv(.c) c_int {
     return n_fuse;
 }
 
+comptime {
+    @export(&ggmlMetalOpAddId, .{ .name = "ggml_metal_op_add_id" });
+}
+
 /// Ports `ggml_metal_op_add_id` (ggml-metal-ops.cpp:3144 @cd959bae9).
 ///
 /// Short, despite the 250 lines the file gives it -- the rest of that
 /// span is the `flash_attn_ext` helper group that follows it.
-pub export fn ggml_metal_op_add_id(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpAddId(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     const lib = ctx.lib;
@@ -862,7 +872,7 @@ pub export fn ggml_metal_op_add_id(ctx: *Op, idx: c_int) callconv(.c) c_int {
         .nb21 = s2.nb[1],
     };
 
-    const pipeline = library.ggml_metal_library_get_pipeline_base(lib, c.GGML_OP_ADD_ID);
+    const pipeline = library.ggmlMetalLibraryGetPipelineBase(lib, c.GGML_OP_ADD_ID);
 
     mc.ggml_metal_encoder_set_pipeline(enc, pipeline);
     setBytes(enc, &args, 0);
@@ -886,9 +896,13 @@ pub export fn ggml_metal_op_add_id(ctx: *Op, idx: c_int) callconv(.c) c_int {
     return 1;
 }
 
+comptime {
+    @export(&ggmlMetalOpRepeat, .{ .name = "ggml_metal_op_repeat" });
+}
+
 /// Ports `ggml_metal_op_repeat` (ggml-metal-ops.cpp:658 @cd959bae9). v0.6.0
 /// added only a TODO comment.
-pub export fn ggml_metal_op_repeat(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpRepeat(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     const lib = ctx.lib;
@@ -896,7 +910,7 @@ pub export fn ggml_metal_op_repeat(ctx: *Op, idx: c_int) callconv(.c) c_int {
 
     const s0 = src(op, 0);
 
-    const pipeline = library.ggml_metal_library_get_pipeline_repeat(lib, op.type);
+    const pipeline = library.ggmlMetalLibraryGetPipelineRepeat(lib, op.type);
 
     var args: kargs.repeat = .{
         .ne00 = @intCast(s0.ne[0]),
@@ -937,13 +951,17 @@ pub export fn ggml_metal_op_repeat(ctx: *Op, idx: c_int) callconv(.c) c_int {
     return 1;
 }
 
+comptime {
+    @export(&ggmlMetalOpAcc, .{ .name = "ggml_metal_op_acc" });
+}
+
 /// Ports `ggml_metal_op_acc` (ggml-metal-ops.cpp:704 @cd959bae9).
 ///
 /// Two dispatches when not in-place: a `cpy` of src0 into dst, then an
 /// `ADD` of src1 into a *window* of it — which is what the `pnb*` strides
 /// and `offs` describe. Note the `bin` args deliberately feed `src[1]`'s
 /// shape into the `ne0*` fields and the window strides into `nb0*`.
-pub export fn ggml_metal_op_acc(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpAcc(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     const lib = ctx.lib;
@@ -971,7 +989,7 @@ pub export fn ggml_metal_op_acc(ctx: *Op, idx: c_int) callconv(.c) c_int {
         // not sure how to avoid this
         // TODO: make a simpler cpy_bytes kernel
 
-        const pipeline = library.ggml_metal_library_get_pipeline_cpy(lib, s0.type, op.type);
+        const pipeline = library.ggmlMetalLibraryGetPipelineCpy(lib, s0.type, op.type);
 
         var args: kargs.cpy = .{
             .nk0 = s0.ne[0],
@@ -1042,7 +1060,7 @@ pub export fn ggml_metal_op_acc(ctx: *Op, idx: c_int) callconv(.c) c_int {
         .o1 = .{ 0, 0, 0, 0, 0, 0, 0, 0 },
     };
 
-    const pipeline = library.ggml_metal_library_get_pipeline_bin_one(lib, c.GGML_OP_ADD);
+    const pipeline = library.ggmlMetalLibraryGetPipelineBinOne(lib, c.GGML_OP_ADD);
 
     mc.ggml_metal_encoder_set_pipeline(enc, pipeline);
     setBytes(enc, &args, 0);
@@ -1071,12 +1089,16 @@ pub export fn ggml_metal_op_acc(ctx: *Op, idx: c_int) callconv(.c) c_int {
     return 1;
 }
 
+comptime {
+    @export(&ggmlMetalOpUnary, .{ .name = "ggml_metal_op_unary" });
+}
+
 /// Ports `ggml_metal_op_unary` (ggml-metal-ops.cpp:821 @cd959bae9).
 ///
 /// One kernel for nine ops plus twenty-two `GGML_UNARY_OP_*`; the op's
 /// own parameters are packed into the six trailing float fields, which
 /// start at zero and are filled only by the arms that use them.
-pub export fn ggml_metal_op_unary(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpUnary(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     const lib = ctx.lib;
@@ -1142,7 +1164,7 @@ pub export fn ggml_metal_op_unary(ctx: *Op, idx: c_int) callconv(.c) c_int {
         args.val = impl.getOpParamsF32(op, 4); // eps
     }
 
-    const pipeline = library.ggml_metal_library_get_pipeline_unary(lib, op);
+    const pipeline = library.ggmlMetalLibraryGetPipelineUnary(lib, op);
 
     if (pipeline.c4) {
         args.ne00 = @divTrunc(ne00, 4);
@@ -1183,14 +1205,18 @@ pub export fn ggml_metal_op_unary(ctx: *Op, idx: c_int) callconv(.c) c_int {
     return 1;
 }
 
+comptime {
+    @export(&ggmlMetalOpSiluBack, .{ .name = "ggml_metal_op_silu_back" });
+}
+
 /// Ports `ggml_metal_op_silu_back` (ggml-metal-ops.cpp:4482 @cd959bae9).
-pub export fn ggml_metal_op_silu_back(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpSiluBack(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     const lib = ctx.lib;
     const enc = ctx.enc;
 
-    const pipeline = library.ggml_metal_library_get_pipeline_silu_back(lib, op);
+    const pipeline = library.ggmlMetalLibraryGetPipelineSiluBack(lib, op);
 
     const ne: i64 = c.ggml_nelements(op);
 
@@ -1218,12 +1244,16 @@ pub export fn ggml_metal_op_silu_back(ctx: *Op, idx: c_int) callconv(.c) c_int {
     return 1;
 }
 
+comptime {
+    @export(&ggmlMetalOpGlu, .{ .name = "ggml_metal_op_glu" });
+}
+
 /// Ports `ggml_metal_op_glu` (ggml-metal-ops.cpp:916 @cd959bae9).
 ///
 /// `src[1]` is optional: without it the kernel reads both halves out of
 /// `src[0]`, which is what `i00`/`i10` select — and note the C passes
 /// **0** for both when `src[1]` is present, having just computed them.
-pub export fn ggml_metal_op_glu(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpGlu(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     const lib = ctx.lib;
@@ -1236,7 +1266,7 @@ pub export fn ggml_metal_op_glu(ctx: *Op, idx: c_int) callconv(.c) c_int {
         impl.assert(c.ggml_are_same_shape(src0, s1), "ggml_are_same_shape(op->src[0], op->src[1])");
     }
 
-    const pipeline = library.ggml_metal_library_get_pipeline_glu(lib, op);
+    const pipeline = library.ggmlMetalLibraryGetPipelineGlu(lib, op);
 
     const swp = impl.getOpParamsI32(op, 1);
     const alpha = impl.getOpParamsF32(op, 2);
@@ -1285,8 +1315,12 @@ pub export fn ggml_metal_op_glu(ctx: *Op, idx: c_int) callconv(.c) c_int {
     return 1;
 }
 
+comptime {
+    @export(&ggmlMetalOpSum, .{ .name = "ggml_metal_op_sum" });
+}
+
 /// Ports `ggml_metal_op_sum` (ggml-metal-ops.cpp:976 @cd959bae9).
-pub export fn ggml_metal_op_sum(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpSum(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     const lib = ctx.lib;
@@ -1300,7 +1334,7 @@ pub export fn ggml_metal_op_sum(ctx: *Op, idx: c_int) callconv(.c) c_int {
         .np = n,
     };
 
-    const pipeline = library.ggml_metal_library_get_pipeline_sum(lib, op);
+    const pipeline = library.ggmlMetalLibraryGetPipelineSum(lib, op);
 
     var nth: c_int = 32; // SIMD width
 
@@ -1325,8 +1359,12 @@ pub export fn ggml_metal_op_sum(ctx: *Op, idx: c_int) callconv(.c) c_int {
     return 1;
 }
 
+comptime {
+    @export(&ggmlMetalOpSumRows, .{ .name = "ggml_metal_op_sum_rows" });
+}
+
 /// Ports `ggml_metal_op_sum_rows` (ggml-metal-ops.cpp:1013 @cd959bae9).
-pub export fn ggml_metal_op_sum_rows(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpSumRows(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     const lib = ctx.lib;
@@ -1361,7 +1399,7 @@ pub export fn ggml_metal_op_sum_rows(ctx: *Op, idx: c_int) callconv(.c) c_int {
         .nb3 = op.nb[3],
     };
 
-    const pipeline = library.ggml_metal_library_get_pipeline_sum_rows(lib, op);
+    const pipeline = library.ggmlMetalLibraryGetPipelineSumRows(lib, op);
 
     if (pipeline.c4) {
         args.ne00 = @divTrunc(ne00, 4);
@@ -1399,6 +1437,10 @@ pub export fn ggml_metal_op_sum_rows(ctx: *Op, idx: c_int) callconv(.c) c_int {
     return 1;
 }
 
+comptime {
+    @export(&ggmlMetalOpCumsum, .{ .name = "ggml_metal_op_cumsum" });
+}
+
 /// Ports `ggml_metal_op_cumsum` (ggml-metal-ops.cpp:1078 @cd959bae9).
 ///
 /// Up to three dispatches: a per-block scan, then — only when the row
@@ -1406,7 +1448,7 @@ pub export fn ggml_metal_op_sum_rows(ctx: *Op, idx: c_int) callconv(.c) c_int {
 /// those back into the result. The scratch sits immediately after `dst`,
 /// which is why `backend.zig`'s `get_alloc_size` doubles the allocation
 /// for `CUMSUM`.
-pub export fn ggml_metal_op_cumsum(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpCumsum(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     const lib = ctx.lib;
@@ -1421,7 +1463,7 @@ pub export fn ggml_metal_op_cumsum(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const ne02: c_int = @intCast(s0.ne[2]);
     const ne03: c_int = @intCast(s0.ne[3]);
 
-    const pipeline_blk = library.ggml_metal_library_get_pipeline_cumsum_blk(lib, op);
+    const pipeline_blk = library.ggmlMetalLibraryGetPipelineCumsumBlk(lib, op);
 
     var nth: c_int = 1;
     while (nth < ne00 and 2 * nth <= maxThreads(pipeline_blk)) {
@@ -1534,7 +1576,7 @@ pub export fn ggml_metal_op_cumsum(ctx: *Op, idx: c_int) callconv(.c) c_int {
         _ = concurrencyReset(ctx);
 
         {
-            const pipeline_add = library.ggml_metal_library_get_pipeline_cumsum_add(lib, op);
+            const pipeline_add = library.ggmlMetalLibraryGetPipelineCumsumAdd(lib, op);
 
             var args: kargs.cumsum_add = .{
                 .ne00 = ne00,
@@ -1575,6 +1617,10 @@ pub export fn ggml_metal_op_cumsum(ctx: *Op, idx: c_int) callconv(.c) c_int {
     return 1;
 }
 
+comptime {
+    @export(&ggmlMetalOpLightningIndexer, .{ .name = "ggml_metal_op_lightning_indexer" });
+}
+
 /// Ports `ggml_metal_op_lightning_indexer` (ggml-metal-ops.cpp:1370
 /// @cd959bae9).
 ///
@@ -1584,7 +1630,7 @@ pub export fn ggml_metal_op_cumsum(ctx: *Op, idx: c_int) callconv(.c) c_int {
 /// Note the C binds the buffers **before** setting the pipeline and the
 /// bytes, where every other encoder sets the pipeline first. Order is
 /// preserved.
-pub export fn ggml_metal_op_lightning_indexer(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpLightningIndexer(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     const enc = ctx.enc;
@@ -1641,7 +1687,7 @@ pub export fn ggml_metal_op_lightning_indexer(ctx: *Op, idx: c_int) callconv(.c)
     const nkptg = fc.OP_LIGHTNING_INDEXER_NKPSG * nsg;
     const nbptg = fc.OP_LIGHTNING_INDEXER_NBPTG;
 
-    const pipeline = library.ggml_metal_library_get_pipeline_lightning_indexer(ctx.lib, op);
+    const pipeline = library.ggmlMetalLibraryGetPipelineLightningIndexer(ctx.lib, op);
     mc.ggml_metal_encoder_set_pipeline(enc, pipeline);
     setBytes(enc, &args, 0);
     mc.ggml_metal_encoder_dispatch_threadgroups(
@@ -1657,6 +1703,10 @@ pub export fn ggml_metal_op_lightning_indexer(ctx: *Op, idx: c_int) callconv(.c)
     return 1;
 }
 
+comptime {
+    @export(&ggmlMetalOpTopKMask, .{ .name = "ggml_metal_op_top_k_mask" });
+}
+
 /// Ports `ggml_metal_op_top_k_mask` (ggml-metal-ops.cpp:1435 @cd959bae9).
 ///
 /// `src[0]` is the mask, `src[1]` the indices kept per row, and three
@@ -1666,7 +1716,7 @@ pub export fn ggml_metal_op_lightning_indexer(ctx: *Op, idx: c_int) callconv(.c)
 /// offset allow, a barrier, then one threadgroup per row of `dst` that
 /// overwrites the kept cells with the mask's values. An absent source binds
 /// the mask in its slot, and its strides are zero.
-pub export fn ggml_metal_op_top_k_mask(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpTopKMask(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     const lib = ctx.lib;
@@ -1737,7 +1787,7 @@ pub export fn ggml_metal_op_top_k_mask(ctx: *Op, idx: c_int) callconv(.c) c_int 
 
     // the fill covers the whole dst, the scatter overwrites the kept cells with the mask values
     {
-        const pipeline_fill = library.ggml_metal_library_get_pipeline_top_k_mask(lib, op, true, false, false, false, vec);
+        const pipeline_fill = library.ggmlMetalLibraryGetPipelineTopKMask(lib, op, true, false, false, false, vec);
 
         const n_fill: i64 = @divTrunc(n_elems, @as(i64, if (vec) 4 else 1));
         const nth_max = maxThreads(pipeline_fill);
@@ -1758,7 +1808,7 @@ pub export fn ggml_metal_op_top_k_mask(ctx: *Op, idx: c_int) callconv(.c) c_int 
     }
 
     {
-        const pipeline = library.ggml_metal_library_get_pipeline_top_k_mask(lib, op, false, has_score, has_blocks, has_extra, false);
+        const pipeline = library.ggmlMetalLibraryGetPipelineTopKMask(lib, op, false, has_score, has_blocks, has_extra, false);
 
         const n_max = n_top + n_extra;
         const nth_max = maxThreads(pipeline);
@@ -1784,6 +1834,10 @@ pub export fn ggml_metal_op_top_k_mask(ctx: *Op, idx: c_int) callconv(.c) c_int 
     return 1;
 }
 
+comptime {
+    @export(&ggmlMetalOpDsv4Hc, .{ .name = "ggml_metal_op_dsv4_hc" });
+}
+
 /// Ports `ggml_metal_op_dsv4_hc` (ggml-metal-ops.cpp:1553 @cd959bae9).
 ///
 /// Three ops behind one entry point, each with its own `kargs` struct and
@@ -1792,11 +1846,11 @@ pub export fn ggml_metal_op_top_k_mask(ctx: *Op, idx: c_int) callconv(.c) c_int 
 /// hyper-connections (a function constant, not an assertion), a `scale`
 /// and the gated kernel from op_params slot 1, and `HC_POST` an absent
 /// `comb`, which binds the destination one slot earlier.
-pub export fn ggml_metal_op_dsv4_hc(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpDsv4Hc(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     const enc = ctx.enc;
-    const pipeline = library.ggml_metal_library_get_pipeline_dsv4_hc(ctx.lib, op);
+    const pipeline = library.ggmlMetalLibraryGetPipelineDsv4Hc(ctx.lib, op);
 
     mc.ggml_metal_encoder_set_pipeline(enc, pipeline);
 
@@ -1944,6 +1998,10 @@ pub export fn ggml_metal_op_dsv4_hc(ctx: *Op, idx: c_int) callconv(.c) c_int {
     return 1;
 }
 
+comptime {
+    @export(&ggmlMetalOpSoftMax, .{ .name = "ggml_metal_op_soft_max" });
+}
+
 /// Ports `ggml_metal_op_soft_max` (ggml-metal-ops.cpp:1688 @cd959bae9).
 ///
 /// A `SOFT_MAX` opening the MoE routing pattern goes to
@@ -1951,14 +2009,14 @@ pub export fn ggml_metal_op_dsv4_hc(ctx: *Op, idx: c_int) callconv(.c) c_int {
 ///
 /// `src[1]` (mask) and `src[2]` (sinks) are both optional; when absent
 /// the C binds `src[0]` in their slot rather than a null buffer.
-pub export fn ggml_metal_op_soft_max(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpSoftMax(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     if (ctx.useFusion()) {
         var n: c_int = 1;
         if (ctx.canFuse(idx, .full, &n)) |f| {
-            if (fusion.ggml_metal_fusion_get_id(f) == .topk_moe) {
-                return ggml_metal_op_topk_moe(ctx, idx);
+            if (fusion.ggmlMetalFusionGetId(f) == .topk_moe) {
+                return ggmlMetalOpTopkMoe(ctx, idx);
             }
         }
     }
@@ -2010,7 +2068,7 @@ pub export fn ggml_metal_op_soft_max(ctx: *Op, idx: c_int) callconv(.c) c_int {
         .n_head_log2 = n_head_log2,
     };
 
-    const pipeline = library.ggml_metal_library_get_pipeline_soft_max(lib, op);
+    const pipeline = library.ggmlMetalLibraryGetPipelineSoftMax(lib, op);
 
     var nth: c_int = 32; // SIMD width
 
@@ -2048,12 +2106,16 @@ pub export fn ggml_metal_op_soft_max(ctx: *Op, idx: c_int) callconv(.c) c_int {
     return 1;
 }
 
+comptime {
+    @export(&ggmlMetalOpSsmConv, .{ .name = "ggml_metal_op_ssm_conv" });
+}
+
 /// Ports `ggml_metal_op_ssm_conv` (ggml-metal-ops.cpp:1786 @cd959bae9).
 ///
 /// Fuses a following SILU (`SSM_CONV_SILU`): the kernel applies it and
 /// writes to the UNARY's destination. Since v0.5.0 the kernel width `nc`
 /// (`ne10`) is a function constant rather than a kernel argument.
-pub export fn ggml_metal_op_ssm_conv(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpSsmConv(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     const lib = ctx.lib;
@@ -2070,7 +2132,7 @@ pub export fn ggml_metal_op_ssm_conv(ctx: *Op, idx: c_int) callconv(.c) c_int {
     if (ctx.useFusion()) {
         var n: c_int = 1;
         if (ctx.canFuse(idx, .full, &n)) |f| {
-            if (fusion.ggml_metal_fusion_get_id(f) == .ssm_conv_silu) {
+            if (fusion.ggmlMetalFusionGetId(f) == .ssm_conv_silu) {
                 n_fuse = n;
                 use_silu = true;
 
@@ -2123,7 +2185,7 @@ pub export fn ggml_metal_op_ssm_conv(ctx: *Op, idx: c_int) callconv(.c) c_int {
         else
             2;
 
-        const pipeline = library.ggml_metal_library_get_pipeline_ssm_conv_batched(lib, op, BATCH_SIZE, ne10, use_silu);
+        const pipeline = library.ggmlMetalLibraryGetPipelineSsmConvBatched(lib, op, BATCH_SIZE, ne10, use_silu);
 
         mc.ggml_metal_encoder_set_pipeline(enc, pipeline);
         setBytes(enc, &args, 0);
@@ -2136,7 +2198,7 @@ pub export fn ggml_metal_op_ssm_conv(ctx: *Op, idx: c_int) callconv(.c) c_int {
         const n_token_batches = @divTrunc(ne1 + BATCH_SIZE - 1, BATCH_SIZE);
         mc.ggml_metal_encoder_dispatch_threadgroups(enc, ne01, n_token_batches, ne02, BATCH_SIZE, 1, 1);
     } else {
-        const pipeline = library.ggml_metal_library_get_pipeline_ssm_conv(lib, op, ne10, use_silu);
+        const pipeline = library.ggmlMetalLibraryGetPipelineSsmConv(lib, op, ne10, use_silu);
 
         mc.ggml_metal_encoder_set_pipeline(enc, pipeline);
         setBytes(enc, &args, 0);
@@ -2154,6 +2216,10 @@ pub export fn ggml_metal_op_ssm_conv(ctx: *Op, idx: c_int) callconv(.c) c_int {
     return n_fuse;
 }
 
+comptime {
+    @export(&ggmlMetalOpSsmScan, .{ .name = "ggml_metal_op_ssm_scan" });
+}
+
 /// Ports `ggml_metal_op_ssm_scan` (ggml-metal-ops.cpp:1878 @cd959bae9).
 ///
 /// Seven sources, and the `ns*` fields are stride *ratios* — `nb12/nb10`
@@ -2164,7 +2230,7 @@ pub export fn ggml_metal_op_ssm_conv(ctx: *Op, idx: c_int) callconv(.c) c_int {
 /// the sequential kernel's `_tail` variant for what is left -- which always
 /// includes the last `K` tokens when `K > 1`, since only the sequential
 /// kernel writes the rollback snapshots.
-pub export fn ggml_metal_op_ssm_scan(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpSsmScan(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     const lib = ctx.lib;
@@ -2266,29 +2332,33 @@ pub export fn ggml_metal_op_ssm_scan(ctx: *Op, idx: c_int) callconv(.c) c_int {
     };
 
     if (!use_mma) {
-        Dispatch.run(op, enc, props_dev, &args, library.ggml_metal_library_get_pipeline_ssm_scan(lib, op, false), d_state, d_inner, n_head, n_seqs);
+        Dispatch.run(op, enc, props_dev, &args, library.ggmlMetalLibraryGetPipelineSsmScan(lib, op, false), d_state, d_inner, n_head, n_seqs);
         return 1;
     }
 
     args.n_seq_tokens = mma_tokens;
-    Dispatch.run(op, enc, props_dev, &args, library.ggml_metal_library_get_pipeline_ssm_scan_ssd_mma(lib, op), fc.OP_SSM_SCAN_SSD_NSG * 32, 1, n_head, n_seqs);
+    Dispatch.run(op, enc, props_dev, &args, library.ggmlMetalLibraryGetPipelineSsmScanSsdMma(lib, op), fc.OP_SSM_SCAN_SSD_NSG * 32, 1, n_head, n_seqs);
 
     if (mma_tokens < n_seq_tokens) {
         _ = concurrencyReset(ctx);
 
         args.n_seq_tokens = n_seq_tokens - mma_tokens;
         args.token_offset = mma_tokens;
-        Dispatch.run(op, enc, props_dev, &args, library.ggml_metal_library_get_pipeline_ssm_scan(lib, op, true), d_state, d_inner, n_head, n_seqs);
+        Dispatch.run(op, enc, props_dev, &args, library.ggmlMetalLibraryGetPipelineSsmScan(lib, op, true), d_state, d_inner, n_head, n_seqs);
     }
 
     return 1;
+}
+
+comptime {
+    @export(&ggmlMetalOpRwkv, .{ .name = "ggml_metal_op_rwkv" });
 }
 
 /// Ports `ggml_metal_op_rwkv` (ggml-metal-ops.cpp:2011 @cd959bae9).
 ///
 /// The one encoder with **no `kargs` struct**: it passes `B`, `T`, `C`
 /// and `H` as four separate `set_bytes` of an `int64_t` each.
-pub export fn ggml_metal_op_rwkv(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpRwkv(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     const lib = ctx.lib;
@@ -2301,7 +2371,7 @@ pub export fn ggml_metal_op_rwkv(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const C: i64 = op.ne[0];
     const H: i64 = s0.ne[1];
 
-    const pipeline = library.ggml_metal_library_get_pipeline_rwkv(lib, op);
+    const pipeline = library.ggmlMetalLibraryGetPipelineRwkv(lib, op);
 
     var ida: c_int = 0;
 
@@ -2338,6 +2408,10 @@ pub export fn ggml_metal_op_rwkv(ctx: *Op, idx: c_int) callconv(.c) c_int {
     return 1;
 }
 
+comptime {
+    @export(&ggmlMetalOpGatedDeltaNet, .{ .name = "ggml_metal_op_gated_delta_net" });
+}
+
 /// Ports `ggml_metal_op_gated_delta_net` (ggml-metal-ops.cpp:2052
 /// @cd959bae9).
 ///
@@ -2345,7 +2419,7 @@ pub export fn ggml_metal_op_rwkv(ctx: *Op, idx: c_int) callconv(.c) c_int {
 /// the kernel writes the state snapshots straight into the recurrent
 /// cache and the copy is skipped: `nb_out` is then the cache's stride in
 /// floats, and 0 keeps the unfused layout, snapshots after the scores.
-pub export fn ggml_metal_op_gated_delta_net(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpGatedDeltaNet(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     const lib = ctx.lib;
@@ -2358,7 +2432,7 @@ pub export fn ggml_metal_op_gated_delta_net(ctx: *Op, idx: c_int) callconv(.c) c
     const s1 = src(op, 1);
     const s2 = src(op, 2);
 
-    const pipeline = library.ggml_metal_library_get_pipeline_gated_delta_net(lib, op);
+    const pipeline = library.ggmlMetalLibraryGetPipelineGatedDeltaNet(lib, op);
 
     // when fused with the trailing cache cpy, the snapshots are written straight into the
     // recurrent cache and the cpy is skipped (see GGML_METAL_FUSION_GDN_CACHE)
@@ -2370,7 +2444,7 @@ pub export fn ggml_metal_op_gated_delta_net(ctx: *Op, idx: c_int) callconv(.c) c
         var n: c_int = 1;
         const fus = ctx.canFuse(idx, .full, &n);
 
-        if (fus != null and fusion.ggml_metal_fusion_get_id(fus.?) == .gdn_cache) {
+        if (fus != null and fusion.ggmlMetalFusionGetId(fus.?) == .gdn_cache) {
             const dst_cache = src(ctx.node(idx + 1), 1); // cache view
 
             bid_out = getBufferId(dst_cache);
@@ -2454,8 +2528,12 @@ pub export fn ggml_metal_op_gated_delta_net(ctx: *Op, idx: c_int) callconv(.c) c
     return n_fuse;
 }
 
+comptime {
+    @export(&ggmlMetalOpSolveTri, .{ .name = "ggml_metal_op_solve_tri" });
+}
+
 /// Ports `ggml_metal_op_solve_tri` (ggml-metal-ops.cpp:2156 @cd959bae9).
-pub export fn ggml_metal_op_solve_tri(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpSolveTri(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     const lib = ctx.lib;
@@ -2491,7 +2569,7 @@ pub export fn ggml_metal_op_solve_tri(ctx: *Op, idx: c_int) callconv(.c) c_int {
         .nb3 = op.nb[3],
     };
 
-    const pipeline = library.ggml_metal_library_get_pipeline_solve_tri(lib, op);
+    const pipeline = library.ggmlMetalLibraryGetPipelineSolveTri(lib, op);
 
     mc.ggml_metal_encoder_set_pipeline(enc, pipeline);
     setBytes(enc, &args, 0);
@@ -2528,7 +2606,7 @@ fn tryFusion(ctx: *Op, idx: c_int, id: fusion.Id) c_int {
 
     var n: c_int = 1;
     const fus = ctx.canFuse(idx, .full, &n) orelse return 1;
-    if (fusion.ggml_metal_fusion_get_id(fus) != id) {
+    if (fusion.ggmlMetalFusionGetId(fus) != id) {
         return 1;
     }
 
@@ -2587,7 +2665,7 @@ fn mulMatMma(ctx: *Op, idx: c_int) c_int {
         res = if (dst.src[0] == op) src(dst, 1) else src(dst, 0);
     }
 
-    const pipeline = library.ggml_metal_library_get_pipeline_mul_mv_mma_auto(lib, op, fuse_add);
+    const pipeline = library.ggmlMetalLibraryGetPipelineMulMvMmaAuto(lib, op, fuse_add);
 
     var args: kargs.mul_mv_ext = .{
         .ne00 = ne00,
@@ -2659,7 +2737,7 @@ fn mulMatMv(ctx: *Op, idx: c_int) c_int {
     const r2: i16 = @truncate(@divTrunc(ne12, ne02));
     const r3: i16 = @truncate(@divTrunc(ne13, ne03));
 
-    const pipeline = library.ggml_metal_library_get_pipeline_mul_mv(lib, op);
+    const pipeline = library.ggmlMetalLibraryGetPipelineMulMv(lib, op);
 
     const nr0 = pipeline.nr0;
     const nr1 = pipeline.nr1;
@@ -2726,6 +2804,10 @@ fn mulMatMv(ctx: *Op, idx: c_int) c_int {
     return 1;
 }
 
+comptime {
+    @export(&ggmlMetalOpMulMat, .{ .name = "ggml_metal_op_mul_mat" });
+}
+
 /// Ports `ggml_metal_op_mul_mat` (ggml-metal-ops.cpp:2720 @cd959bae9).
 ///
 /// Five kernels behind one op, chosen in order: a Hadamard hint goes to
@@ -2734,7 +2816,7 @@ fn mulMatMv(ctx: *Op, idx: c_int) c_int {
 /// small-batch `mul_mv_ext` for `ne11` in [2, 8] on a 128-aligned row,
 /// the simdgroup-matrix `mul_mm` where `ggml_metal_op_mul_mat_use_mm`
 /// says, else the row-at-a-time `mul_mv` (`mulMatMv`).
-pub export fn ggml_metal_op_mul_mat(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpMulMat(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     const lib = ctx.lib;
@@ -2745,11 +2827,11 @@ pub export fn ggml_metal_op_mul_mat(ctx: *Op, idx: c_int) callconv(.c) c_int {
 
     const props_dev = mc.ggml_metal_device_get_props(ctx.dev);
 
-    if (common.ggml_metal_op_mul_mat_use_fwht(op, props_dev.max_theadgroup_memory_size)) {
-        return ggml_metal_op_fwht(ctx, idx);
+    if (common.ggmlMetalOpMulMatUseFwht(op, props_dev.max_theadgroup_memory_size)) {
+        return ggmlMetalOpFwht(ctx, idx);
     }
 
-    if (props_dev.has_simdgroup_mm and common.ggml_metal_op_mul_mat_use_mma(op)) {
+    if (props_dev.has_simdgroup_mm and common.ggmlMetalOpMulMatUseMma(op)) {
         return mulMatMma(ctx, idx);
     }
 
@@ -2833,7 +2915,7 @@ pub export fn ggml_metal_op_mul_mat(ctx: *Op, idx: c_int) callconv(.c) c_int {
             else => impl.abort("unsupported ne11"),
         }
 
-        const pipeline = library.ggml_metal_library_get_pipeline_mul_mv_ext(lib, op, nsg, nxpsg, r1ptg);
+        const pipeline = library.ggmlMetalLibraryGetPipelineMulMvExt(lib, op, nsg, nxpsg, r1ptg);
 
         var args: kargs.mul_mv_ext = .{
             .ne00 = ne00,
@@ -2871,12 +2953,12 @@ pub export fn ggml_metal_op_mul_mat(ctx: *Op, idx: c_int) callconv(.c) c_int {
             nsg,
             1,
         );
-    } else if (common.ggml_metal_op_mul_mat_use_mm(op, props_dev.has_simdgroup_mm)) {
+    } else if (common.ggmlMetalOpMulMatUseMm(op, props_dev.has_simdgroup_mm)) {
         // some Metal matrix data types require aligned pointers
         // ref: https://developer.apple.com/metal/Metal-Shading-Language-Specification.pdf (Table 2.5)
         // (the C leaves an alignment assert commented out here)
 
-        const pipeline = library.ggml_metal_library_get_pipeline_mul_mm(lib, op);
+        const pipeline = library.ggmlMetalLibraryGetPipelineMulMm(lib, op);
 
         var args: kargs.mul_mm = .{
             .ne00 = ne00,
@@ -2925,6 +3007,10 @@ pub export fn ggml_metal_op_mul_mat(ctx: *Op, idx: c_int) callconv(.c) c_int {
     return 1;
 }
 
+comptime {
+    @export(&ggmlMetalOpMulMatId, .{ .name = "ggml_metal_op_mul_mat_id" });
+}
+
 /// Ports `ggml_metal_op_mul_mat_id` (ggml-metal-ops.cpp:2941 @cd959bae9).
 ///
 /// Where `ggml_metal_op_mul_mat_id_use_mm` says, it builds an expert->token id map
@@ -2941,7 +3027,7 @@ pub export fn ggml_metal_op_mul_mat(ctx: *Op, idx: c_int) callconv(.c) c_int {
 /// the barrier -- the rows it writes are disjoint from the matrix kernel's.
 /// v0.5.0's two amax rescale stages, and the matrix kernel's buffer 6, are
 /// gone.
-pub export fn ggml_metal_op_mul_mat_id(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpMulMatId(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     const lib = ctx.lib;
@@ -2981,7 +3067,7 @@ pub export fn ggml_metal_op_mul_mat_id(ctx: *Op, idx: c_int) callconv(.c) c_int 
     const r2: u32 = 1;
     const r3: u32 = 1;
 
-    if (common.ggml_metal_op_mul_mat_id_use_mm(op, props_dev.has_simdgroup_mm)) {
+    if (common.ggmlMetalOpMulMatIdUseMm(op, props_dev.has_simdgroup_mm)) {
         // some Metal matrix data types require aligned pointers
         // ref: https://developer.apple.com/metal/Metal-Shading-Language-Specification.pdf (Table 2.5)
         // (the C leaves an alignment assert commented out here)
@@ -2991,7 +3077,7 @@ pub export fn ggml_metal_op_mul_mat_id(ctx: *Op, idx: c_int) callconv(.c) c_int 
         bid_tpe.offs += @intCast(c.ggml_nbytes(op));
 
         var bid_ids = bid_tpe;
-        bid_ids.offs += ggml_metal_op_mul_mat_id_extra_tpe(op);
+        bid_ids.offs += ggmlMetalOpMulMatIdExtraTpe(op);
 
         {
             // the C initialises this one positionally
@@ -3005,7 +3091,7 @@ pub export fn ggml_metal_op_mul_mat_id(ctx: *Op, idx: c_int) callconv(.c) c_int 
                 .nb21 = s2.nb[1],
             };
 
-            const pipeline = library.ggml_metal_library_get_pipeline_mul_mm_id_map0(lib, ne02, ne20);
+            const pipeline = library.ggmlMetalLibraryGetPipelineMulMmIdMap0(lib, ne02, ne20);
 
             const smem = pipeline.smem;
 
@@ -3033,7 +3119,7 @@ pub export fn ggml_metal_op_mul_mat_id(ctx: *Op, idx: c_int) callconv(.c) c_int 
                 .nb21 = s2.nb[1],
             };
 
-            const pipeline = library.ggml_metal_library_get_pipeline_mul_mm_id_zero(lib);
+            const pipeline = library.ggmlMetalLibraryGetPipelineMulMmIdZero(lib);
 
             mc.ggml_metal_encoder_set_pipeline(enc, pipeline);
             setBytes(enc, &args, 0);
@@ -3047,7 +3133,7 @@ pub export fn ggml_metal_op_mul_mat_id(ctx: *Op, idx: c_int) callconv(.c) c_int 
         _ = concurrencyReset(ctx);
 
         {
-            const pipeline = library.ggml_metal_library_get_pipeline_mul_mm_id(lib, op);
+            const pipeline = library.ggmlMetalLibraryGetPipelineMulMmId(lib, op);
 
             var args: kargs.mul_mm_id = .{
                 .ne00 = ne00,
@@ -3087,7 +3173,7 @@ pub export fn ggml_metal_op_mul_mat_id(ctx: *Op, idx: c_int) callconv(.c) c_int 
             mc.ggml_metal_encoder_dispatch_threadgroups(enc, max_tiles, @divTrunc(ne01 + 63, 64), 1, 128, 1, 1);
         }
     } else {
-        const pipeline = library.ggml_metal_library_get_pipeline_mul_mv_id(lib, op);
+        const pipeline = library.ggmlMetalLibraryGetPipelineMulMvId(lib, op);
 
         const nr0 = pipeline.nr0;
         const nr1 = pipeline.nr1;
@@ -3164,8 +3250,12 @@ pub export fn ggml_metal_op_mul_mat_id(ctx: *Op, idx: c_int) callconv(.c) c_int 
     return 1;
 }
 
+comptime {
+    @export(&ggmlMetalOpGetRows, .{ .name = "ggml_metal_op_get_rows" });
+}
+
 /// Ports `ggml_metal_op_get_rows` (ggml-metal-ops.cpp:1221 @cd959bae9).
-pub export fn ggml_metal_op_get_rows(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpGetRows(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     const lib = ctx.lib;
@@ -3174,7 +3264,7 @@ pub export fn ggml_metal_op_get_rows(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const s0 = src(op, 0);
     const s1 = src(op, 1);
 
-    const pipeline = library.ggml_metal_library_get_pipeline_get_rows(lib, s0.type);
+    const pipeline = library.ggmlMetalLibraryGetPipelineGetRows(lib, s0.type);
 
     const ne00: i32 = @intCast(s0.ne[0]);
 
@@ -3216,8 +3306,12 @@ pub export fn ggml_metal_op_get_rows(ctx: *Op, idx: c_int) callconv(.c) c_int {
     return 1;
 }
 
+comptime {
+    @export(&ggmlMetalOpSetRows, .{ .name = "ggml_metal_op_set_rows" });
+}
+
 /// Ports `ggml_metal_op_set_rows` (ggml-metal-ops.cpp:1266 @cd959bae9).
-pub export fn ggml_metal_op_set_rows(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpSetRows(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     const lib = ctx.lib;
@@ -3226,7 +3320,7 @@ pub export fn ggml_metal_op_set_rows(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const s0 = src(op, 0);
     const s1 = src(op, 1);
 
-    const pipeline = library.ggml_metal_library_get_pipeline_set_rows(lib, op);
+    const pipeline = library.ggmlMetalLibraryGetPipelineSetRows(lib, op);
 
     const nk0: i32 = @intCast(@divTrunc(op.ne[0], c.ggml_blck_size(op.type)));
 
@@ -3285,8 +3379,12 @@ pub export fn ggml_metal_op_set_rows(ctx: *Op, idx: c_int) callconv(.c) c_int {
     return 1;
 }
 
+comptime {
+    @export(&ggmlMetalOpDiag, .{ .name = "ggml_metal_op_diag" });
+}
+
 /// Ports `ggml_metal_op_diag` (ggml-metal-ops.cpp:1328 @cd959bae9).
-pub export fn ggml_metal_op_diag(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpDiag(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     const lib = ctx.lib;
@@ -3313,7 +3411,7 @@ pub export fn ggml_metal_op_diag(ctx: *Op, idx: c_int) callconv(.c) c_int {
         .nb3 = op.nb[3],
     };
 
-    const pipeline = library.ggml_metal_library_get_pipeline_diag(lib, op);
+    const pipeline = library.ggmlMetalLibraryGetPipelineDiag(lib, op);
 
     mc.ggml_metal_encoder_set_pipeline(enc, pipeline);
     setBytes(enc, &args, 0);
@@ -3333,8 +3431,12 @@ pub export fn ggml_metal_op_diag(ctx: *Op, idx: c_int) callconv(.c) c_int {
     return 1;
 }
 
+comptime {
+    @export(&ggmlMetalOpL2Norm, .{ .name = "ggml_metal_op_l2_norm" });
+}
+
 /// Ports `ggml_metal_op_l2_norm` (ggml-metal-ops.cpp:4512 @cd959bae9).
-pub export fn ggml_metal_op_l2_norm(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpL2Norm(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     const lib = ctx.lib;
@@ -3371,7 +3473,7 @@ pub export fn ggml_metal_op_l2_norm(ctx: *Op, idx: c_int) callconv(.c) c_int {
         .eps = eps,
     };
 
-    const pipeline = library.ggml_metal_library_get_pipeline_l2_norm(lib, op);
+    const pipeline = library.ggmlMetalLibraryGetPipelineL2Norm(lib, op);
 
     if (pipeline.c4) {
         args.ne00 = @divTrunc(ne00, 4);
@@ -3408,8 +3510,12 @@ pub export fn ggml_metal_op_l2_norm(ctx: *Op, idx: c_int) callconv(.c) c_int {
     return 1;
 }
 
+comptime {
+    @export(&ggmlMetalOpGroupNorm, .{ .name = "ggml_metal_op_group_norm" });
+}
+
 /// Ports `ggml_metal_op_group_norm` (ggml-metal-ops.cpp:4580 @cd959bae9).
-pub export fn ggml_metal_op_group_norm(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpGroupNorm(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     const lib = ctx.lib;
@@ -3433,7 +3539,7 @@ pub export fn ggml_metal_op_group_norm(ctx: *Op, idx: c_int) callconv(.c) c_int 
         .eps = eps,
     };
 
-    const pipeline = library.ggml_metal_library_get_pipeline_group_norm(lib, op);
+    const pipeline = library.ggmlMetalLibraryGetPipelineGroupNorm(lib, op);
 
     // The C leaves the usual widen-to-SIMD loop commented out here and
     // keeps `nth` at one SIMD width; not reproduced beyond this note.
@@ -3453,6 +3559,10 @@ pub export fn ggml_metal_op_group_norm(ctx: *Op, idx: c_int) callconv(.c) c_int 
     return 1;
 }
 
+comptime {
+    @export(&ggmlMetalOpNorm, .{ .name = "ggml_metal_op_norm" });
+}
+
 /// Ports `ggml_metal_op_norm` (ggml-metal-ops.cpp:4631 @cd959bae9).
 ///
 /// The first **fusion** encoder: it may swallow a following `MUL` and
@@ -3461,7 +3571,7 @@ pub export fn ggml_metal_op_group_norm(ctx: *Op, idx: c_int) callconv(.c) c_int 
 /// MUL kernel; it returns how many nodes it consumed. The `nef*`/`nbf*` array fields carry one entry per fused
 /// operand, which is why `kargs_norm` has `[3]` arrays where every other
 /// struct has scalars.
-pub export fn ggml_metal_op_norm(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpNorm(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     const lib = ctx.lib;
@@ -3509,7 +3619,7 @@ pub export fn ggml_metal_op_norm(ctx: *Op, idx: c_int) callconv(.c) c_int {
         var n: c_int = 1;
         const fus = ctx.canFuse(idx, .full, &n);
 
-        if (fus != null and (fusion.ggml_metal_fusion_get_id(fus.?) == .norm_mul or fusion.ggml_metal_fusion_get_id(fus.?) == .norm_mul_add)) {
+        if (fus != null and (fusion.ggmlMetalFusionGetId(fus.?) == .norm_mul or fusion.ggmlMetalFusionGetId(fus.?) == .norm_mul_add)) {
             n_fuse = n;
 
             ctx.countFusions(fus.?);
@@ -3540,7 +3650,7 @@ pub export fn ggml_metal_op_norm(ctx: *Op, idx: c_int) callconv(.c) c_int {
             }
         }
 
-        if (fus != null and fusion.ggml_metal_fusion_get_id(fus.?) == .norm_scale) {
+        if (fus != null and fusion.ggmlMetalFusionGetId(fus.?) == .norm_scale) {
             n_fuse = n;
             fused_norm_scale = true;
 
@@ -3569,9 +3679,9 @@ pub export fn ggml_metal_op_norm(ctx: *Op, idx: c_int) callconv(.c) c_int {
     }
 
     const pipeline = if (fused_norm_scale)
-        library.ggml_metal_library_get_pipeline_norm_scale(lib, op)
+        library.ggmlMetalLibraryGetPipelineNormScale(lib, op)
     else
-        library.ggml_metal_library_get_pipeline_norm(lib, op, n_fuse);
+        library.ggmlMetalLibraryGetPipelineNorm(lib, op, n_fuse);
 
     var nth: c_int = 32; // SIMD width
 
@@ -3606,8 +3716,12 @@ pub export fn ggml_metal_op_norm(ctx: *Op, idx: c_int) callconv(.c) c_int {
     return n_fuse;
 }
 
+comptime {
+    @export(&ggmlMetalOpRope, .{ .name = "ggml_metal_op_rope" });
+}
+
 /// Ports `ggml_metal_op_rope` (ggml-metal-ops.cpp:4765 @cd959bae9).
-pub export fn ggml_metal_op_rope(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpRope(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     const lib = ctx.lib;
@@ -3686,7 +3800,7 @@ pub export fn ggml_metal_op_rope(ctx: *Op, idx: c_int) callconv(.c) c_int {
         .inplace = inplace,
     };
 
-    const pipeline = library.ggml_metal_library_get_pipeline_rope(lib, op);
+    const pipeline = library.ggmlMetalLibraryGetPipelineRope(lib, op);
 
     mc.ggml_metal_encoder_set_pipeline(enc, pipeline);
     setBytes(enc, &args, 0);
@@ -3712,8 +3826,12 @@ pub export fn ggml_metal_op_rope(ctx: *Op, idx: c_int) callconv(.c) c_int {
     return 1;
 }
 
+comptime {
+    @export(&ggmlMetalOpIm2col, .{ .name = "ggml_metal_op_im2col" });
+}
+
 /// Ports `ggml_metal_op_im2col` (ggml-metal-ops.cpp:4868 @cd959bae9).
-pub export fn ggml_metal_op_im2col(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpIm2col(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     const lib = ctx.lib;
@@ -3765,7 +3883,7 @@ pub export fn ggml_metal_op_im2col(ctx: *Op, idx: c_int) callconv(.c) c_int {
         .KHW = KH * KW,
     };
 
-    const pipeline = library.ggml_metal_library_get_pipeline_im2col(lib, op);
+    const pipeline = library.ggmlMetalLibraryGetPipelineIm2col(lib, op);
 
     if (KH * KW <= maxThreads(pipeline)) {
         const ntptg0: u64 = @min(
@@ -3803,8 +3921,12 @@ pub export fn ggml_metal_op_im2col(ctx: *Op, idx: c_int) callconv(.c) c_int {
     return 1;
 }
 
+comptime {
+    @export(&ggmlMetalOpConv2d, .{ .name = "ggml_metal_op_conv_2d" });
+}
+
 /// Ports `ggml_metal_op_conv_2d` (ggml-metal-ops.cpp:4948 @cd959bae9).
-pub export fn ggml_metal_op_conv_2d(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpConv2d(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     const lib = ctx.lib;
@@ -3858,7 +3980,7 @@ pub export fn ggml_metal_op_conv_2d(ctx: *Op, idx: c_int) callconv(.c) c_int {
         .d1 = d1,
     };
 
-    const pipeline = library.ggml_metal_library_get_pipeline_conv_2d(lib, op);
+    const pipeline = library.ggmlMetalLibraryGetPipelineConv2d(lib, op);
 
     var nth = maxThreads(pipeline);
     nth = @min(nth, 256);
@@ -3881,6 +4003,10 @@ pub export fn ggml_metal_op_conv_2d(ctx: *Op, idx: c_int) callconv(.c) c_int {
     return 1;
 }
 
+comptime {
+    @export(&ggmlMetalOpConv2dDw, .{ .name = "ggml_metal_op_conv_2d_dw" });
+}
+
 /// Ports `ggml_metal_op_conv_2d_dw` (ggml-metal-ops.cpp:5026 @cd959bae9).
 ///
 /// **The C writes `/*.nb02 =*/ nb03` here** — the `nb02` field is fed the
@@ -3889,7 +4015,7 @@ pub export fn ggml_metal_op_conv_2d(ctx: *Op, idx: c_int) callconv(.c) c_int {
 /// offset, so if this is an upstream slip it is one the kernel has been
 /// compiled against. `make node-diff ARGS=--gpu` would be the arbiter,
 /// and `CONV_2D_DW` is not in a Qwen3.5 graph.
-pub export fn ggml_metal_op_conv_2d_dw(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpConv2dDw(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     const lib = ctx.lib;
@@ -3942,7 +4068,7 @@ pub export fn ggml_metal_op_conv_2d_dw(ctx: *Op, idx: c_int) callconv(.c) c_int 
 
     const use_tiled = src1.nb[2] < src1.nb[0];
 
-    const pipeline = library.ggml_metal_library_get_pipeline_conv_2d_dw(lib, op, use_tiled);
+    const pipeline = library.ggmlMetalLibraryGetPipelineConv2dDw(lib, op, use_tiled);
 
     var nth = maxThreads(pipeline);
     nth = @min(nth, 256);
@@ -3971,9 +4097,13 @@ pub export fn ggml_metal_op_conv_2d_dw(ctx: *Op, idx: c_int) callconv(.c) c_int 
     return 1;
 }
 
+comptime {
+    @export(&ggmlMetalOpConvTranspose1d, .{ .name = "ggml_metal_op_conv_transpose_1d" });
+}
+
 /// Ports `ggml_metal_op_conv_transpose_1d` (ggml-metal-ops.cpp:5177
 /// @cd959bae9).
-pub export fn ggml_metal_op_conv_transpose_1d(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpConvTranspose1d(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     const lib = ctx.lib;
@@ -4003,7 +4133,7 @@ pub export fn ggml_metal_op_conv_transpose_1d(ctx: *Op, idx: c_int) callconv(.c)
         .nb1 = op.nb[1],
     };
 
-    const pipeline = library.ggml_metal_library_get_pipeline_conv_transpose_1d(lib, op);
+    const pipeline = library.ggmlMetalLibraryGetPipelineConvTranspose1d(lib, op);
 
     mc.ggml_metal_encoder_set_pipeline(enc, pipeline);
     setBytes(enc, &args, 0);
@@ -4016,12 +4146,16 @@ pub export fn ggml_metal_op_conv_transpose_1d(ctx: *Op, idx: c_int) callconv(.c)
     return 1;
 }
 
+comptime {
+    @export(&ggmlMetalOpConvTranspose2d, .{ .name = "ggml_metal_op_conv_transpose_2d" });
+}
+
 /// Ports `ggml_metal_op_conv_transpose_2d` (ggml-metal-ops.cpp:5312
 /// @cd959bae9).
 ///
 /// One threadgroup per output pixel and channel, for each of the `N`
 /// images in the batch.
-pub export fn ggml_metal_op_conv_transpose_2d(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpConvTranspose2d(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     const lib = ctx.lib;
@@ -4058,7 +4192,7 @@ pub export fn ggml_metal_op_conv_transpose_2d(ctx: *Op, idx: c_int) callconv(.c)
         .nb3 = op.nb[3],
     };
 
-    const pipeline = library.ggml_metal_library_get_pipeline_conv_transpose_2d(lib, op);
+    const pipeline = library.ggmlMetalLibraryGetPipelineConvTranspose2d(lib, op);
 
     mc.ggml_metal_encoder_set_pipeline(enc, pipeline);
     setBytes(enc, &args, 0);
@@ -4075,8 +4209,12 @@ pub export fn ggml_metal_op_conv_transpose_2d(ctx: *Op, idx: c_int) callconv(.c)
     return 1;
 }
 
+comptime {
+    @export(&ggmlMetalOpCol2im1d, .{ .name = "ggml_metal_op_col2im_1d" });
+}
+
 /// Ports `ggml_metal_op_col2im_1d` (ggml-metal-ops.cpp:5222 @cd959bae9).
-pub export fn ggml_metal_op_col2im_1d(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpCol2im1d(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     const lib = ctx.lib;
@@ -4103,7 +4241,7 @@ pub export fn ggml_metal_op_col2im_1d(ctx: *Op, idx: c_int) callconv(.c) c_int {
         .p0 = p0,
     };
 
-    const pipeline = library.ggml_metal_library_get_pipeline_col2im_1d(lib, op);
+    const pipeline = library.ggmlMetalLibraryGetPipelineCol2im1d(lib, op);
 
     const total = T_out * OC;
     const nth: i32 = 256;
@@ -4119,12 +4257,16 @@ pub export fn ggml_metal_op_col2im_1d(ctx: *Op, idx: c_int) callconv(.c) c_int {
     return 1;
 }
 
+comptime {
+    @export(&ggmlMetalOpConv3d, .{ .name = "ggml_metal_op_conv_3d" });
+}
+
 /// Ports `ggml_metal_op_conv_3d` (ggml-metal-ops.cpp:5106 @cd959bae9).
 ///
 /// The C's initialiser is positional from `s0` onwards rather than
 /// designated; the field names here come from the struct's declaration
 /// order, which `kargs.zig` carries from the header.
-pub export fn ggml_metal_op_conv_3d(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpConv3d(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     const lib = ctx.lib;
@@ -4185,7 +4327,7 @@ pub export fn ggml_metal_op_conv_3d(ctx: *Op, idx: c_int) callconv(.c) c_int {
     };
 
     // 4. Fetch the JIT pipeline
-    const pipeline = library.ggml_metal_library_get_pipeline_conv_3d(lib, op);
+    const pipeline = library.ggmlMetalLibraryGetPipelineConv3d(lib, op);
 
     // 5. Grid mapping
     const nth0: c_int = 32; // Standard SIMD width for Apple Silicon
@@ -4210,8 +4352,12 @@ pub export fn ggml_metal_op_conv_3d(ctx: *Op, idx: c_int) callconv(.c) c_int {
     return 1;
 }
 
+comptime {
+    @export(&ggmlMetalOpUpscale, .{ .name = "ggml_metal_op_upscale" });
+}
+
 /// Ports `ggml_metal_op_upscale` (ggml-metal-ops.cpp:5370 @cd959bae9).
-pub export fn ggml_metal_op_upscale(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpUpscale(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     const lib = ctx.lib;
@@ -4271,7 +4417,7 @@ pub export fn ggml_metal_op_upscale(ctx: *Op, idx: c_int) callconv(.c) c_int {
         .poffs = poffs,
     };
 
-    const pipeline = library.ggml_metal_library_get_pipeline_upscale(lib, op);
+    const pipeline = library.ggmlMetalLibraryGetPipelineUpscale(lib, op);
 
     const nth = @min(maxThreads(pipeline), @as(c_int, @intCast(ne0)));
 
@@ -4293,8 +4439,12 @@ pub export fn ggml_metal_op_upscale(ctx: *Op, idx: c_int) callconv(.c) c_int {
     return 1;
 }
 
+comptime {
+    @export(&ggmlMetalOpPad, .{ .name = "ggml_metal_op_pad" });
+}
+
 /// Ports `ggml_metal_op_pad` (ggml-metal-ops.cpp:5487 @cd959bae9).
-pub export fn ggml_metal_op_pad(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpPad(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     const lib = ctx.lib;
@@ -4328,7 +4478,7 @@ pub export fn ggml_metal_op_pad(ctx: *Op, idx: c_int) callconv(.c) c_int {
         .lp3 = impl.getOpParamsI32(op, 6),
     };
 
-    const pipeline = library.ggml_metal_library_get_pipeline_pad(lib, op);
+    const pipeline = library.ggmlMetalLibraryGetPipelinePad(lib, op);
 
     // `kargs_pad` is one of the structs whose `ne` fields are `int64_t`,
     // where the C's `GGML_TENSOR_LOCALS` locals are `int32_t` — it widens
@@ -4356,9 +4506,13 @@ pub export fn ggml_metal_op_pad(ctx: *Op, idx: c_int) callconv(.c) c_int {
     return 1;
 }
 
+comptime {
+    @export(&ggmlMetalOpPadReflect1d, .{ .name = "ggml_metal_op_pad_reflect_1d" });
+}
+
 /// Ports `ggml_metal_op_pad_reflect_1d` (ggml-metal-ops.cpp:5537
 /// @cd959bae9).
-pub export fn ggml_metal_op_pad_reflect_1d(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpPadReflect1d(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     const lib = ctx.lib;
@@ -4387,7 +4541,7 @@ pub export fn ggml_metal_op_pad_reflect_1d(ctx: *Op, idx: c_int) callconv(.c) c_
         .p1 = impl.getOpParamsI32(op, 1),
     };
 
-    const pipeline = library.ggml_metal_library_get_pipeline_pad_reflect_1d(lib, op);
+    const pipeline = library.ggmlMetalLibraryGetPipelinePadReflect1d(lib, op);
 
     const nth = @min(@as(c_int, 1024), @as(c_int, @intCast(op.ne[0])));
 
@@ -4409,8 +4563,12 @@ pub export fn ggml_metal_op_pad_reflect_1d(ctx: *Op, idx: c_int) callconv(.c) c_
     return 1;
 }
 
+comptime {
+    @export(&ggmlMetalOpRoll, .{ .name = "ggml_metal_op_roll" });
+}
+
 /// Ports `ggml_metal_op_roll` (ggml-metal-ops.cpp:5434 @cd959bae9).
-pub export fn ggml_metal_op_roll(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpRoll(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     const lib = ctx.lib;
@@ -4446,7 +4604,7 @@ pub export fn ggml_metal_op_roll(ctx: *Op, idx: c_int) callconv(.c) c_int {
         .s3 = s3,
     };
 
-    const pipeline = library.ggml_metal_library_get_pipeline_roll(lib, op);
+    const pipeline = library.ggmlMetalLibraryGetPipelineRoll(lib, op);
 
     const nth = @min(@as(c_int, 1024), @as(c_int, @intCast(op.ne[0])));
 
@@ -4468,8 +4626,12 @@ pub export fn ggml_metal_op_roll(ctx: *Op, idx: c_int) callconv(.c) c_int {
     return 1;
 }
 
+comptime {
+    @export(&ggmlMetalOpArange, .{ .name = "ggml_metal_op_arange" });
+}
+
 /// Ports `ggml_metal_op_arange` (ggml-metal-ops.cpp:5583 @cd959bae9).
-pub export fn ggml_metal_op_arange(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpArange(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     const lib = ctx.lib;
@@ -4489,7 +4651,7 @@ pub export fn ggml_metal_op_arange(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const ne0: c_int = @intCast(op.ne[0]);
     const nth = @min(@as(c_int, 1024), ne0);
 
-    const pipeline = library.ggml_metal_library_get_pipeline_arange(lib, op);
+    const pipeline = library.ggmlMetalLibraryGetPipelineArange(lib, op);
 
     mc.ggml_metal_encoder_set_pipeline(enc, pipeline);
     setBytes(enc, &args, 0);
@@ -4500,9 +4662,13 @@ pub export fn ggml_metal_op_arange(ctx: *Op, idx: c_int) callconv(.c) c_int {
     return 1;
 }
 
+comptime {
+    @export(&ggmlMetalOpTimestepEmbedding, .{ .name = "ggml_metal_op_timestep_embedding" });
+}
+
 /// Ports `ggml_metal_op_timestep_embedding` (ggml-metal-ops.cpp:5617
 /// @cd959bae9).
-pub export fn ggml_metal_op_timestep_embedding(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpTimestepEmbedding(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     const lib = ctx.lib;
@@ -4519,7 +4685,7 @@ pub export fn ggml_metal_op_timestep_embedding(ctx: *Op, idx: c_int) callconv(.c
         .max_period = max_period,
     };
 
-    const pipeline = library.ggml_metal_library_get_pipeline_timestep_embedding(lib, op);
+    const pipeline = library.ggmlMetalLibraryGetPipelineTimestepEmbedding(lib, op);
 
     const nth = @max(@as(c_int, 1), @min(@as(c_int, 1024), @divTrunc(dim, 2)));
 
@@ -4533,13 +4699,17 @@ pub export fn ggml_metal_op_timestep_embedding(ctx: *Op, idx: c_int) callconv(.c
     return 1;
 }
 
+comptime {
+    @export(&ggmlMetalOpArgsort, .{ .name = "ggml_metal_op_argsort" });
+}
+
 /// Ports `ggml_metal_op_argsort` (ggml-metal-ops.cpp:5748 @cd959bae9).
 ///
 /// A bitonic sort of power-of-two blocks, then a merge ladder that
 /// ping-pongs between `dst` and the scratch immediately after it. The
 /// parity test up front decides which of the two the first pass writes
 /// to, so the last merge lands in `dst`.
-pub export fn ggml_metal_op_argsort(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpArgsort(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     const lib = ctx.lib;
@@ -4554,7 +4724,7 @@ pub export fn ggml_metal_op_argsort(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const ne02: c_int = @intCast(s0.ne[2]);
     const ne03: c_int = @intCast(s0.ne[3]);
 
-    const pipeline = library.ggml_metal_library_get_pipeline_argsort(lib, op);
+    const pipeline = library.ggmlMetalLibraryGetPipelineArgsort(lib, op);
 
     // bitonic sort requires the number of elements to be power of 2
     var nth: c_int = 1;
@@ -4603,7 +4773,7 @@ pub export fn ggml_metal_op_argsort(ctx: *Op, idx: c_int) callconv(.c) c_int {
 
     mc.ggml_metal_encoder_dispatch_threadgroups(enc, npr * ne01, ne02, ne03, nth, 1, 1);
 
-    const pipeline_merge = library.ggml_metal_library_get_pipeline_argsort_merge(lib, op);
+    const pipeline_merge = library.ggmlMetalLibraryGetPipelineArgsortMerge(lib, op);
 
     var len: c_int = nth;
 
@@ -4648,6 +4818,10 @@ pub export fn ggml_metal_op_argsort(ctx: *Op, idx: c_int) callconv(.c) c_int {
     return 1;
 }
 
+comptime {
+    @export(&ggmlMetalOpTopkMoe, .{ .name = "ggml_metal_op_topk_moe" });
+}
+
 /// Ports `ggml_metal_op_topk_moe` (ggml-metal-ops.cpp:6016 @cd959bae9).
 ///
 /// The fused MoE routing (`TOPK_MOE` in `fusion.zig`): the softmax over
@@ -4656,15 +4830,15 @@ pub export fn ggml_metal_op_argsort(ctx: *Op, idx: c_int) callconv(.c) c_int {
 /// one kernel that writes both the expert ids (the ARGSORT's VIEW) and the
 /// weights (the last node). Reached from `ggml_metal_op_soft_max`.
 ///
-/// Return: the nodes consumed; 1 when the pattern does not match here,
+/// - Returns: the nodes consumed; 1 when the pattern does not match here,
 /// which the caller never asks.
-pub export fn ggml_metal_op_topk_moe(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpTopkMoe(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const lib = ctx.lib;
     const enc = ctx.enc;
 
     var n_fuse: c_int = 1;
     const f = ctx.canFuse(idx, .full, &n_fuse) orelse return 1;
-    if (fusion.ggml_metal_fusion_get_id(f) != .topk_moe) {
+    if (fusion.ggmlMetalFusionGetId(f) != .topk_moe) {
         return 1;
     }
 
@@ -4701,7 +4875,7 @@ pub export fn ggml_metal_op_topk_moe(ctx: *Op, idx: c_int) callconv(.c) c_int {
         .scale = scale,
     };
 
-    const pipeline = library.ggml_metal_library_get_pipeline_topk_moe(lib, @truncate(n_expert), @truncate(n_expert_used), with_norm);
+    const pipeline = library.ggmlMetalLibraryGetPipelineTopkMoe(lib, @truncate(n_expert), @truncate(n_expert_used), with_norm);
 
     mc.ggml_metal_encoder_set_pipeline(enc, pipeline);
     setBytes(enc, &args, 0);
@@ -4720,20 +4894,24 @@ pub export fn ggml_metal_op_topk_moe(ctx: *Op, idx: c_int) callconv(.c) c_int {
     return n_fuse;
 }
 
+comptime {
+    @export(&ggmlMetalOpMoeReduce, .{ .name = "ggml_metal_op_moe_reduce" });
+}
+
 /// Ports `ggml_metal_op_moe_reduce` (ggml-metal-ops.cpp:6078 @cd959bae9).
 ///
 /// The fused MoE output reduction (`MOE_REDUCE` in `fusion.zig`): the
 /// experts' outputs times their routing weights, summed over the experts,
 /// in one kernel. Reached from `ggml_metal_op_bin` on the leading `MUL`.
 ///
-/// Return: the nodes consumed; 1 when the pattern does not match here.
-pub export fn ggml_metal_op_moe_reduce(ctx: *Op, idx: c_int) callconv(.c) c_int {
+/// - Returns: the nodes consumed; 1 when the pattern does not match here.
+pub fn ggmlMetalOpMoeReduce(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const lib = ctx.lib;
     const enc = ctx.enc;
 
     var n_fuse: c_int = 1;
     const f = ctx.canFuse(idx, .full, &n_fuse) orelse return 1;
-    if (fusion.ggml_metal_fusion_get_id(f) != .moe_reduce) {
+    if (fusion.ggmlMetalFusionGetId(f) != .moe_reduce) {
         return 1;
     }
 
@@ -4747,7 +4925,7 @@ pub export fn ggml_metal_op_moe_reduce(ctx: *Op, idx: c_int) callconv(.c) c_int 
         .ne02 = @truncate(experts.ne[2]),
     };
 
-    const pipeline = library.ggml_metal_library_get_pipeline_moe_reduce(lib, @truncate(experts.ne[1]));
+    const pipeline = library.ggmlMetalLibraryGetPipelineMoeReduce(lib, @truncate(experts.ne[1]));
 
     const nth = @min(@as(c_int, 256), maxThreads(pipeline));
     const n_col_tiles = @divTrunc(args.ne00 + nth - 1, nth);
@@ -4769,12 +4947,16 @@ pub export fn ggml_metal_op_moe_reduce(ctx: *Op, idx: c_int) callconv(.c) c_int 
     return n_fuse;
 }
 
+comptime {
+    @export(&ggmlMetalOpTopK, .{ .name = "ggml_metal_op_top_k" });
+}
+
 /// Ports `ggml_metal_op_top_k` (ggml-metal-ops.cpp:6120 @cd959bae9).
 ///
 /// Two paths. Radix-select has a fixed one-workgroup-per-row cost that only
 /// pays off for long rows, many rows or a large `k`; otherwise the bitonic
 /// sort and merge wins.
-pub export fn ggml_metal_op_top_k(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpTopK(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     // radix-select has a fixed single-workgroup-per-row cost (~50-60us) that is only
@@ -4810,7 +4992,7 @@ fn topKRadix(ctx: *Op, idx: c_int) void {
 
     impl.assert(c.ggml_is_contiguous_rows(s0), "ggml_is_contiguous_rows(op->src[0])");
 
-    const pipeline = library.ggml_metal_library_get_pipeline_top_k_radix(lib, op);
+    const pipeline = library.ggmlMetalLibraryGetPipelineTopKRadix(lib, op);
 
     // one workgroup per row; radix-select the k-th largest value
     const nth = @min(@as(c_int, 1024), maxThreads(pipeline));
@@ -4871,7 +5053,7 @@ fn topKBitonic(ctx: *Op, idx: c_int) void {
     const ne2: c_int = @intCast(op.ne[2]);
     const ne3: c_int = @intCast(op.ne[3]);
 
-    const pipeline = library.ggml_metal_library_get_pipeline_top_k(lib, op);
+    const pipeline = library.ggmlMetalLibraryGetPipelineTopK(lib, op);
 
     // bitonic sort requires the number of elements to be power of 2
     var nth: c_int = 1;
@@ -4925,7 +5107,7 @@ fn topKBitonic(ctx: *Op, idx: c_int) void {
 
     mc.ggml_metal_encoder_dispatch_threadgroups(enc, npr * ne01, ne02, ne03, nth, 1, 1);
 
-    const pipeline_merge = library.ggml_metal_library_get_pipeline_top_k_merge(lib, op);
+    const pipeline_merge = library.ggmlMetalLibraryGetPipelineTopKMerge(lib, op);
 
     var len: c_int = args.top_k;
 
@@ -4968,8 +5150,12 @@ fn topKBitonic(ctx: *Op, idx: c_int) void {
     }
 }
 
+comptime {
+    @export(&ggmlMetalOpTri, .{ .name = "ggml_metal_op_tri" });
+}
+
 /// Ports `ggml_metal_op_tri` (ggml-metal-ops.cpp:6141 @cd959bae9).
-pub export fn ggml_metal_op_tri(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpTri(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     const lib = ctx.lib;
@@ -4998,7 +5184,7 @@ pub export fn ggml_metal_op_tri(ctx: *Op, idx: c_int) callconv(.c) c_int {
         .nb3 = op.nb[3],
     };
 
-    const pipeline = library.ggml_metal_library_get_pipeline_tri(lib, op);
+    const pipeline = library.ggmlMetalLibraryGetPipelineTri(lib, op);
 
     var nth: c_int = 32; // SIMD width
 
@@ -5025,6 +5211,10 @@ pub export fn ggml_metal_op_tri(ctx: *Op, idx: c_int) callconv(.c) c_int {
     );
 
     return 1;
+}
+
+comptime {
+    @export(&ggmlMetalOpFlashAttnExt, .{ .name = "ggml_metal_op_flash_attn_ext" });
 }
 
 /// Ports `ggml_metal_op_flash_attn_ext` (ggml-metal-ops.cpp:3550
@@ -5055,7 +5245,7 @@ pub export fn ggml_metal_op_tri(ctx: *Op, idx: c_int) callconv(.c) c_int {
 /// into contiguous F16 buffers -- a sixth scratch region, after the sparse
 /// index -- dequantizing quantized KV to F16 first, and then attend over
 /// them as an ordinary dense op.
-pub export fn ggml_metal_op_flash_attn_ext(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpFlashAttnExt(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     const lib = ctx.lib;
@@ -5156,20 +5346,20 @@ pub export fn ggml_metal_op_flash_attn_ext(ctx: *Op, idx: c_int) callconv(.c) c_
     bid_pad.offs += @intCast(c.ggml_nbytes(op));
 
     var bid_blk = bid_pad;
-    bid_blk.offs += ggml_metal_op_flash_attn_ext_extra_pad(op);
+    bid_blk.offs += ggmlMetalOpFlashAttnExtExtraPad(op);
 
     var bid_tmp = bid_blk;
-    bid_tmp.offs += ggml_metal_op_flash_attn_ext_extra_blk(op);
+    bid_tmp.offs += ggmlMetalOpFlashAttnExtExtraBlk(op);
 
     var bid_kv_f16 = bid_tmp;
-    bid_kv_f16.offs += ggml_metal_op_flash_attn_ext_extra_tmp(op);
+    bid_kv_f16.offs += ggmlMetalOpFlashAttnExtExtraTmp(op);
 
     // sparse path: gather the finite mask entries into index lists and run the vec kernels over them
     const n_kv_max_sparse = nKvMaxSparse(op);
     const use_sparse = n_kv_max_sparse > 0;
     const n_kv_max_padded: c_int = if (use_sparse) @intCast(impl.pad(@intCast(n_kv_max_sparse), fc.OP_FLASH_ATTN_EXT_VEC_NCPSG)) else 0;
 
-    const use_vec = ggml_metal_op_flash_attn_ext_use_vec(op);
+    const use_vec = ggmlMetalOpFlashAttnExtUseVec(op);
 
     // with kv_rows, the non-vec path gathers the referenced rows into a contiguous F16 buffer and
     // attends over it with the F16 kernel - quantized KV is first dequantized with the F16 pass
@@ -5184,11 +5374,11 @@ pub export fn ggml_metal_op_flash_attn_ext(ctx: *Op, idx: c_int) callconv(.c) c_
     const use_kv_f16 = !use_sparse and (if (rows_gather) true else dequant_kv);
 
     var bid_idx = bid_kv_f16;
-    bid_idx.offs += ggml_metal_op_flash_attn_ext_extra_kv_f16(op);
+    bid_idx.offs += ggmlMetalOpFlashAttnExtExtraKvF16(op);
 
     // contiguous K/V buffers holding the rows referenced by the kv_rows lists
     var bid_rows = bid_idx;
-    bid_rows.offs += ggml_metal_op_flash_attn_ext_extra_idx(op);
+    bid_rows.offs += ggmlMetalOpFlashAttnExtExtraIdx(op);
 
     var bid_k = bid_src1;
     var bid_v = bid_src2;
@@ -5204,7 +5394,7 @@ pub export fn ggml_metal_op_flash_attn_ext(ctx: *Op, idx: c_int) callconv(.c) c_
     _ = &nb20_attn;
 
     if (dequant_kv) {
-        impl.assert(ggml_metal_op_flash_attn_ext_extra_kv_f16(op) != 0, "extra_kv_f16(op) != 0");
+        impl.assert(ggmlMetalOpFlashAttnExtExtraKvF16(op) != 0, "extra_kv_f16(op) != 0");
 
         const v_is_view_of_k = vIsViewOfK(op);
 
@@ -5215,7 +5405,7 @@ pub export fn ggml_metal_op_flash_attn_ext(ctx: *Op, idx: c_int) callconv(.c) c_
         var bid_v_f16 = bid_kv_f16;
         bid_v_f16.offs += kvF16KSize(op);
 
-        const pipeline0 = library.ggml_metal_library_get_pipeline_flash_attn_ext_kv_f16(lib, op);
+        const pipeline0 = library.ggmlMetalLibraryGetPipelineFlashAttnExtKvF16(lib, op);
         const nth = @min(maxThreads(pipeline0), @as(c_int, 256));
 
         // K
@@ -5314,7 +5504,7 @@ pub export fn ggml_metal_op_flash_attn_ext(ctx: *Op, idx: c_int) callconv(.c) c_
             .nb22 = nb22_attn,
         };
 
-        const pipeline0 = library.ggml_metal_library_get_pipeline_flash_attn_ext_rows(lib, op);
+        const pipeline0 = library.ggmlMetalLibraryGetPipelineFlashAttnExtRows(lib, op);
         const nth = @min(maxThreads(pipeline0), @as(c_int, 64));
 
         mc.ggml_metal_encoder_set_pipeline(enc, pipeline0);
@@ -5375,7 +5565,7 @@ pub export fn ggml_metal_op_flash_attn_ext(ctx: *Op, idx: c_int) callconv(.c) c_
                 .nb33 = nb33,
             };
 
-            const pipeline0 = library.ggml_metal_library_get_pipeline_flash_attn_ext_blk(lib, op, nqptg, ncpsg);
+            const pipeline0 = library.ggmlMetalLibraryGetPipelineFlashAttnExtBlk(lib, op, nqptg, ncpsg);
 
             mc.ggml_metal_encoder_set_pipeline(enc, pipeline0);
             setBytes(enc, &args0, 0);
@@ -5437,7 +5627,7 @@ pub export fn ggml_metal_op_flash_attn_ext(ctx: *Op, idx: c_int) callconv(.c) c_
             16,
         );
 
-        const pipeline = library.ggml_metal_library_get_pipeline_flash_attn_ext_tensor(lib, op, has_mask, has_sinks, has_bias, has_scap);
+        const pipeline = library.ggmlMetalLibraryGetPipelineFlashAttnExtTensor(lib, op, has_mask, has_sinks, has_bias, has_scap);
 
         impl.assert(nsg * 32 <= maxThreads(pipeline), "nsg*32 <= ggml_metal_pipeline_max_theads_per_threadgroup(pipeline)");
         impl.assert(smem <= props_dev.max_theadgroup_memory_size, "smem <= props_dev->max_theadgroup_memory_size");
@@ -5455,7 +5645,7 @@ pub export fn ggml_metal_op_flash_attn_ext(ctx: *Op, idx: c_int) callconv(.c) c_
         mc.ggml_metal_encoder_set_threadgroup_memory_size(enc, smem, 0);
 
         mc.ggml_metal_encoder_dispatch_threadgroups(enc, @divTrunc(ne01 + nqptg - 1, nqptg), ne02, ne03, 32, nsg, 1);
-    } else if (!use_sparse and !ggml_metal_op_flash_attn_ext_use_vec(op)) {
+    } else if (!use_sparse and !ggmlMetalOpFlashAttnExtUseVec(op)) {
         // half8x8 kernel
         const nqptg: c_int = fc.OP_FLASH_ATTN_EXT_NQPSG; // queries per threadgroup
         const ncpsg: c_int = fc.OP_FLASH_ATTN_EXT_NCPSG; // cache values per simdgroup
@@ -5474,7 +5664,7 @@ pub export fn ggml_metal_op_flash_attn_ext(ctx: *Op, idx: c_int) callconv(.c) c_
         const has_kvpad = @rem(ne11_attn, ncpsg) != 0;
 
         if (has_kvpad) {
-            impl.assert(ggml_metal_op_flash_attn_ext_extra_pad(op) != 0, "extra_pad(op) != 0");
+            impl.assert(ggmlMetalOpFlashAttnExtExtraPad(op) != 0, "extra_pad(op) != 0");
 
             var args0: kargs.flash_attn_ext_pad = .{
                 .ne11 = ne11,
@@ -5494,7 +5684,7 @@ pub export fn ggml_metal_op_flash_attn_ext(ctx: *Op, idx: c_int) callconv(.c) c_
                 .nb33 = nb33,
             };
 
-            const pipeline0 = library.ggml_metal_library_get_pipeline_flash_attn_ext_pad(lib, op, has_mask, ncpsg);
+            const pipeline0 = library.ggmlMetalLibraryGetPipelineFlashAttnExtPad(lib, op, has_mask, ncpsg);
 
             mc.ggml_metal_encoder_set_pipeline(enc, pipeline0);
             setBytes(enc, &args0, 0);
@@ -5512,7 +5702,7 @@ pub export fn ggml_metal_op_flash_attn_ext(ctx: *Op, idx: c_int) callconv(.c) c_
         }
 
         if (has_mask) {
-            impl.assert(ggml_metal_op_flash_attn_ext_extra_blk(op) != 0, "extra_blk(op) != 0");
+            impl.assert(ggmlMetalOpFlashAttnExtExtraBlk(op) != 0, "extra_blk(op) != 0");
 
             var args0: kargs.flash_attn_ext_blk = .{
                 .ne01 = ne01,
@@ -5525,7 +5715,7 @@ pub export fn ggml_metal_op_flash_attn_ext(ctx: *Op, idx: c_int) callconv(.c) c_
                 .nb33 = nb33,
             };
 
-            const pipeline0 = library.ggml_metal_library_get_pipeline_flash_attn_ext_blk(lib, op, nqptg, ncpsg);
+            const pipeline0 = library.ggmlMetalLibraryGetPipelineFlashAttnExtBlk(lib, op, nqptg, ncpsg);
 
             mc.ggml_metal_encoder_set_pipeline(enc, pipeline0);
             setBytes(enc, &args0, 0);
@@ -5604,7 +5794,7 @@ pub export fn ggml_metal_op_flash_attn_ext(ctx: *Op, idx: c_int) callconv(.c) c_
             .logit_softcap = logit_softcap,
         };
 
-        const pipeline = library.ggml_metal_library_get_pipeline_flash_attn_ext(
+        const pipeline = library.ggmlMetalLibraryGetPipelineFlashAttnExt(
             lib,
             op,
             has_mask,
@@ -5674,7 +5864,7 @@ pub export fn ggml_metal_op_flash_attn_ext(ctx: *Op, idx: c_int) callconv(.c) c_
         const has_kvpad = !use_sparse and @rem(ne11_attn, ncpsg) != 0;
 
         if (use_sparse) {
-            impl.assert(ggml_metal_op_flash_attn_ext_extra_idx(op) != 0, "extra_idx(op) != 0");
+            impl.assert(ggmlMetalOpFlashAttnExtExtraIdx(op) != 0, "extra_idx(op) != 0");
 
             impl.assert(ne30 == ne11, "ne30 == ne11");
 
@@ -5690,7 +5880,7 @@ pub export fn ggml_metal_op_flash_attn_ext(ctx: *Op, idx: c_int) callconv(.c) c_
                 .n_kv_max_padded = n_kv_max_padded,
             };
 
-            const pipeline0 = library.ggml_metal_library_get_pipeline_flash_attn_ext_vec_idx(lib, op);
+            const pipeline0 = library.ggmlMetalLibraryGetPipelineFlashAttnExtVecIdx(lib, op);
 
             mc.ggml_metal_encoder_set_pipeline(enc, pipeline0);
             setBytes(enc, &args0, 0);
@@ -5706,7 +5896,7 @@ pub export fn ggml_metal_op_flash_attn_ext(ctx: *Op, idx: c_int) callconv(.c) c_
         }
 
         if (has_kvpad) {
-            impl.assert(ggml_metal_op_flash_attn_ext_extra_pad(op) != 0, "extra_pad(op) != 0");
+            impl.assert(ggmlMetalOpFlashAttnExtExtraPad(op) != 0, "extra_pad(op) != 0");
 
             var args0: kargs.flash_attn_ext_pad = .{
                 .ne11 = ne11,
@@ -5726,7 +5916,7 @@ pub export fn ggml_metal_op_flash_attn_ext(ctx: *Op, idx: c_int) callconv(.c) c_
                 .nb33 = nb33,
             };
 
-            const pipeline0 = library.ggml_metal_library_get_pipeline_flash_attn_ext_pad(lib, op, has_mask, ncpsg);
+            const pipeline0 = library.ggmlMetalLibraryGetPipelineFlashAttnExtPad(lib, op, has_mask, ncpsg);
 
             mc.ggml_metal_encoder_set_pipeline(enc, pipeline0);
             setBytes(enc, &args0, 0);
@@ -5847,7 +6037,7 @@ pub export fn ggml_metal_op_flash_attn_ext(ctx: *Op, idx: c_int) callconv(.c) c_
             .n_kv_max_padded = n_kv_max_padded,
         };
 
-        const pipeline = library.ggml_metal_library_get_pipeline_flash_attn_ext_vec(
+        const pipeline = library.ggmlMetalLibraryGetPipelineFlashAttnExtVec(
             lib,
             op,
             has_mask,
@@ -5899,7 +6089,7 @@ pub export fn ggml_metal_op_flash_attn_ext(ctx: *Op, idx: c_int) callconv(.c) c_
             );
         } else {
             // sanity checks
-            impl.assert(ggml_metal_op_flash_attn_ext_extra_tmp(op) != 0, "extra_tmp(op) != 0");
+            impl.assert(ggmlMetalOpFlashAttnExtExtraTmp(op) != 0, "extra_tmp(op) != 0");
 
             impl.assert(
                 @as(i64, ne01) * ne02 * ne03 == op.ne[1] * op.ne[2] * op.ne[3],
@@ -5936,7 +6126,7 @@ pub export fn ggml_metal_op_flash_attn_ext(ctx: *Op, idx: c_int) callconv(.c) c_
                     .nrows = nrows,
                 };
 
-                const pipeline0 = library.ggml_metal_library_get_pipeline_flash_attn_ext_vec_reduce(lib, op, ne20, nwg);
+                const pipeline0 = library.ggmlMetalLibraryGetPipelineFlashAttnExtVecReduce(lib, op, ne20, nwg);
 
                 mc.ggml_metal_encoder_set_pipeline(enc, pipeline0);
                 setBytes(enc, &args0, 0);
@@ -5951,12 +6141,16 @@ pub export fn ggml_metal_op_flash_attn_ext(ctx: *Op, idx: c_int) callconv(.c) c_
     return 1;
 }
 
+comptime {
+    @export(&ggmlMetalOpSet, .{ .name = "ggml_metal_op_set" });
+}
+
 /// Ports `ggml_metal_op_set` (ggml-metal-ops.cpp:2213 @cd959bae9).
 ///
 /// Two `cpy` dispatches when not in-place: src0 into dst, then src1 into
 /// a window of dst at `offs` with the `pnb*` strides. Note the second
 /// `args` describes **src1**'s shape in the `ne0*` fields.
-pub export fn ggml_metal_op_set(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpSet(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     const lib = ctx.lib;
@@ -5981,7 +6175,7 @@ pub export fn ggml_metal_op_set(ctx: *Op, idx: c_int) callconv(.c) c_int {
         // not sure how to avoid this
         // TODO: make a simpler cpy_bytes kernel
 
-        const pipeline_cpy = library.ggml_metal_library_get_pipeline_cpy(lib, s0.type, op.type);
+        const pipeline_cpy = library.ggmlMetalLibraryGetPipelineCpy(lib, s0.type, op.type);
 
         var args_cpy: kargs.cpy = .{
             .nk0 = s0.ne[0],
@@ -6023,7 +6217,7 @@ pub export fn ggml_metal_op_set(ctx: *Op, idx: c_int) callconv(.c) c_int {
         _ = concurrencyReset(ctx);
     }
 
-    const pipeline = library.ggml_metal_library_get_pipeline_cpy(lib, s1.type, op.type);
+    const pipeline = library.ggmlMetalLibraryGetPipelineCpy(lib, s1.type, op.type);
 
     const ne10: i64 = s1.ne[0];
 
@@ -6105,8 +6299,12 @@ pub export fn ggml_metal_op_set(ctx: *Op, idx: c_int) callconv(.c) c_int {
     return 1;
 }
 
+comptime {
+    @export(&ggmlMetalOpCpy, .{ .name = "ggml_metal_op_cpy" });
+}
+
 /// Ports `ggml_metal_op_cpy` (ggml-metal-ops.cpp:2341 @cd959bae9).
-pub export fn ggml_metal_op_cpy(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpCpy(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     const lib = ctx.lib;
@@ -6114,7 +6312,7 @@ pub export fn ggml_metal_op_cpy(ctx: *Op, idx: c_int) callconv(.c) c_int {
 
     const s0 = src(op, 0);
 
-    const pipeline = library.ggml_metal_library_get_pipeline_cpy(lib, s0.type, op.type);
+    const pipeline = library.ggmlMetalLibraryGetPipelineCpy(lib, s0.type, op.type);
 
     const ne00: i64 = s0.ne[0];
 
@@ -6194,12 +6392,16 @@ pub export fn ggml_metal_op_cpy(ctx: *Op, idx: c_int) callconv(.c) c_int {
     return 1;
 }
 
+comptime {
+    @export(&ggmlMetalOpPool1d, .{ .name = "ggml_metal_op_pool_1d" });
+}
+
 /// Ports `ggml_metal_op_pool_1d` (ggml-metal-ops.cpp:2414 @cd959bae9).
 ///
 /// Since v0.8.0 one threadgroup makes one output: its threads split the
 /// window, and the reduction goes through threadgroup memory, a sum and a
 /// count of `f32`s for `AVG` and one partial for `MAX`.
-pub export fn ggml_metal_op_pool_1d(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpPool1d(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     const lib = ctx.lib;
@@ -6227,7 +6429,7 @@ pub export fn ggml_metal_op_pool_1d(ctx: *Op, idx: c_int) callconv(.c) c_int {
         .np = np,
     };
 
-    const pipeline = library.ggml_metal_library_get_pipeline_pool_1d(lib, op, op_pool);
+    const pipeline = library.ggmlMetalLibraryGetPipelinePool1d(lib, op, op_pool);
 
     const nth = @min(@as(c_int, 256), @max(@as(c_int, 1), k0));
     const ntg: c_int = @truncate(np);
@@ -6248,8 +6450,12 @@ pub export fn ggml_metal_op_pool_1d(ctx: *Op, idx: c_int) callconv(.c) c_int {
     return 1;
 }
 
+comptime {
+    @export(&ggmlMetalOpPool2d, .{ .name = "ggml_metal_op_pool_2d" });
+}
+
 /// Ports `ggml_metal_op_pool_2d` (ggml-metal-ops.cpp:2508 @cd959bae9).
-pub export fn ggml_metal_op_pool_2d(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpPool2d(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     const lib = ctx.lib;
@@ -6290,7 +6496,7 @@ pub export fn ggml_metal_op_pool_2d(ctx: *Op, idx: c_int) callconv(.c) c_int {
         .np = np,
     };
 
-    const pipeline = library.ggml_metal_library_get_pipeline_pool_2d(lib, op, op_pool);
+    const pipeline = library.ggmlMetalLibraryGetPipelinePool2d(lib, op, op_pool);
 
     const nth = @min(maxThreads(pipeline), @as(c_int, @intCast(np)));
     const ntg = @divTrunc(np + nth - 1, nth);
@@ -6317,11 +6523,15 @@ fn argmaxNpart(ne00: i64) c_int {
     return 1;
 }
 
+comptime {
+    @export(&ggmlMetalOpArgmaxExtra, .{ .name = "ggml_metal_op_argmax_extra" });
+}
+
 /// Ports `ggml_metal_op_argmax_extra` (ggml-metal-ops.cpp:5651 @cd959bae9):
 /// a partial max and a partial argmax per part of every row, after `dst`,
 /// and nothing for a row short enough to take one pass. The C's `assert`
 /// on the op compiles out in the reference and is not ported.
-pub export fn ggml_metal_op_argmax_extra(op: *const Tensor) callconv(.c) usize {
+pub fn ggmlMetalOpArgmaxExtra(op: *const Tensor) callconv(.c) usize {
     const ne00: i64 = src(op, 0).ne[0];
     const ne01: i64 = src(op, 0).ne[1];
 
@@ -6335,12 +6545,16 @@ pub export fn ggml_metal_op_argmax_extra(op: *const Tensor) callconv(.c) usize {
     return (@sizeOf(f32) + @sizeOf(i32)) *% @as(usize, @bitCast(@as(i64, npart))) *% @as(usize, @bitCast(ne01));
 }
 
+comptime {
+    @export(&ggmlMetalOpArgmax, .{ .name = "ggml_metal_op_argmax" });
+}
+
 /// Ports `ggml_metal_op_argmax` (ggml-metal-ops.cpp:5670 @cd959bae9).
 ///
 /// Since v0.8.0 a row over `N_ARGMAX_CHUNK` takes two kernels: one
 /// threadgroup per part per row into the scratch `ggml_metal_op_argmax_extra`
 /// sized, a barrier, then one threadgroup per row over the parts.
-pub export fn ggml_metal_op_argmax(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpArgmax(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     const lib = ctx.lib;
@@ -6367,8 +6581,8 @@ pub export fn ggml_metal_op_argmax(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const smem: usize = 32 * (@sizeOf(f32) + @sizeOf(i32));
 
     if (npart > 1) {
-        const pipeline_part = library.ggml_metal_library_get_pipeline_argmax_part(lib);
-        const pipeline_final = library.ggml_metal_library_get_pipeline_argmax_final(lib);
+        const pipeline_part = library.ggmlMetalLibraryGetPipelineArgmaxPart(lib);
+        const pipeline_final = library.ggmlMetalLibraryGetPipelineArgmaxFinal(lib);
 
         const bid_dst = getBufferId(op);
         var bid_tmp = bid_dst;
@@ -6398,7 +6612,7 @@ pub export fn ggml_metal_op_argmax(ctx: *Op, idx: c_int) callconv(.c) c_int {
         return 1;
     }
 
-    const pipeline = library.ggml_metal_library_get_pipeline_argmax(lib, op);
+    const pipeline = library.ggmlMetalLibraryGetPipelineArgmax(lib, op);
 
     var nth: i32 = 32; // SIMD width
     while (nth < ne00 and nth * ne01 * ne02 * ne03 < 256) {
@@ -6417,9 +6631,13 @@ pub export fn ggml_metal_op_argmax(ctx: *Op, idx: c_int) callconv(.c) c_int {
     return 1;
 }
 
+comptime {
+    @export(&ggmlMetalOpOptStepAdamw, .{ .name = "ggml_metal_op_opt_step_adamw" });
+}
+
 /// Ports `ggml_metal_op_opt_step_adamw` (ggml-metal-ops.cpp:6192
 /// @cd959bae9).
-pub export fn ggml_metal_op_opt_step_adamw(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpOptStepAdamw(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     const lib = ctx.lib;
@@ -6427,7 +6645,7 @@ pub export fn ggml_metal_op_opt_step_adamw(ctx: *Op, idx: c_int) callconv(.c) c_
 
     const s0 = src(op, 0);
 
-    const pipeline = library.ggml_metal_library_get_pipeline_opt_step_adamw(lib, op);
+    const pipeline = library.ggmlMetalLibraryGetPipelineOptStepAdamw(lib, op);
 
     const np: i64 = c.ggml_nelements(s0);
     var args: kargs.opt_step_adamw = .{
@@ -6453,8 +6671,12 @@ pub export fn ggml_metal_op_opt_step_adamw(ctx: *Op, idx: c_int) callconv(.c) c_
     return 1;
 }
 
+comptime {
+    @export(&ggmlMetalOpOptStepSgd, .{ .name = "ggml_metal_op_opt_step_sgd" });
+}
+
 /// Ports `ggml_metal_op_opt_step_sgd` (ggml-metal-ops.cpp:6228 @cd959bae9).
-pub export fn ggml_metal_op_opt_step_sgd(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpOptStepSgd(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     const lib = ctx.lib;
@@ -6462,7 +6684,7 @@ pub export fn ggml_metal_op_opt_step_sgd(ctx: *Op, idx: c_int) callconv(.c) c_in
 
     const s0 = src(op, 0);
 
-    const pipeline = library.ggml_metal_library_get_pipeline_opt_step_sgd(lib, op);
+    const pipeline = library.ggmlMetalLibraryGetPipelineOptStepSgd(lib, op);
 
     const np: i64 = c.ggml_nelements(s0);
     var args: kargs.opt_step_sgd = .{
@@ -6489,12 +6711,16 @@ pub export fn ggml_metal_op_opt_step_sgd(ctx: *Op, idx: c_int) callconv(.c) c_in
     return 1;
 }
 
+comptime {
+    @export(&ggmlMetalOpCountEqual, .{ .name = "ggml_metal_op_count_equal" });
+}
+
 /// Ports `ggml_metal_op_count_equal` (ggml-metal-ops.cpp:6262 @cd959bae9).
 ///
 /// Two dispatches with a concurrency reset between them: the destination
 /// is zeroed first, then atomically accumulated into, so the second pass
 /// must not overlap the first.
-pub export fn ggml_metal_op_count_equal(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpCountEqual(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     const lib = ctx.lib;
@@ -6506,7 +6732,7 @@ pub export fn ggml_metal_op_count_equal(ctx: *Op, idx: c_int) callconv(.c) c_int
     {
         var args: kargs.memset = .{ .val = 0 };
 
-        const pipeline = library.ggml_metal_library_get_pipeline_memset(lib, op);
+        const pipeline = library.ggmlMetalLibraryGetPipelineMemset(lib, op);
 
         mc.ggml_metal_encoder_set_pipeline(enc, pipeline);
         setBytes(enc, &args, 0);
@@ -6533,7 +6759,7 @@ pub export fn ggml_metal_op_count_equal(ctx: *Op, idx: c_int) callconv(.c) c_int
             .nb13 = s1.nb[3],
         };
 
-        const pipeline = library.ggml_metal_library_get_pipeline_count_equal(lib, op);
+        const pipeline = library.ggmlMetalLibraryGetPipelineCountEqual(lib, op);
 
         const smem = pipeline.smem;
 
@@ -6562,6 +6788,10 @@ pub export fn ggml_metal_op_count_equal(ctx: *Op, idx: c_int) callconv(.c) c_int
     return 1;
 }
 
+comptime {
+    @export(&ggmlMetalOpFwht, .{ .name = "ggml_metal_op_fwht" });
+}
+
 /// Ports `ggml_metal_op_fwht` (ggml-metal-ops.cpp:2466 @cd959bae9).
 ///
 /// Not reached from the dispatch switch: `ggml_metal_op_mul_mat` calls it
@@ -6570,7 +6800,7 @@ pub export fn ggml_metal_op_count_equal(ctx: *Op, idx: c_int) callconv(.c) c_int
 /// same. Note it reads `src[1]`, not `src[0]`, and since v0.5.0 an F16
 /// `src[1]` too, which picks the kernel by name. The size check moved to
 /// `ggml-metal-common.cpp` with `ggml_metal_op_mul_mat_use_fwht`.
-pub export fn ggml_metal_op_fwht(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpFwht(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const op = ctx.node(idx);
 
     const lib = ctx.lib;
@@ -6585,7 +6815,7 @@ pub export fn ggml_metal_op_fwht(ctx: *Op, idx: c_int) callconv(.c) c_int {
         .nrows = @intCast(nrows),
     };
 
-    const pipeline = library.ggml_metal_library_get_pipeline_fwht(lib, @intCast(n), src1.type);
+    const pipeline = library.ggmlMetalLibraryGetPipelineFwht(lib, @intCast(n), src1.type);
 
     mc.ggml_metal_encoder_set_pipeline(enc, pipeline);
     setBytes(enc, &args, 0);
@@ -6612,12 +6842,16 @@ pub export fn ggml_metal_op_fwht(ctx: *Op, idx: c_int) callconv(.c) c_int {
     return 1;
 }
 
+comptime {
+    @export(&ggmlMetalOpSnakeFused, .{ .name = "ggml_metal_op_snake_fused" });
+}
+
 /// Ports `ggml_metal_op_snake_fused` (ggml-metal-ops.cpp:5265 @cd959bae9).
 ///
 /// Dispatch the fused snake kernel from the matched mul -> sin -> sqr ->
 /// mul -> add chain. `idx` points at the leading mul. The caller has
 /// validated the chain. Returns **5**: it consumes the whole chain.
-pub export fn ggml_metal_op_snake_fused(ctx: *Op, idx: c_int) callconv(.c) c_int {
+pub fn ggmlMetalOpSnakeFused(ctx: *Op, idx: c_int) callconv(.c) c_int {
     const lib = ctx.lib;
     const enc = ctx.enc;
 
@@ -6644,7 +6878,7 @@ pub export fn ggml_metal_op_snake_fused(ctx: *Op, idx: c_int) callconv(.c) c_int
         }
     }
 
-    const pipeline = library.ggml_metal_library_get_pipeline_snake(lib, x.type);
+    const pipeline = library.ggmlMetalLibraryGetPipelineSnake(lib, x.type);
 
     var args: kargs.snake = .{
         .T = T,
@@ -6683,6 +6917,10 @@ fn mulMatIdMaxTiles(op: *const Tensor) i64 {
     return if (n_rows < tiles) n_rows else tiles;
 }
 
+comptime {
+    @export(&ggmlMetalOpMulMatIdExtraTpe, .{ .name = "ggml_metal_op_mul_mat_id_extra_tpe" });
+}
+
 /// Ports `ggml_metal_op_mul_mat_id_extra_tpe` (ggml-metal-ops.cpp:2919
 /// @cd959bae9).
 ///
@@ -6691,11 +6929,15 @@ fn mulMatIdMaxTiles(op: *const Tensor) i64 {
 /// (expert, first entry, valid rows) descriptor per tile. Until v0.7.0 it
 /// was a tokens-per-expert table, one `int32` per expert. The C's `assert`
 /// on the op compiles out in the reference and is not ported.
-pub export fn ggml_metal_op_mul_mat_id_extra_tpe(op: *const Tensor) callconv(.c) usize {
+pub fn ggmlMetalOpMulMatIdExtraTpe(op: *const Tensor) callconv(.c) usize {
     const max_tiles = mulMatIdMaxTiles(op);
 
     // size_t * int64_t: the C converts the signed operand to unsigned
     return c.ggml_type_size(c.GGML_TYPE_I32) *% @as(usize, @bitCast(1 + 3 * max_tiles));
+}
+
+comptime {
+    @export(&ggmlMetalOpMulMatIdExtraIds, .{ .name = "ggml_metal_op_mul_mat_id_extra_ids" });
 }
 
 /// Ports `ggml_metal_op_mul_mat_id_extra_ids` (ggml-metal-ops.cpp:2929
@@ -6704,7 +6946,7 @@ pub export fn ggml_metal_op_mul_mat_id_extra_tpe(op: *const Tensor) callconv(.c)
 /// One entry per (expert used, token) pair of ids plus one padding slot
 /// per expert (see `kernel_mul_mm_id_map0`). The C's `assert` on the op
 /// compiles out in the reference and is not ported.
-pub export fn ggml_metal_op_mul_mat_id_extra_ids(op: *const Tensor) callconv(.c) usize {
+pub fn ggmlMetalOpMulMatIdExtraIds(op: *const Tensor) callconv(.c) usize {
     const ne02: i64 = src(op, 0).ne[2]; // n_expert
     const ne20: i64 = src(op, 2).ne[0]; // n_expert_used
     const ne21: i64 = src(op, 2).ne[1]; // n_token
@@ -6712,9 +6954,13 @@ pub export fn ggml_metal_op_mul_mat_id_extra_ids(op: *const Tensor) callconv(.c)
     return c.ggml_type_size(c.GGML_TYPE_I32) *% @as(usize, @bitCast(ne20 * ne21 + ne02));
 }
 
+comptime {
+    @export(&ggmlMetalOpFlashAttnExtUseVec, .{ .name = "ggml_metal_op_flash_attn_ext_use_vec" });
+}
+
 /// Ports `ggml_metal_op_flash_attn_ext_use_vec` (ggml-metal-ops.cpp:3190
 /// @cd959bae9).
-pub export fn ggml_metal_op_flash_attn_ext_use_vec(op: *const Tensor) callconv(.c) bool {
+pub fn ggmlMetalOpFlashAttnExtUseVec(op: *const Tensor) callconv(.c) bool {
     impl.assert(op.op == c.GGML_OP_FLASH_ATTN_EXT, "op->op == GGML_OP_FLASH_ATTN_EXT");
 
     const s0 = src(op, 0);
@@ -6739,7 +6985,7 @@ fn useKvF16(op: *const Tensor) bool {
     // TODO: tune per device
     // large heads need the upfront dequant to fit the non-vec threadgroup memory
     if (src(op, 0).ne[1] < 32 and
-        (src(op, 0).ne[0] < 512 or ggml_metal_op_flash_attn_ext_use_vec(op)))
+        (src(op, 0).ne[0] < 512 or ggmlMetalOpFlashAttnExtUseVec(op)))
     {
         return false;
     }
@@ -6768,7 +7014,7 @@ fn useKvF16(op: *const Tensor) bool {
 /// runs over the gathered rows. The C's `assert` on the op compiles out in
 /// the reference and is not ported.
 fn useTensor(op: *const Tensor, has_tensor: bool) bool {
-    if (!has_tensor or ggml_metal_op_flash_attn_ext_use_vec(op)) {
+    if (!has_tensor or ggmlMetalOpFlashAttnExtUseVec(op)) {
         return false;
     }
 
@@ -6907,9 +7153,13 @@ fn kvF16KSize(op: *const Tensor) usize {
     return impl.pad(@sizeOf(c.ggml_fp16_t) * @as(usize, @intCast(s1.ne[0] * s1.ne[1] * s1.ne[2] * s1.ne[3])), 16);
 }
 
+comptime {
+    @export(&ggmlMetalOpFlashAttnExtExtraPad, .{ .name = "ggml_metal_op_flash_attn_ext_extra_pad" });
+}
+
 /// Ports `ggml_metal_op_flash_attn_ext_extra_pad`
 /// (ggml-metal-ops.cpp:3357 @cd959bae9).
-pub export fn ggml_metal_op_flash_attn_ext_extra_pad(op: *const Tensor) callconv(.c) usize {
+pub fn ggmlMetalOpFlashAttnExtExtraPad(op: *const Tensor) callconv(.c) usize {
     impl.assert(op.op == c.GGML_OP_FLASH_ATTN_EXT, "op->op == GGML_OP_FLASH_ATTN_EXT");
 
     const s1 = src(op, 1);
@@ -6962,9 +7212,13 @@ pub export fn ggml_metal_op_flash_attn_ext_extra_pad(op: *const Tensor) callconv
     return res;
 }
 
+comptime {
+    @export(&ggmlMetalOpFlashAttnExtExtraBlk, .{ .name = "ggml_metal_op_flash_attn_ext_extra_blk" });
+}
+
 /// Ports `ggml_metal_op_flash_attn_ext_extra_blk`
 /// (ggml-metal-ops.cpp:3415 @cd959bae9).
-pub export fn ggml_metal_op_flash_attn_ext_extra_blk(op: *const Tensor) callconv(.c) usize {
+pub fn ggmlMetalOpFlashAttnExtExtraBlk(op: *const Tensor) callconv(.c) usize {
     impl.assert(op.op == c.GGML_OP_FLASH_ATTN_EXT, "op->op == GGML_OP_FLASH_ATTN_EXT");
 
     const s0 = src(op, 0);
@@ -6979,7 +7233,7 @@ pub export fn ggml_metal_op_flash_attn_ext_extra_blk(op: *const Tensor) callconv
 
     const s3 = src(op, 3);
 
-    const is_vec = ggml_metal_op_flash_attn_ext_use_vec(op);
+    const is_vec = ggmlMetalOpFlashAttnExtUseVec(op);
 
     // this optimization is not useful for the vector kernels
     // note: always reserve the blk buffer to avoid graph reallocations
@@ -6997,9 +7251,13 @@ pub export fn ggml_metal_op_flash_attn_ext_extra_blk(op: *const Tensor) callconv
     return res;
 }
 
+comptime {
+    @export(&ggmlMetalOpFlashAttnExtExtraTmp, .{ .name = "ggml_metal_op_flash_attn_ext_extra_tmp" });
+}
+
 /// Ports `ggml_metal_op_flash_attn_ext_extra_tmp`
 /// (ggml-metal-ops.cpp:3454 @cd959bae9).
-pub export fn ggml_metal_op_flash_attn_ext_extra_tmp(op: *const Tensor) callconv(.c) usize {
+pub fn ggmlMetalOpFlashAttnExtExtraTmp(op: *const Tensor) callconv(.c) usize {
     impl.assert(op.op == c.GGML_OP_FLASH_ATTN_EXT, "op->op == GGML_OP_FLASH_ATTN_EXT");
 
     const s0 = src(op, 0);
@@ -7023,9 +7281,13 @@ pub export fn ggml_metal_op_flash_attn_ext_extra_tmp(op: *const Tensor) callconv
     return res;
 }
 
+comptime {
+    @export(&ggmlMetalOpFlashAttnExtExtraKvF16, .{ .name = "ggml_metal_op_flash_attn_ext_extra_kv_f16" });
+}
+
 /// Ports `ggml_metal_op_flash_attn_ext_extra_kv_f16`
 /// (ggml-metal-ops.cpp:3483 @cd959bae9).
-pub export fn ggml_metal_op_flash_attn_ext_extra_kv_f16(op: *const Tensor) callconv(.c) usize {
+pub fn ggmlMetalOpFlashAttnExtExtraKvF16(op: *const Tensor) callconv(.c) usize {
     impl.assert(op.op == c.GGML_OP_FLASH_ATTN_EXT, "op->op == GGML_OP_FLASH_ATTN_EXT");
 
     // note: always reserve the temp buffer to avoid graph reallocations
@@ -7047,13 +7309,17 @@ pub export fn ggml_metal_op_flash_attn_ext_extra_kv_f16(op: *const Tensor) callc
     return k_size + v_size;
 }
 
+comptime {
+    @export(&ggmlMetalOpFlashAttnExtExtraIdx, .{ .name = "ggml_metal_op_flash_attn_ext_extra_idx" });
+}
+
 /// Ports `ggml_metal_op_flash_attn_ext_extra_idx`
 /// (ggml-metal-ops.cpp:3508 @cd959bae9).
 ///
 /// The sparse index lists: one list of KV indices per mask row, padded with
 /// -1 to a multiple of `OP_FLASH_ATTN_EXT_VEC_NCPSG`. Zero when the op does
 /// not take the sparse path.
-pub export fn ggml_metal_op_flash_attn_ext_extra_idx(op: *const Tensor) callconv(.c) usize {
+pub fn ggmlMetalOpFlashAttnExtExtraIdx(op: *const Tensor) callconv(.c) usize {
     impl.assert(op.op == c.GGML_OP_FLASH_ATTN_EXT, "op->op == GGML_OP_FLASH_ATTN_EXT");
 
     const n_kv_max = nKvMaxSparse(op);
@@ -7073,6 +7339,10 @@ pub export fn ggml_metal_op_flash_attn_ext_extra_idx(op: *const Tensor) callconv
     return impl.pad(@sizeOf(i32) * n_kv_max_padded * ne31 * ne32 * ne33, 16);
 }
 
+comptime {
+    @export(&ggmlMetalOpFlashAttnExtExtraRows, .{ .name = "ggml_metal_op_flash_attn_ext_extra_rows" });
+}
+
 /// Ports `ggml_metal_op_flash_attn_ext_extra_rows`
 /// (ggml-metal-ops.cpp:3526 @cd959bae9), new at v0.9.0.
 ///
@@ -7082,7 +7352,7 @@ pub export fn ggml_metal_op_flash_attn_ext_extra_idx(op: *const Tensor) callconv
 /// path the op takes, as the C does: the vec path reads the rows through
 /// the lists and never touches it. The C's `assert` on the op compiles out
 /// in the reference and is not ported.
-pub export fn ggml_metal_op_flash_attn_ext_extra_rows(op: *const Tensor) callconv(.c) usize {
+pub fn ggmlMetalOpFlashAttnExtExtraRows(op: *const Tensor) callconv(.c) usize {
     const kv_rows = srcOpt(op, 5) orelse return 0;
 
     const s1 = src(op, 1);

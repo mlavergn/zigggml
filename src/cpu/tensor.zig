@@ -75,52 +75,61 @@ inline fn offsetOf(tensor: *const Tensor, d0: c_int, d1: c_int, d2: c_int, d3: c
 // -----------------------------------------------------------------------------
 // Constructors
 
+comptime {
+    @export(&ggmlNewI32, .{ .name = "ggml_new_i32" });
+}
+
 /// Ports `ggml_new_i32` (ggml-cpu.c:758 @cd959bae9).
 ///
-/// Parameters:
 /// - `ctx`: context to allocate in; must not be in no-alloc mode, since the
 ///   value is written immediately.
 /// - `value`: the scalar to store.
 ///
-/// Return: a 1-element I32 tensor owned by `ctx`.
-pub export fn ggml_new_i32(ctx: *Context, value: i32) *Tensor {
-    impl.assert(!context.ggml_get_no_alloc(ctx), "!ggml_get_no_alloc(ctx)");
+/// - Returns: a 1-element I32 tensor owned by `ctx`.
+pub fn ggmlNewI32(ctx: *Context, value: i32) callconv(.c) *Tensor {
+    impl.assert(!context.ggmlGetNoAlloc(ctx), "!ggml_get_no_alloc(ctx)");
 
-    const result = context.ggml_new_tensor_1d(ctx, c.GGML_TYPE_I32, 1);
-    _ = ggml_set_i32(result, value);
+    const result = context.ggmlNewTensor1d(ctx, c.GGML_TYPE_I32, 1);
+    _ = ggmlSetI32(result, value);
     return result;
+}
+
+comptime {
+    @export(&ggmlNewF32, .{ .name = "ggml_new_f32" });
 }
 
 /// Ports `ggml_new_f32` (ggml-cpu.c:768 @cd959bae9).
 ///
-/// Parameters:
 /// - `ctx`: context to allocate in; must not be in no-alloc mode.
 /// - `value`: the scalar to store.
 ///
-/// Return: a 1-element F32 tensor owned by `ctx`.
-pub export fn ggml_new_f32(ctx: *Context, value: f32) *Tensor {
-    impl.assert(!context.ggml_get_no_alloc(ctx), "!ggml_get_no_alloc(ctx)");
+/// - Returns: a 1-element F32 tensor owned by `ctx`.
+pub fn ggmlNewF32(ctx: *Context, value: f32) callconv(.c) *Tensor {
+    impl.assert(!context.ggmlGetNoAlloc(ctx), "!ggml_get_no_alloc(ctx)");
 
-    const result = context.ggml_new_tensor_1d(ctx, c.GGML_TYPE_F32, 1);
-    _ = ggml_set_f32(result, value);
+    const result = context.ggmlNewTensor1d(ctx, c.GGML_TYPE_F32, 1);
+    _ = ggmlSetF32(result, value);
     return result;
 }
 
 // -----------------------------------------------------------------------------
 // Filling a whole tensor
 
+comptime {
+    @export(&ggmlSetI32, .{ .name = "ggml_set_i32" });
+}
+
 /// Ports `ggml_set_i32` (ggml-cpu.c:778 @cd959bae9).
 ///
 /// Fills every element with `value`, row by row, so a tensor with row padding
 /// keeps its padding untouched.
 ///
-/// Parameters:
 /// - `tensor`: the tensor to fill; must be one of the six scalar types.
 /// - `value`: the value, converted to the tensor's type.
 ///
-/// Return: `tensor`, for chaining, as the C does.
-pub export fn ggml_set_i32(tensor: *Tensor, value: i32) *Tensor {
-    const n = types.ggml_nrows(tensor);
+/// - Returns: `tensor`, for chaining, as the C does.
+pub fn ggmlSetI32(tensor: *Tensor, value: i32) callconv(.c) *Tensor {
+    const n = types.ggmlNrows(tensor);
     const nc = tensor.ne[0];
     const n1 = tensor.nb[1];
     const data = bytes(tensor);
@@ -162,15 +171,18 @@ pub export fn ggml_set_i32(tensor: *Tensor, value: i32) *Tensor {
     return tensor;
 }
 
+comptime {
+    @export(&ggmlSetF32, .{ .name = "ggml_set_f32" });
+}
+
 /// Ports `ggml_set_f32` (ggml-cpu.c:837 @cd959bae9).
 ///
-/// Parameters:
 /// - `tensor`: the tensor to fill; must be one of the six scalar types.
 /// - `value`: the value, converted to the tensor's type.
 ///
-/// Return: `tensor`, for chaining.
-pub export fn ggml_set_f32(tensor: *Tensor, value: f32) *Tensor {
-    const n = types.ggml_nrows(tensor);
+/// - Returns: `tensor`, for chaining.
+pub fn ggmlSetF32(tensor: *Tensor, value: f32) callconv(.c) *Tensor {
+    const n = types.ggmlNrows(tensor);
     const nc = tensor.ne[0];
     const n1 = tensor.nb[1];
     const data = bytes(tensor);
@@ -218,18 +230,21 @@ pub export fn ggml_set_f32(tensor: *Tensor, value: f32) *Tensor {
 // opens by unravelling the index and handing off to the `nd` form when it is
 // not.
 
+comptime {
+    @export(&ggmlGetI321d, .{ .name = "ggml_get_i32_1d" });
+}
+
 /// Ports `ggml_get_i32_1d` (ggml-cpu.c:896 @cd959bae9).
 ///
-/// Parameters:
 /// - `tensor`: the tensor to read.
 /// - `i`: flat element index.
 ///
-/// Return: the element, converted to `i32` by truncation toward zero.
-pub export fn ggml_get_i32_1d(tensor: *const Tensor, i: c_int) i32 {
-    if (!types.ggml_is_contiguous(tensor)) {
+/// - Returns: the element, converted to `i32` by truncation toward zero.
+pub fn ggmlGetI321d(tensor: *const Tensor, i: c_int) callconv(.c) i32 {
+    if (!types.ggmlIsContiguous(tensor)) {
         var id: [4]i64 = @splat(0);
-        context.ggml_unravel_index(tensor, i, &id[0], &id[1], &id[2], &id[3]);
-        return ggml_get_i32_nd(tensor, @intCast(id[0]), @intCast(id[1]), @intCast(id[2]), @intCast(id[3]));
+        context.ggmlUnravelIndex(tensor, i, &id[0], &id[1], &id[2], &id[3]);
+        return ggmlGetI32Nd(tensor, @intCast(id[0]), @intCast(id[1]), @intCast(id[2]), @intCast(id[3]));
     }
 
     const data = bytes(tensor);
@@ -264,17 +279,20 @@ pub export fn ggml_get_i32_1d(tensor: *const Tensor, i: c_int) i32 {
     };
 }
 
+comptime {
+    @export(&ggmlSetI321d, .{ .name = "ggml_set_i32_1d" });
+}
+
 /// Ports `ggml_set_i32_1d` (ggml-cpu.c:940 @cd959bae9).
 ///
-/// Parameters:
 /// - `tensor`: the tensor to write.
 /// - `i`: flat element index.
 /// - `value`: the value, converted to the tensor's type.
-pub export fn ggml_set_i32_1d(tensor: *const Tensor, i: c_int, value: i32) void {
-    if (!types.ggml_is_contiguous(tensor)) {
+pub fn ggmlSetI321d(tensor: *const Tensor, i: c_int, value: i32) callconv(.c) void {
+    if (!types.ggmlIsContiguous(tensor)) {
         var id: [4]i64 = @splat(0);
-        context.ggml_unravel_index(tensor, i, &id[0], &id[1], &id[2], &id[3]);
-        ggml_set_i32_nd(tensor, @intCast(id[0]), @intCast(id[1]), @intCast(id[2]), @intCast(id[3]), value);
+        context.ggmlUnravelIndex(tensor, i, &id[0], &id[1], &id[2], &id[3]);
+        ggmlSetI32Nd(tensor, @intCast(id[0]), @intCast(id[1]), @intCast(id[2]), @intCast(id[3]), value);
         return;
     }
 
@@ -310,18 +328,21 @@ pub export fn ggml_set_i32_1d(tensor: *const Tensor, i: c_int, value: i32) void 
     }
 }
 
+comptime {
+    @export(&ggmlGetF321d, .{ .name = "ggml_get_f32_1d" });
+}
+
 /// Ports `ggml_get_f32_1d` (ggml-cpu.c:1039 @cd959bae9).
 ///
-/// Parameters:
 /// - `tensor`: the tensor to read.
 /// - `i`: flat element index.
 ///
-/// Return: the element, widened to `f32`.
-pub export fn ggml_get_f32_1d(tensor: *const Tensor, i: c_int) f32 {
-    if (!types.ggml_is_contiguous(tensor)) {
+/// - Returns: the element, widened to `f32`.
+pub fn ggmlGetF321d(tensor: *const Tensor, i: c_int) callconv(.c) f32 {
+    if (!types.ggmlIsContiguous(tensor)) {
         var id: [4]i64 = @splat(0);
-        context.ggml_unravel_index(tensor, i, &id[0], &id[1], &id[2], &id[3]);
-        return ggml_get_f32_nd(tensor, @intCast(id[0]), @intCast(id[1]), @intCast(id[2]), @intCast(id[3]));
+        context.ggmlUnravelIndex(tensor, i, &id[0], &id[1], &id[2], &id[3]);
+        return ggmlGetF32Nd(tensor, @intCast(id[0]), @intCast(id[1]), @intCast(id[2]), @intCast(id[3]));
     }
 
     const data = bytes(tensor);
@@ -339,17 +360,20 @@ pub export fn ggml_get_f32_1d(tensor: *const Tensor, i: c_int) f32 {
     };
 }
 
+comptime {
+    @export(&ggmlSetF321d, .{ .name = "ggml_set_f32_1d" });
+}
+
 /// Ports `ggml_set_f32_1d` (ggml-cpu.c:1077 @cd959bae9).
 ///
-/// Parameters:
 /// - `tensor`: the tensor to write.
 /// - `i`: flat element index.
 /// - `value`: the value, converted to the tensor's type.
-pub export fn ggml_set_f32_1d(tensor: *const Tensor, i: c_int, value: f32) void {
-    if (!types.ggml_is_contiguous(tensor)) {
+pub fn ggmlSetF321d(tensor: *const Tensor, i: c_int, value: f32) callconv(.c) void {
+    if (!types.ggmlIsContiguous(tensor)) {
         var id: [4]i64 = @splat(0);
-        context.ggml_unravel_index(tensor, i, &id[0], &id[1], &id[2], &id[3]);
-        ggml_set_f32_nd(tensor, @intCast(id[0]), @intCast(id[1]), @intCast(id[2]), @intCast(id[3]), value);
+        context.ggmlUnravelIndex(tensor, i, &id[0], &id[1], &id[2], &id[3]);
+        ggmlSetF32Nd(tensor, @intCast(id[0]), @intCast(id[1]), @intCast(id[2]), @intCast(id[3]), value);
         return;
     }
 
@@ -370,14 +394,17 @@ pub export fn ggml_set_f32_1d(tensor: *const Tensor, i: c_int, value: f32) void 
 // -----------------------------------------------------------------------------
 // Single elements, by coordinate
 
+comptime {
+    @export(&ggmlGetI32Nd, .{ .name = "ggml_get_i32_nd" });
+}
+
 /// Ports `ggml_get_i32_nd` (ggml-cpu.c:985 @cd959bae9).
 ///
-/// Parameters:
 /// - `tensor`: the tensor to read.
 /// - `d0`..`d3`: coordinates along each dimension.
 ///
-/// Return: the element, converted to `i32` by truncation toward zero.
-pub export fn ggml_get_i32_nd(tensor: *const Tensor, d0: c_int, d1: c_int, d2: c_int, d3: c_int) i32 {
+/// - Returns: the element, converted to `i32` by truncation toward zero.
+pub fn ggmlGetI32Nd(tensor: *const Tensor, d0: c_int, d1: c_int, d2: c_int, d3: c_int) callconv(.c) i32 {
     const p = bytes(tensor) + offsetOf(tensor, d0, d1, d2, d3);
 
     return switch (tensor.type) {
@@ -391,13 +418,16 @@ pub export fn ggml_get_i32_nd(tensor: *const Tensor, d0: c_int, d1: c_int, d2: c
     };
 }
 
+comptime {
+    @export(&ggmlSetI32Nd, .{ .name = "ggml_set_i32_nd" });
+}
+
 /// Ports `ggml_set_i32_nd` (ggml-cpu.c:1005 @cd959bae9).
 ///
-/// Parameters:
 /// - `tensor`: the tensor to write.
 /// - `d0`..`d3`: coordinates along each dimension.
 /// - `value`: the value, converted to the tensor's type.
-pub export fn ggml_set_i32_nd(tensor: *const Tensor, d0: c_int, d1: c_int, d2: c_int, d3: c_int, value: i32) void {
+pub fn ggmlSetI32Nd(tensor: *const Tensor, d0: c_int, d1: c_int, d2: c_int, d3: c_int, value: i32) callconv(.c) void {
     const p = bytes(tensor) + offsetOf(tensor, d0, d1, d2, d3);
 
     switch (tensor.type) {
@@ -411,14 +441,17 @@ pub export fn ggml_set_i32_nd(tensor: *const Tensor, d0: c_int, d1: c_int, d2: c
     }
 }
 
+comptime {
+    @export(&ggmlGetF32Nd, .{ .name = "ggml_get_f32_nd" });
+}
+
 /// Ports `ggml_get_f32_nd` (ggml-cpu.c:1116 @cd959bae9).
 ///
-/// Parameters:
 /// - `tensor`: the tensor to read.
 /// - `d0`..`d3`: coordinates along each dimension.
 ///
-/// Return: the element, widened to `f32`.
-pub export fn ggml_get_f32_nd(tensor: *const Tensor, d0: c_int, d1: c_int, d2: c_int, d3: c_int) f32 {
+/// - Returns: the element, widened to `f32`.
+pub fn ggmlGetF32Nd(tensor: *const Tensor, d0: c_int, d1: c_int, d2: c_int, d3: c_int) callconv(.c) f32 {
     const p = bytes(tensor) + offsetOf(tensor, d0, d1, d2, d3);
 
     return switch (tensor.type) {
@@ -432,13 +465,16 @@ pub export fn ggml_get_f32_nd(tensor: *const Tensor, d0: c_int, d1: c_int, d2: c
     };
 }
 
+comptime {
+    @export(&ggmlSetF32Nd, .{ .name = "ggml_set_f32_nd" });
+}
+
 /// Ports `ggml_set_f32_nd` (ggml-cpu.c:1136 @cd959bae9).
 ///
-/// Parameters:
 /// - `tensor`: the tensor to write.
 /// - `d0`..`d3`: coordinates along each dimension.
 /// - `value`: the value, converted to the tensor's type.
-pub export fn ggml_set_f32_nd(tensor: *const Tensor, d0: c_int, d1: c_int, d2: c_int, d3: c_int, value: f32) void {
+pub fn ggmlSetF32Nd(tensor: *const Tensor, d0: c_int, d1: c_int, d2: c_int, d3: c_int, value: f32) callconv(.c) void {
     const p = bytes(tensor) + offsetOf(tensor, d0, d1, d2, d3);
 
     switch (tensor.type) {
@@ -461,7 +497,7 @@ test {
 
 /// A context big enough for the small tensors below, with its own buffer.
 fn testContext() *Context {
-    return context.ggml_init(.{
+    return context.ggmlInit(.{
         .mem_size = 16 * 1024 * 1024,
         .mem_buffer = null,
         .no_alloc = false,
@@ -470,18 +506,18 @@ fn testContext() *Context {
 
 test "new_i32 and new_f32 round trip a scalar" {
     const ctx = testContext();
-    defer context.ggml_free(ctx);
+    defer context.ggmlFree(ctx);
 
-    const a = ggml_new_i32(ctx, -7);
-    try std.testing.expectEqual(@as(i32, -7), ggml_get_i32_1d(a, 0));
+    const a = ggmlNewI32(ctx, -7);
+    try std.testing.expectEqual(@as(i32, -7), ggmlGetI321d(a, 0));
 
-    const b = ggml_new_f32(ctx, 2.5);
-    try std.testing.expectEqual(@as(f32, 2.5), ggml_get_f32_1d(b, 0));
+    const b = ggmlNewF32(ctx, 2.5);
+    try std.testing.expectEqual(@as(f32, 2.5), ggmlGetF321d(b, 0));
 }
 
 test "set_f32 fills every element of every scalar type" {
     const ctx = testContext();
-    defer context.ggml_free(ctx);
+    defer context.ggmlFree(ctx);
 
     const cases = [_]c.enum_ggml_type{
         c.GGML_TYPE_I8,  c.GGML_TYPE_I16,  c.GGML_TYPE_I32,
@@ -489,17 +525,17 @@ test "set_f32 fills every element of every scalar type" {
     };
 
     for (cases) |t| {
-        const a = context.ggml_new_tensor_1d(ctx, t, 8);
-        _ = ggml_set_f32(a, 3.0);
+        const a = context.ggmlNewTensor1d(ctx, t, 8);
+        _ = ggmlSetF32(a, 3.0);
         for (0..8) |i| {
-            try std.testing.expectEqual(@as(f32, 3.0), ggml_get_f32_1d(a, @intCast(i)));
+            try std.testing.expectEqual(@as(f32, 3.0), ggmlGetF321d(a, @intCast(i)));
         }
     }
 }
 
 test "set_i32 fills every element of every scalar type" {
     const ctx = testContext();
-    defer context.ggml_free(ctx);
+    defer context.ggmlFree(ctx);
 
     const cases = [_]c.enum_ggml_type{
         c.GGML_TYPE_I8,  c.GGML_TYPE_I16,  c.GGML_TYPE_I32,
@@ -507,57 +543,57 @@ test "set_i32 fills every element of every scalar type" {
     };
 
     for (cases) |t| {
-        const a = context.ggml_new_tensor_1d(ctx, t, 8);
-        _ = ggml_set_i32(a, -5);
+        const a = context.ggmlNewTensor1d(ctx, t, 8);
+        _ = ggmlSetI32(a, -5);
         for (0..8) |i| {
-            try std.testing.expectEqual(@as(i32, -5), ggml_get_i32_1d(a, @intCast(i)));
+            try std.testing.expectEqual(@as(i32, -5), ggmlGetI321d(a, @intCast(i)));
         }
     }
 }
 
 test "the nd accessors walk the strides" {
     const ctx = testContext();
-    defer context.ggml_free(ctx);
+    defer context.ggmlFree(ctx);
 
-    const a = context.ggml_new_tensor_2d(ctx, c.GGML_TYPE_F32, 3, 2);
-    _ = ggml_set_f32(a, 0.0);
+    const a = context.ggmlNewTensor2d(ctx, c.GGML_TYPE_F32, 3, 2);
+    _ = ggmlSetF32(a, 0.0);
 
-    ggml_set_f32_nd(a, 2, 1, 0, 0, 9.0);
-    try std.testing.expectEqual(@as(f32, 9.0), ggml_get_f32_nd(a, 2, 1, 0, 0));
+    ggmlSetF32Nd(a, 2, 1, 0, 0, 9.0);
+    try std.testing.expectEqual(@as(f32, 9.0), ggmlGetF32Nd(a, 2, 1, 0, 0));
 
     // Flat index 5 is the same element for a contiguous 3x2.
-    try std.testing.expectEqual(@as(f32, 9.0), ggml_get_f32_1d(a, 5));
-    try std.testing.expectEqual(@as(f32, 0.0), ggml_get_f32_1d(a, 4));
+    try std.testing.expectEqual(@as(f32, 9.0), ggmlGetF321d(a, 5));
+    try std.testing.expectEqual(@as(f32, 0.0), ggmlGetF321d(a, 4));
 }
 
 test "a non-contiguous view is read through unravel_index" {
     const ctx = testContext();
-    defer context.ggml_free(ctx);
+    defer context.ggmlFree(ctx);
 
-    const a = context.ggml_new_tensor_2d(ctx, c.GGML_TYPE_F32, 4, 2);
-    _ = ggml_set_f32(a, 0.0);
-    for (0..8) |i| ggml_set_f32_1d(a, @intCast(i), @floatFromInt(i));
+    const a = context.ggmlNewTensor2d(ctx, c.GGML_TYPE_F32, 4, 2);
+    _ = ggmlSetF32(a, 0.0);
+    for (0..8) |i| ggmlSetF321d(a, @intCast(i), @floatFromInt(i));
 
     // Two columns of the four, so rows are strided.
     const v = ctx_view: {
         const t = @import("../ops.zig");
-        break :ctx_view t.ggml_view_2d(ctx, a, 2, 2, a.nb[1], 0);
+        break :ctx_view t.ggmlView2d(ctx, a, 2, 2, a.nb[1], 0);
     };
-    try std.testing.expect(!types.ggml_is_contiguous(v));
+    try std.testing.expect(!types.ggmlIsContiguous(v));
 
     // Flat 2 is (0,1) in the view, which is element 4 of the source.
-    try std.testing.expectEqual(@as(f32, 4.0), ggml_get_f32_1d(v, 2));
-    try std.testing.expectEqual(@as(f32, 1.0), ggml_get_f32_1d(v, 1));
+    try std.testing.expectEqual(@as(f32, 4.0), ggmlGetF321d(v, 2));
+    try std.testing.expectEqual(@as(f32, 1.0), ggmlGetF321d(v, 1));
 }
 
 test "truncation toward zero, not rounding" {
     const ctx = testContext();
-    defer context.ggml_free(ctx);
+    defer context.ggmlFree(ctx);
 
-    const a = context.ggml_new_tensor_1d(ctx, c.GGML_TYPE_F32, 2);
-    ggml_set_f32_1d(a, 0, 1.9);
-    ggml_set_f32_1d(a, 1, -1.9);
+    const a = context.ggmlNewTensor1d(ctx, c.GGML_TYPE_F32, 2);
+    ggmlSetF321d(a, 0, 1.9);
+    ggmlSetF321d(a, 1, -1.9);
 
-    try std.testing.expectEqual(@as(i32, 1), ggml_get_i32_1d(a, 0));
-    try std.testing.expectEqual(@as(i32, -1), ggml_get_i32_1d(a, 1));
+    try std.testing.expectEqual(@as(i32, 1), ggmlGetI321d(a, 0));
+    try std.testing.expectEqual(@as(i32, -1), ggmlGetI321d(a, 1));
 }

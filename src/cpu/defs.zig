@@ -161,12 +161,10 @@ pub const UnaryLocals = struct {
     nb1: usize,
     nb2: usize,
     nb3: usize,
-
-    /// Parameters:
     /// - `src0`: the input, supplying the `*0*` names.
     /// - `dst`: the result, supplying the unsuffixed names.
     ///
-    /// Return: the sixteen locals, by value.
+    /// - Returns: the sixteen locals, by value.
     pub fn of(src0: *const Tensor, dst: *const Tensor) UnaryLocals {
         return .{
             .ne00 = src0.ne[0],
@@ -228,12 +226,10 @@ pub const TernaryLocals = struct {
     nb1: usize,
     nb2: usize,
     nb3: usize,
-
-    /// Parameters:
     /// - `src0`, `src1`, `src2`: the three inputs.
     /// - `dst`: the result, supplying the unsuffixed names.
     ///
-    /// Return: the thirty-two locals, by value.
+    /// - Returns: the thirty-two locals, by value.
     pub fn of(src0: *const Tensor, src1: *const Tensor, src2: *const Tensor, dst: *const Tensor) TernaryLocals {
         return .{
             .ne00 = src0.ne[0],
@@ -307,12 +303,10 @@ pub const BinaryLocals = struct {
     nb1: usize,
     nb2: usize,
     nb3: usize,
-
-    /// Parameters:
     /// - `src0`, `src1`: the two inputs, supplying the `*0*` and `*1*` names.
     /// - `dst`: the result, supplying the unsuffixed names.
     ///
-    /// Return: the twenty-four locals, by value.
+    /// - Returns: the twenty-four locals, by value.
     pub fn of(src0: *const Tensor, src1: *const Tensor, dst: *const Tensor) BinaryLocals {
         return .{
             .ne00 = src0.ne[0],

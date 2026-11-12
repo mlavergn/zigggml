@@ -14,7 +14,6 @@ const impl = @import("../impl.zig");
 const m = @import("module.zig");
 
 const c = impl.c;
-const allocator = m.common.allocator;
 
 fn oom() noreturn {
     impl.abort("ggml_vulkan: out of memory");
@@ -27,7 +26,7 @@ pub const PerfLogger = struct {
     print_count: u32 = 0,
 
     pub fn create() *PerfLogger {
-        const p = allocator.create(PerfLogger) catch oom();
+        const p = std.heap.c_allocator.create(PerfLogger) catch oom();
         p.* = .{};
         return p;
     }
@@ -35,8 +34,8 @@ pub const PerfLogger = struct {
     fn clearMap(map: *std.StringHashMapUnmanaged(std.ArrayList(u64))) void {
         var it = map.iterator();
         while (it.next()) |e| {
-            allocator.free(e.key_ptr.*);
-            e.value_ptr.deinit(allocator);
+            std.heap.c_allocator.free(e.key_ptr.*);
+            e.value_ptr.deinit(std.heap.c_allocator);
         }
         map.clearRetainingCapacity();
     }
@@ -48,8 +47,8 @@ pub const PerfLogger = struct {
         if (self.print_count % m.instance.loggers.perf_logger_frequency != 0 and !force) return;
         self.print_count = 0;
 
-        const names = allocator.alloc([]const u8, self.timings.count()) catch oom();
-        defer allocator.free(names);
+        const names = std.heap.c_allocator.alloc([]const u8, self.timings.count()) catch oom();
+        defer std.heap.c_allocator.free(names);
         var it = self.timings.keyIterator();
         var n: usize = 0;
         while (it.next()) |k| : (n += 1) names[n] = k.*;
@@ -147,12 +146,12 @@ pub const PerfLogger = struct {
     }
 
     fn file(map: *std.StringHashMapUnmanaged(std.ArrayList(u64)), name: []const u8, value: u64) void {
-        const gop = map.getOrPut(allocator, name) catch oom();
+        const gop = map.getOrPut(std.heap.c_allocator, name) catch oom();
         if (!gop.found_existing) {
-            gop.key_ptr.* = allocator.dupe(u8, name) catch oom();
+            gop.key_ptr.* = std.heap.c_allocator.dupe(u8, name) catch oom();
             gop.value_ptr.* = .empty;
         }
-        gop.value_ptr.append(allocator, value) catch oom();
+        gop.value_ptr.append(std.heap.c_allocator, value) catch oom();
     }
 
     /// Ports `vk_perf_logger`'s `log_timing` (ggml-vulkan-types.h:1203 @cd959bae9)

@@ -7,7 +7,6 @@
 //! `llama.cpp/ggml/src/ggml-cuda/set.cuh` at v0.9.0 (`cd959bae9`). It has no
 //! kernel of its own.
 
-const std = @import("std");
 const impl = @import("../impl.zig");
 const common = @import("common.zig");
 const cpy = @import("cpy.zig");

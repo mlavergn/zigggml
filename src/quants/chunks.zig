@@ -49,7 +49,6 @@ fn rowSize(comptime Block: type, comptime block_elems: usize, n_per_row: i64) us
 
 /// The row loop every chunk entry point shares.
 ///
-/// Parameters:
 /// - `Block`: the block type, for the row stride.
 /// - `block_elems`: weights per block.
 /// - `nrow`, `n_per_row`: the shape.
@@ -57,7 +56,7 @@ fn rowSize(comptime Block: type, comptime block_elems: usize, n_per_row: i64) us
 /// - `body`: called once per row with the row's source, destination, and the
 ///   row's slice of the importance matrix.
 ///
-/// Return: total bytes written.
+/// - Returns: total bytes written.
 inline fn eachRow(
     comptime Block: type,
     comptime block_elems: usize,
@@ -119,12 +118,16 @@ fn forwardingChunk(
 // argument, ignore it, and still run the row loop, so they keep that shape
 // below.
 comptime {
-    @export(&forwardingChunk(blocks.Q8_0, c.QK8_0, legacy.quantize_row_q8_0_ref), .{ .name = "quantize_q8_0" });
-    @export(&forwardingChunk(blocks.MXFP4, c.QK_MXFP4, legacy.quantize_row_mxfp4_ref), .{ .name = "quantize_mxfp4" });
-    @export(&forwardingChunk(blocks.NVFP4, c.QK_NVFP4, legacy.quantize_row_nvfp4_ref), .{ .name = "quantize_nvfp4" });
-    @export(&forwardingChunk(c.ggml_fp8_e4m3_t, 1, legacy.quantize_row_f8_e4m3_ref), .{ .name = "quantize_f8_e4m3" });
-    @export(&forwardingChunk(blocks.TQ1_0, QK_K, ternary.quantize_row_tq1_0_ref), .{ .name = "quantize_tq1_0" });
-    @export(&forwardingChunk(blocks.TQ2_0, QK_K, ternary.quantize_row_tq2_0_ref), .{ .name = "quantize_tq2_0" });
+    @export(&forwardingChunk(blocks.Q8_0, c.QK8_0, legacy.quantizeRowQ80Ref), .{ .name = "quantize_q8_0" });
+    @export(&forwardingChunk(blocks.MXFP4, c.QK_MXFP4, legacy.quantizeRowMxfp4Ref), .{ .name = "quantize_mxfp4" });
+    @export(&forwardingChunk(blocks.NVFP4, c.QK_NVFP4, legacy.quantizeRowNvfp4Ref), .{ .name = "quantize_nvfp4" });
+    @export(&forwardingChunk(c.ggml_fp8_e4m3_t, 1, legacy.quantizeRowF8E4m3Ref), .{ .name = "quantize_f8_e4m3" });
+    @export(&forwardingChunk(blocks.TQ1_0, QK_K, ternary.quantizeRowTq10Ref), .{ .name = "quantize_tq1_0" });
+    @export(&forwardingChunk(blocks.TQ2_0, QK_K, ternary.quantizeRowTq20Ref), .{ .name = "quantize_tq2_0" });
+}
+
+comptime {
+    @export(&quantizeQ10, .{ .name = "quantize_q1_0" });
 }
 
 /// Ports `quantize_q1_0` (ggml-quants.c:2108 @cd959bae9).
@@ -132,27 +135,31 @@ comptime {
 /// Takes the imatrix and ignores it, but still loops per row rather than
 /// quantizing the whole buffer at once. The two are equivalent here; the shape
 /// is kept so the correspondence with the C is checkable.
-pub export fn quantize_q1_0(src: [*c]const f32, dst: ?*anyopaque, nrow: i64, n_per_row: i64, quant_weights: [*c]const f32) usize {
+pub fn quantizeQ10(src: [*c]const f32, dst: ?*anyopaque, nrow: i64, n_per_row: i64, quant_weights: [*c]const f32) callconv(.c) usize {
     if (quant_weights == null) {
-        legacy.quantize_row_q1_0_ref(src, @ptrCast(@alignCast(dst)), nrow * n_per_row);
+        legacy.quantizeRowQ10Ref(src, @ptrCast(@alignCast(dst)), nrow * n_per_row);
         return @as(usize, @intCast(nrow)) * rowSize(blocks.Q1_0, c.QK1_0, n_per_row);
     }
     return eachRow(blocks.Q1_0, c.QK1_0, src, dst, nrow, n_per_row, null, struct {
         fn f(s: [*]const f32, y: [*]blocks.Q1_0, npr: i64, _: ?[*]const f32) void {
-            legacy.quantize_row_q1_0_ref(s, y, npr);
+            legacy.quantizeRowQ10Ref(s, y, npr);
         }
     }.f);
 }
 
+comptime {
+    @export(&quantizeQ20, .{ .name = "quantize_q2_0" });
+}
+
 /// Ports `quantize_q2_0` (ggml-quants.c:2123 @cd959bae9).
-pub export fn quantize_q2_0(src: [*c]const f32, dst: ?*anyopaque, nrow: i64, n_per_row: i64, quant_weights: [*c]const f32) usize {
+pub fn quantizeQ20(src: [*c]const f32, dst: ?*anyopaque, nrow: i64, n_per_row: i64, quant_weights: [*c]const f32) callconv(.c) usize {
     if (quant_weights == null) {
-        legacy.quantize_row_q2_0_ref(src, @ptrCast(@alignCast(dst)), nrow * n_per_row);
+        legacy.quantizeRowQ20Ref(src, @ptrCast(@alignCast(dst)), nrow * n_per_row);
         return @as(usize, @intCast(nrow)) * rowSize(blocks.Q2_0, c.QK2_0, n_per_row);
     }
     return eachRow(blocks.Q2_0, c.QK2_0, src, dst, nrow, n_per_row, null, struct {
         fn f(s: [*]const f32, y: [*]blocks.Q2_0, npr: i64, _: ?[*]const f32) void {
-            legacy.quantize_row_q2_0_ref(s, y, npr);
+            legacy.quantizeRowQ20Ref(s, y, npr);
         }
     }.f);
 }
@@ -161,9 +168,9 @@ pub export fn quantize_q2_0(src: [*c]const f32, dst: ?*anyopaque, nrow: i64, n_p
 // The legacy formats with an imatrix-aware fit
 
 /// Ports `quantize_row_q4_0_impl` (ggml-quants.c:2080 @cd959bae9).
-fn q4_0Impl(x: [*]const f32, y: [*]blocks.Q4_0, n_per_row: i64, quant_weights: ?[*]const f32) void {
+fn q40Impl(x: [*]const f32, y: [*]blocks.Q4_0, n_per_row: i64, quant_weights: ?[*]const f32) void {
     const qw_all = quant_weights orelse {
-        legacy.quantize_row_q4_0_ref(x, y, n_per_row);
+        legacy.quantizeRowQ40Ref(x, y, n_per_row);
         return;
     };
 
@@ -187,9 +194,9 @@ fn q4_0Impl(x: [*]const f32, y: [*]blocks.Q4_0, n_per_row: i64, quant_weights: ?
 }
 
 /// Ports `quantize_row_q4_1_impl` (ggml-quants.c:2153 @cd959bae9).
-fn q4_1Impl(x: [*]const f32, y: [*]blocks.Q4_1, n_per_row: i64, quant_weights: ?[*]const f32) void {
+fn q41Impl(x: [*]const f32, y: [*]blocks.Q4_1, n_per_row: i64, quant_weights: ?[*]const f32) void {
     const qw_all = quant_weights orelse {
-        legacy.quantize_row_q4_1_ref(x, y, n_per_row);
+        legacy.quantizeRowQ41Ref(x, y, n_per_row);
         return;
     };
 
@@ -214,9 +221,9 @@ fn q4_1Impl(x: [*]const f32, y: [*]blocks.Q4_1, n_per_row: i64, quant_weights: ?
 }
 
 /// Ports `quantize_row_q5_0_impl` (ggml-quants.c:2198 @cd959bae9).
-fn q5_0Impl(x: [*]const f32, y: [*]blocks.Q5_0, n_per_row: i64, quant_weights: ?[*]const f32) void {
+fn q50Impl(x: [*]const f32, y: [*]blocks.Q5_0, n_per_row: i64, quant_weights: ?[*]const f32) void {
     const qw_all = quant_weights orelse {
-        legacy.quantize_row_q5_0_ref(x, y, n_per_row);
+        legacy.quantizeRowQ50Ref(x, y, n_per_row);
         return;
     };
 
@@ -247,9 +254,9 @@ fn q5_0Impl(x: [*]const f32, y: [*]blocks.Q5_0, n_per_row: i64, quant_weights: ?
 }
 
 /// Ports `quantize_row_q5_1_impl` (ggml-quants.c:2252 @cd959bae9).
-fn q5_1Impl(x: [*]const f32, y: [*]blocks.Q5_1, n_per_row: i64, quant_weights: ?[*]const f32) void {
+fn q51Impl(x: [*]const f32, y: [*]blocks.Q5_1, n_per_row: i64, quant_weights: ?[*]const f32) void {
     const qw_all = quant_weights orelse {
-        legacy.quantize_row_q5_1_ref(x, y, n_per_row);
+        legacy.quantizeRowQ51Ref(x, y, n_per_row);
         return;
     };
 
@@ -304,10 +311,10 @@ fn implChunk(
 }
 
 comptime {
-    @export(&implChunk(blocks.Q4_0, c.QK4_0, legacy.quantize_row_q4_0_ref, q4_0Impl), .{ .name = "quantize_q4_0" });
-    @export(&implChunk(blocks.Q4_1, c.QK4_1, legacy.quantize_row_q4_1_ref, q4_1Impl), .{ .name = "quantize_q4_1" });
-    @export(&implChunk(blocks.Q5_0, c.QK5_0, legacy.quantize_row_q5_0_ref, q5_0Impl), .{ .name = "quantize_q5_0" });
-    @export(&implChunk(blocks.Q5_1, c.QK5_1, legacy.quantize_row_q5_1_ref, q5_1Impl), .{ .name = "quantize_q5_1" });
+    @export(&implChunk(blocks.Q4_0, c.QK4_0, legacy.quantizeRowQ40Ref, q40Impl), .{ .name = "quantize_q4_0" });
+    @export(&implChunk(blocks.Q4_1, c.QK4_1, legacy.quantizeRowQ41Ref, q41Impl), .{ .name = "quantize_q4_1" });
+    @export(&implChunk(blocks.Q5_0, c.QK5_0, legacy.quantizeRowQ50Ref, q50Impl), .{ .name = "quantize_q5_0" });
+    @export(&implChunk(blocks.Q5_1, c.QK5_1, legacy.quantizeRowQ51Ref, q51Impl), .{ .name = "quantize_q5_1" });
 }
 
 // -----------------------------------------------------------------------------
@@ -319,7 +326,7 @@ comptime {
 // genuinely different code, not the reference with a weight argument.
 
 /// Ports `quantize_row_q2_K_impl` (ggml-quants.c:1159 @cd959bae9).
-fn q2_KImpl(x_in: [*]const f32, y: [*]blocks.Q2_K, n_per_row: i64, quant_weights: ?[*]const f32) void {
+fn q2KImpl(x_in: [*]const f32, y: [*]blocks.Q2_K, n_per_row: i64, quant_weights: ?[*]const f32) void {
     const qw_all = quant_weights.?; // the C asserts this
     const nb: usize = @intCast(@divExact(n_per_row, QK_K));
     var x = x_in;
@@ -388,7 +395,7 @@ fn q2_KImpl(x_in: [*]const f32, y: [*]blocks.Q2_K, n_per_row: i64, quant_weights
 ///
 /// Unlike `q2_K`'s, this one tolerates a null imatrix -- it falls back to
 /// `x*x` weighting rather than forwarding to the reference.
-fn q3_KImpl(x_in: [*]const f32, y: [*]blocks.Q3_K, n_per_row: i64, quant_weights: ?[*]const f32) void {
+fn q3KImpl(x_in: [*]const f32, y: [*]blocks.Q3_K, n_per_row: i64, quant_weights: ?[*]const f32) void {
     const nb: usize = @intCast(@divExact(n_per_row, QK_K));
     var x = x_in;
 
@@ -512,7 +519,7 @@ fn fitScalesKImpl(
 }
 
 /// Ports `quantize_row_q4_K_impl` (ggml-quants.c:1563 @cd959bae9).
-fn q4_KImpl(x_in: [*]const f32, y: [*]blocks.Q4_K, n_per_row: i64, quant_weights: ?[*]const f32) void {
+fn q4KImpl(x_in: [*]const f32, y: [*]blocks.Q4_K, n_per_row: i64, quant_weights: ?[*]const f32) void {
     const nb: usize = @intCast(@divExact(n_per_row, QK_K));
     var x = x_in;
 
@@ -552,7 +559,7 @@ fn q4_KImpl(x_in: [*]const f32, y: [*]blocks.Q4_K, n_per_row: i64, quant_weights
 }
 
 /// Ports `quantize_row_q5_K_impl` (ggml-quants.c:1768 @cd959bae9).
-fn q5_KImpl(x_in: [*]const f32, y: [*]blocks.Q5_K, n_per_row: i64, quant_weights: ?[*]const f32) void {
+fn q5KImpl(x_in: [*]const f32, y: [*]blocks.Q5_K, n_per_row: i64, quant_weights: ?[*]const f32) void {
     const nb: usize = @intCast(@divExact(n_per_row, QK_K));
     var x = x_in;
 
@@ -644,7 +651,7 @@ inline fn requantizeK(comptime nmax: i32, x: [*]const f32, scales: [*]const u8, 
 /// Note it passes the raw importance matrix straight to `makeQxQuants` as the
 /// weighting, rather than the `qw * sqrt(sigma2 + x*x)` the others build. The
 /// C has the alternative commented out just above.
-fn q6_KImpl(x_in: [*]const f32, y: [*]blocks.Q6_K, n_per_row: i64, quant_weights: ?[*]const f32) void {
+fn q6KImpl(x_in: [*]const f32, y: [*]blocks.Q6_K, n_per_row: i64, quant_weights: ?[*]const f32) void {
     const nb: usize = @intCast(@divExact(n_per_row, QK_K));
     var x = x_in;
 
@@ -716,11 +723,11 @@ fn q6_KImpl(x_in: [*]const f32, y: [*]blocks.Q6_K, n_per_row: i64, quant_weights
 }
 
 comptime {
-    @export(&implChunk(blocks.Q2_K, QK_K, k_quants.quantize_row_q2_K_ref, q2_KImpl), .{ .name = "quantize_q2_K" });
-    @export(&implChunk(blocks.Q3_K, QK_K, k_quants.quantize_row_q3_K_ref, q3_KImpl), .{ .name = "quantize_q3_K" });
-    @export(&implChunk(blocks.Q4_K, QK_K, k_quants.quantize_row_q4_K_ref, q4_KImpl), .{ .name = "quantize_q4_K" });
-    @export(&implChunk(blocks.Q5_K, QK_K, k_quants.quantize_row_q5_K_ref, q5_KImpl), .{ .name = "quantize_q5_K" });
-    @export(&implChunk(blocks.Q6_K, QK_K, k_quants.quantize_row_q6_K_ref, q6_KImpl), .{ .name = "quantize_q6_K" });
+    @export(&implChunk(blocks.Q2_K, QK_K, k_quants.quantizeRowQ2KRef, q2KImpl), .{ .name = "quantize_q2_K" });
+    @export(&implChunk(blocks.Q3_K, QK_K, k_quants.quantizeRowQ3KRef, q3KImpl), .{ .name = "quantize_q3_K" });
+    @export(&implChunk(blocks.Q4_K, QK_K, k_quants.quantizeRowQ4KRef, q4KImpl), .{ .name = "quantize_q4_K" });
+    @export(&implChunk(blocks.Q5_K, QK_K, k_quants.quantizeRowQ5KRef, q5KImpl), .{ .name = "quantize_q5_K" });
+    @export(&implChunk(blocks.Q6_K, QK_K, k_quants.quantizeRowQ6KRef, q6KImpl), .{ .name = "quantize_q6_K" });
 }
 
 // -----------------------------------------------------------------------------
@@ -769,7 +776,7 @@ fn checkChunk(comptime name: []const u8, chunk: ChunkFn) !void {
             @memset(&buf, 0);
             const n = chunk(&src, &buf, t.n_rows, t.n_per_row, null);
             std.testing.expectEqual(want, t.fnv(buf[0..n])) catch |e| {
-                std.debug.print("{s}: quantize_* differs on '{s}'\n", .{ name, pattern.name() });
+                std.log.warn("{s}: quantize_* differs on '{s}'", .{ name, pattern.name() });
                 return e;
             };
         }
@@ -778,7 +785,7 @@ fn checkChunk(comptime name: []const u8, chunk: ChunkFn) !void {
             @memset(&buf, 0);
             const n = chunk(&src, &buf, t.n_rows, t.n_per_row, &imatrix);
             std.testing.expectEqual(want, t.fnv(buf[0..n])) catch |e| {
-                std.debug.print("{s}: quantize_* with imatrix differs on '{s}'\n", .{ name, pattern.name() });
+                std.log.warn("{s}: quantize_* with imatrix differs on '{s}'", .{ name, pattern.name() });
                 return e;
             };
         }

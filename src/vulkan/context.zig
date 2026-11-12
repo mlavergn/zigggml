@@ -22,7 +22,7 @@ const c = impl.c;
 const common = m.common;
 const vk = common.vk;
 const d = &common.dispatch;
-const allocator = common.allocator;
+const allocator = std.heap.c_allocator;
 const Device = m.device.Device;
 const CommandPool = m.device.CommandPool;
 const Buffer = m.buffer.Buffer;
@@ -352,7 +352,7 @@ pub fn getTransferCtx(ctx: *BackendCtx) *Context {
 /// submits pending transfer-queue work, signalling the semaphore the next
 /// compute context waits on.
 ///
-/// Return: whether work was submitted.
+/// - Returns: whether work was submitted.
 pub fn submitTransferCtx(ctx: *BackendCtx) bool {
     if (!ctx.device.async_use_transfer_queue) return false;
     const cpy_ctx = ctx.transfer_ctx orelse return false;
@@ -610,9 +610,9 @@ pub fn allocateDescriptorSets(ctx: *BackendCtx) void {
 /// buffer has been destroyed since (a new one can reuse its handle) or
 /// `GGML_VK_DISABLE_DESCRIPTOR_REUSE` is set.
 pub fn dispatchPipeline(ctx: *BackendCtx, subctx: *Context, pipeline: *Pipeline, descriptor_buffer_infos: []const m.buffer.Subbuffer, push_constants: []const u8, elements: [3]u32) void {
-    const wg0 = std.math.divCeil(u32, elements[0], pipeline.wg_denoms[0]) catch unreachable;
-    const wg1 = std.math.divCeil(u32, elements[1], pipeline.wg_denoms[1]) catch unreachable;
-    const wg2 = std.math.divCeil(u32, elements[2], pipeline.wg_denoms[2]) catch unreachable;
+    const wg0 = std.math.divCeil(u32, elements[0], pipeline.wg_denoms[0]) catch @panic("division by zero");
+    const wg1 = std.math.divCeil(u32, elements[1], pipeline.wg_denoms[1]) catch @panic("division by zero");
+    const wg2 = std.math.divCeil(u32, elements[2], pipeline.wg_denoms[2]) catch @panic("division by zero");
     const limits = ctx.device.properties.limits;
     impl.assert(wg0 <= limits.maxComputeWorkGroupCount[0] and wg1 <= limits.maxComputeWorkGroupCount[1] and wg2 <= limits.maxComputeWorkGroupCount[2], "wg0 <= ctx->device->properties.limits.maxComputeWorkGroupCount[0] && wg1 <= ctx->device->properties.limits.maxComputeWorkGroupCount[1] && wg2 <= ctx->device->properties.limits.maxComputeWorkGroupCount[2]");
     impl.assert(ctx.descriptor_set_idx < ctx.descriptor_sets.items.len, "ctx->descriptor_set_idx < ctx->descriptor_sets.size()");

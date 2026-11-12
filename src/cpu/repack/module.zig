@@ -12,9 +12,6 @@
 //! is not a link error -- the linker picks one silently -- so a partial
 //! swap reads as success.
 
-const impl = @import("../../impl.zig");
-const c = impl.c;
-
 /// Whether the C++ dispatch layer of `repack.cpp` has been ported.
 ///
 /// **This exists because the symbol count lies for this file.** `repack.cpp`
@@ -59,7 +56,7 @@ pub const quantize = @import("quantize.zig");
 /// Ports `ggml_backend_cpu_repack_buffer_type` (ggml-cpu/repack.cpp:5243
 /// @cd959bae9). Re-exported from `dispatch.zig` so `cpu_backend.zig` keeps
 /// reaching this directory through the barrel.
-pub const ggml_backend_cpu_repack_buffer_type = dispatch.ggml_backend_cpu_repack_buffer_type;
+pub const ggmlBackendCpuRepackBufferType = dispatch.ggmlBackendCpuRepackBufferType;
 
 comptime {
     _ = arch;
@@ -101,7 +98,7 @@ test {
 // because the graph was built differently. A symbol count cannot see that;
 // this can.
 test "the repack buffer type is registered, not stubbed" {
-    const buft = ggml_backend_cpu_repack_buffer_type();
+    const buft = ggmlBackendCpuRepackBufferType();
     try std.testing.expect(buft != null);
 
     // A registered buffer type carries the `extra_buffer_type` context the

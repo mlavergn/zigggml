@@ -564,7 +564,8 @@ fn dupFromQ(params: *const ComputeParams, dst: *Tensor) void {
     while (ir < ir1) : (ir += 1) {
         // The C narrows to `uint32_t` here, and the index arithmetic below is
         // done on the narrowed value.
-        const i: i64 = @as(u32, @truncate(@as(u64, @bitCast(ir * qk))));
+        const i_raw: u32 = @truncate(@as(u64, @bitCast(ir * qk)));
+        const i: i64 = i_raw;
 
         const j03 = @divTrunc(i, l.ne00 * l.ne01 * l.ne02);
         const j02 = @divTrunc(i - j03 * l.ne00 * l.ne01 * l.ne02, l.ne00 * l.ne01);
@@ -584,8 +585,12 @@ fn dupFromQ(params: *const ComputeParams, dst: *Tensor) void {
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardDup, .{ .name = "ggml_compute_forward_dup" });
+}
+
 /// Ports `ggml_compute_forward_dup` (ops.cpp:526 @cd959bae9).
-pub export fn ggml_compute_forward_dup(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardDup(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
 
     if (src0.type == dst.type) {
@@ -623,12 +628,20 @@ pub export fn ggml_compute_forward_dup(params: *const ComputeParams, dst: *Tenso
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardCpy, .{ .name = "ggml_compute_forward_cpy" });
+}
+
 /// Ports `ggml_compute_forward_cpy` (ops.cpp:5171 @cd959bae9).
-pub export fn ggml_compute_forward_cpy(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
-    ggml_compute_forward_dup(params, dst);
+pub fn ggmlComputeForwardCpy(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+    ggmlComputeForwardDup(params, dst);
+}
+
+comptime {
+    @export(&ggmlComputeForwardCont, .{ .name = "ggml_compute_forward_cont" });
 }
 
 /// Ports `ggml_compute_forward_cont` (ops.cpp:5179 @cd959bae9).
-pub export fn ggml_compute_forward_cont(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
-    ggml_compute_forward_dup(params, dst);
+pub fn ggmlComputeForwardCont(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+    ggmlComputeForwardDup(params, dst);
 }

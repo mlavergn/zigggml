@@ -57,10 +57,6 @@ const std = @import("std");
 const impl = @import("impl.zig");
 const c = impl.c;
 
-/// The heap the rest of ggml uses. A function entered through a C ABI has no
-/// allocator to be handed one, the same reasoning as `backend.zig`.
-const allocator = std.heap.c_allocator;
-
 extern fn powf(x: f32, y: f32) f32;
 extern fn fprintf(stream: *anyopaque, fmt: [*:0]const u8, ...) c_int;
 extern fn fflush(stream: ?*anyopaque) c_int;
@@ -117,9 +113,32 @@ pub const exported_names = [_][]const u8{
     "ggml_opt_optimizer_name",
 };
 
+/// The camelCase Zig name of exported C name `name` (`ggml_opt_init` ->
+/// `ggmlOptInit`).
+///
+/// - `name`: the C name.
+/// - Returns: the Zig name, comptime-known.
+fn camelName(comptime name: []const u8) []const u8 {
+    comptime {
+        @setEvalBranchQuota(100_000);
+        var out: []const u8 = "";
+        var upper = false;
+        for (name) |ch| {
+            if (ch == '_') {
+                upper = true;
+            } else {
+                out = out ++ &[_]u8{if (upper) std.ascii.toUpper(ch) else ch};
+                upper = false;
+            }
+        }
+        return out;
+    }
+}
+
 comptime {
+    @setEvalBranchQuota(100_000);
     if (exports_enabled) {
-        for (exported_names) |name| @export(&@field(@This(), name), .{ .name = name });
+        for (exported_names) |name| @export(&@field(@This(), camelName(name)), .{ .name = name });
     }
 }
 
@@ -146,10 +165,9 @@ pub const Mt19937 = struct {
 
     /// Constructs an engine seeded with `sd`, as `std::mt19937(sd)` does.
     ///
-    /// Parameters:
     /// - `sd`: the seed.
     ///
-    /// Return: the seeded engine.
+    /// - Returns: the seeded engine.
     pub fn init(sd: u32) Mt19937 {
         var e: Mt19937 = undefined;
         e.seed(sd);
@@ -158,10 +176,9 @@ pub const Mt19937 = struct {
 
     /// Ports `mersenne_twister_engine::seed(result_type)`.
     ///
-    /// Parameters:
     /// - `sd`: the seed.
     ///
-    /// Return: nothing.
+    /// - Returns: nothing.
     pub fn seed(self: *Mt19937, sd: u32) void {
         self.x[0] = sd;
         for (1..n) |k| {
@@ -173,7 +190,7 @@ pub const Mt19937 = struct {
 
     /// Ports `mersenne_twister_engine::operator()()`.
     ///
-    /// Return: the next 32-bit output.
+    /// - Returns: the next 32-bit output.
     pub fn next(self: *Mt19937) u32 {
         const j = (self.i + 1) % n;
         const mask: u32 = (@as(u32, 1) << 31) - 1;
@@ -214,11 +231,10 @@ const IndependentBits = struct {
 
     /// Ports `__independent_bits_engine::__independent_bits_engine`.
     ///
-    /// Parameters:
     /// - `e`: the engine; borrowed for the lifetime of the result.
     /// - `w`: how many bits each value has, 1 to 64.
     ///
-    /// Return: the bits engine.
+    /// - Returns: the bits engine.
     fn init(e: *Mt19937, w: usize) IndependentBits {
         var self: IndependentBits = undefined;
         self.e = e;
@@ -240,7 +256,7 @@ const IndependentBits = struct {
 
     /// Ports `__independent_bits_engine::__eval(true_type)`.
     ///
-    /// Return: the next `w`-bit value.
+    /// - Returns: the next `w`-bit value.
     fn next(self: *const IndependentBits) u64 {
         const w_rt: usize = 64;
         var sp: u64 = 0;
@@ -270,12 +286,11 @@ const IndependentBits = struct {
 /// Ports `uniform_int_distribution<ptrdiff_t>::operator()(_URNG&, const
 /// param_type&)` (uniform_int_distribution.h) over a `std::mt19937`.
 ///
-/// Parameters:
 /// - `g`: the engine; advanced as many times as the rejection loop needs.
 /// - `a`: the smallest value.
 /// - `b`: the largest value, at least `a`.
 ///
-/// Return: a value in `[a, b]`.
+/// - Returns: a value in `[a, b]`.
 pub fn uniformInt(g: *Mt19937, a: i64, b: i64) i64 {
     const dt: usize = 64;
     const r: u64 = @as(u64, @bitCast(b)) -% @as(u64, @bitCast(a)) +% 1;
@@ -298,12 +313,11 @@ pub fn uniformInt(g: *Mt19937, a: i64, b: i64) i64 {
 /// the left side of a swap — both libc++'s, and both observable in which
 /// draws are made.
 ///
-/// Parameters:
 /// - `items`: the range to permute in place.
 /// - `g`: the engine; advanced once per element but the last, or more when a
 ///   draw is rejected.
 ///
-/// Return: nothing.
+/// - Returns: nothing.
 pub fn shuffle(items: []i64, g: *Mt19937) void {
     var d: i64 = @intCast(items.len);
     if (d <= 1) return;
@@ -424,7 +438,7 @@ inline fn tensorOf(t: [*c]c.ggml_tensor) *c.ggml_tensor {
 /// thing the C++ lets escape as `std::bad_alloc`, and here it aborts, as every
 /// other ported ggml allocation does.
 fn create(comptime T: type) *T {
-    const p = allocator.create(T) catch impl.abort("ggml-opt: out of memory");
+    const p = std.heap.c_allocator.create(T) catch impl.abort("ggml-opt: out of memory");
     p.* = .{};
     return p;
 }
@@ -438,7 +452,6 @@ fn oom() noreturn {
 
 /// Ports `ggml_opt_dataset_init` (ggml-opt.cpp:86 @cd959bae9).
 ///
-/// Parameters:
 /// - `type_data`: the type of the internal data tensor.
 /// - `type_label`: the type of the internal labels tensor.
 /// - `ne_datapoint`: elements per datapoint, positive.
@@ -446,9 +459,9 @@ fn oom() noreturn {
 /// - `ndata`: total datapoints, positive.
 /// - `ndata_shard`: datapoints per shard, the unit of shuffling and copying.
 ///
-/// Return: a dataset whose data lives in a CPU buffer; free it with
+/// - Returns: a dataset whose data lives in a CPU buffer; free it with
 /// `ggml_opt_dataset_free`.
-pub fn ggml_opt_dataset_init(
+pub fn ggmlOptDatasetInit(
     type_data: c.enum_ggml_type,
     type_label: c.enum_ggml_type,
     ne_datapoint: i64,
@@ -488,66 +501,61 @@ pub fn ggml_opt_dataset_init(
     result.buf = c.ggml_backend_alloc_ctx_tensors_from_buft(result.ctx, c.ggml_backend_cpu_buffer_type());
 
     const nshards = @divTrunc(ndata, ndata_shard);
-    result.permutation = allocator.alloc(i64, @intCast(nshards)) catch oom();
+    result.permutation = std.heap.c_allocator.alloc(i64, @intCast(nshards)) catch oom();
     for (result.permutation, 0..) |*p, i| p.* = @intCast(i);
     return @ptrCast(result);
 }
 
 /// Ports `ggml_opt_dataset_free` (ggml-opt.cpp:132 @cd959bae9).
 ///
-/// Parameters:
 /// - `dataset`: the dataset; invalid afterwards.
 ///
-/// Return: nothing.
-pub fn ggml_opt_dataset_free(dataset: c.ggml_opt_dataset_t) callconv(.c) void {
+/// - Returns: nothing.
+pub fn ggmlOptDatasetFree(dataset: c.ggml_opt_dataset_t) callconv(.c) void {
     const ds = datasetOf(dataset);
     c.ggml_backend_buffer_free(ds.buf);
     c.ggml_free(ds.ctx);
-    allocator.free(ds.permutation);
-    allocator.destroy(ds);
+    std.heap.c_allocator.free(ds.permutation);
+    std.heap.c_allocator.destroy(ds);
 }
 
 /// Ports `ggml_opt_dataset_ndata` (ggml-opt.cpp:138 @cd959bae9).
 ///
-/// Parameters:
 /// - `dataset`: the dataset.
 ///
-/// Return: the number of datapoints.
-pub fn ggml_opt_dataset_ndata(dataset: c.ggml_opt_dataset_t) callconv(.c) i64 {
+/// - Returns: the number of datapoints.
+pub fn ggmlOptDatasetNdata(dataset: c.ggml_opt_dataset_t) callconv(.c) i64 {
     return datasetOf(dataset).ndata;
 }
 
 /// Ports `ggml_opt_dataset_data` (ggml-opt.cpp:142 @cd959bae9).
 ///
-/// Parameters:
 /// - `dataset`: the dataset.
 ///
-/// Return: the data tensor, `[ne_datapoint, ndata]`; owned by the dataset.
-pub fn ggml_opt_dataset_data(dataset: c.ggml_opt_dataset_t) callconv(.c) [*c]c.ggml_tensor {
+/// - Returns: the data tensor, `[ne_datapoint, ndata]`; owned by the dataset.
+pub fn ggmlOptDatasetData(dataset: c.ggml_opt_dataset_t) callconv(.c) [*c]c.ggml_tensor {
     return datasetOf(dataset).data;
 }
 
 /// Ports `ggml_opt_dataset_labels` (ggml-opt.cpp:146 @cd959bae9).
 ///
-/// Parameters:
 /// - `dataset`: the dataset.
 ///
-/// Return: the labels tensor, `[ne_label, ndata]`, or null; owned by the
+/// - Returns: the labels tensor, `[ne_label, ndata]`, or null; owned by the
 /// dataset.
-pub fn ggml_opt_dataset_labels(dataset: c.ggml_opt_dataset_t) callconv(.c) [*c]c.ggml_tensor {
+pub fn ggmlOptDatasetLabels(dataset: c.ggml_opt_dataset_t) callconv(.c) [*c]c.ggml_tensor {
     return datasetOf(dataset).labels;
 }
 
 /// Ports `ggml_opt_dataset_shuffle` (ggml-opt.cpp:150 @cd959bae9).
 ///
-/// Parameters:
 /// - `opt_ctx`: the context whose engine supplies the randomness.
 /// - `dataset`: the dataset whose shard permutation is shuffled.
 /// - `idata`: shuffle the first `idata` datapoints, a multiple of the shard
 ///   size; negative shuffles all of them.
 ///
-/// Return: nothing.
-pub fn ggml_opt_dataset_shuffle(opt_ctx: c.ggml_opt_context_t, dataset: c.ggml_opt_dataset_t, idata: i64) callconv(.c) void {
+/// - Returns: nothing.
+pub fn ggmlOptDatasetShuffle(opt_ctx: c.ggml_opt_context_t, dataset: c.ggml_opt_dataset_t, idata: i64) callconv(.c) void {
     const ds = datasetOf(dataset);
     const ctx = contextOf(opt_ctx);
     impl.assert(idata <= ds.ndata, "idata <= dataset->ndata");
@@ -564,15 +572,14 @@ pub fn ggml_opt_dataset_shuffle(opt_ctx: c.ggml_opt_context_t, dataset: c.ggml_o
 
 /// Ports `ggml_opt_dataset_get_batch` (ggml-opt.cpp:163 @cd959bae9).
 ///
-/// Parameters:
 /// - `dataset`: the dataset.
 /// - `data_batch`: contiguous destination for the data, of the dataset's type.
 /// - `labels_batch`: contiguous destination for the labels; null exactly when
 ///   the dataset has none.
 /// - `ibatch`: which batch, in the current permutation.
 ///
-/// Return: nothing.
-pub fn ggml_opt_dataset_get_batch(
+/// - Returns: nothing.
+pub fn ggmlOptDatasetGetBatch(
     dataset: c.ggml_opt_dataset_t,
     data_batch: [*c]c.ggml_tensor,
     labels_batch: [*c]c.ggml_tensor,
@@ -612,7 +619,6 @@ pub fn ggml_opt_dataset_get_batch(
 
 /// Ports `ggml_opt_dataset_get_batch_host` (ggml-opt.cpp:196 @cd959bae9).
 ///
-/// Parameters:
 /// - `dataset`: the dataset.
 /// - `data_batch`: host destination for the data.
 /// - `nb_data_batch`: its size in bytes, a multiple of the shard size.
@@ -620,8 +626,8 @@ pub fn ggml_opt_dataset_get_batch(
 ///   dataset has none.
 /// - `ibatch`: which batch, in the current permutation.
 ///
-/// Return: nothing.
-pub fn ggml_opt_dataset_get_batch_host(
+/// - Returns: nothing.
+pub fn ggmlOptDatasetGetBatchHost(
     dataset: c.ggml_opt_dataset_t,
     data_batch: ?*anyopaque,
     nb_data_batch: usize,
@@ -658,12 +664,11 @@ pub fn ggml_opt_dataset_get_batch_host(
 
 /// Ports `ggml_opt_get_default_optimizer_params` (ggml-opt.cpp:223 @cd959bae9).
 ///
-/// Parameters:
 /// - `userdata`: unused.
 ///
-/// Return: AdamW at 1e-3 with betas 0.9 / 0.999 and eps 1e-8, SGD at 1e-3,
+/// - Returns: AdamW at 1e-3 with betas 0.9 / 0.999 and eps 1e-8, SGD at 1e-3,
 /// no weight decay for either.
-pub fn ggml_opt_get_default_optimizer_params(userdata: ?*anyopaque) callconv(.c) c.struct_ggml_opt_optimizer_params {
+pub fn ggmlOptGetDefaultOptimizerParams(userdata: ?*anyopaque) callconv(.c) c.struct_ggml_opt_optimizer_params {
     _ = userdata;
 
     var result: c.struct_ggml_opt_optimizer_params = undefined;
@@ -682,23 +687,21 @@ pub fn ggml_opt_get_default_optimizer_params(userdata: ?*anyopaque) callconv(.c)
 
 /// Ports `ggml_opt_get_constant_optimizer_params` (ggml-opt.cpp:241 @cd959bae9).
 ///
-/// Parameters:
 /// - `userdata`: a `ggml_opt_optimizer_params *`.
 ///
-/// Return: a copy of what `userdata` points at.
-pub fn ggml_opt_get_constant_optimizer_params(userdata: ?*anyopaque) callconv(.c) c.struct_ggml_opt_optimizer_params {
+/// - Returns: a copy of what `userdata` points at.
+pub fn ggmlOptGetConstantOptimizerParams(userdata: ?*anyopaque) callconv(.c) c.struct_ggml_opt_optimizer_params {
     return @as(*const c.struct_ggml_opt_optimizer_params, @ptrCast(@alignCast(userdata))).*;
 }
 
 /// Ports `ggml_opt_default_params` (ggml-opt.cpp:245 @cd959bae9).
 ///
-/// Parameters:
 /// - `backend_sched`: the scheduler the graphs are built for.
 /// - `loss_type`: the loss to minimize.
 ///
-/// Return: dynamic graphs, a full optimizer build, no gradient accumulation,
+/// - Returns: dynamic graphs, a full optimizer build, no gradient accumulation,
 /// AdamW with the default parameters.
-pub fn ggml_opt_default_params(backend_sched: c.ggml_backend_sched_t, loss_type: c.enum_ggml_opt_loss_type) callconv(.c) c.struct_ggml_opt_params {
+pub fn ggmlOptDefaultParams(backend_sched: c.ggml_backend_sched_t, loss_type: c.enum_ggml_opt_loss_type) callconv(.c) c.struct_ggml_opt_params {
     return .{
         .backend_sched = backend_sched,
         .ctx_compute = null,
@@ -707,7 +710,7 @@ pub fn ggml_opt_default_params(backend_sched: c.ggml_backend_sched_t, loss_type:
         .loss_type = loss_type,
         .build_type = c.GGML_OPT_BUILD_TYPE_OPT,
         .opt_period = 1,
-        .get_opt_pars = &ggml_opt_get_default_optimizer_params,
+        .get_opt_pars = &ggmlOptGetDefaultOptimizerParams,
         .get_opt_pars_ud = null,
         .optimizer = c.GGML_OPT_OPTIMIZER_TYPE_ADAMW,
     };
@@ -724,12 +727,11 @@ const TensorMap = std.AutoHashMapUnmanaged(*c.ggml_tensor, *c.ggml_tensor);
 /// recurses into its view source and sources first-come — the order decides
 /// where in `ctx` each duplicate lands, so it is the C++'s exactly.
 ///
-/// Parameters:
 /// - `tensor_map`: duplicates made so far.
 /// - `ctx`: the context the duplicates are allocated in.
 /// - `tensor`: the tensor to duplicate, or null.
 ///
-/// Return: the duplicate, or null for a null `tensor`.
+/// - Returns: the duplicate, or null for a null `tensor`.
 fn mapTensor(tensor_map: *TensorMap, ctx: ?*c.ggml_context, tensor_c: [*c]c.ggml_tensor) [*c]c.ggml_tensor {
     if (tensor_c == null) return null;
     const tensor = tensorOf(tensor_c);
@@ -737,7 +739,7 @@ fn mapTensor(tensor_map: *TensorMap, ctx: ?*c.ggml_context, tensor_c: [*c]c.ggml
     if (tensor_map.get(tensor)) |t| return t;
 
     const new_tensor = tensorOf(c.ggml_dup_tensor(ctx, tensor));
-    tensor_map.put(allocator, tensor, new_tensor) catch oom();
+    tensor_map.put(std.heap.c_allocator, tensor, new_tensor) catch oom();
 
     new_tensor.op = tensor.op;
     for (0..c.GGML_MAX_DIMS) |i| new_tensor.nb[i] = tensor.nb[i];
@@ -758,15 +760,14 @@ fn mapTensor(tensor_map: *TensorMap, ctx: ?*c.ggml_context, tensor_c: [*c]c.ggml
 
 /// Ports `dup_graph` (ggml-opt.cpp:293 @cd959bae9).
 ///
-/// Parameters:
 /// - `ctx`: the context the copy and its tensors are allocated in.
 /// - `src`: the graph to copy.
 ///
-/// Return: a graph over fresh tensors sharing `src`'s data, with `src`'s
+/// - Returns: a graph over fresh tensors sharing `src`'s data, with `src`'s
 /// gradients and accumulators carried over node for node.
 fn dupGraph(ctx: ?*c.ggml_context, src_c: ?*c.ggml_cgraph) ?*c.ggml_cgraph {
     var tensor_map: TensorMap = .empty;
-    defer tensor_map.deinit(allocator);
+    defer tensor_map.deinit(std.heap.c_allocator);
 
     const src = graphOf(src_c);
     const dst_c = c.ggml_new_graph_custom(ctx, @intCast(src.size), true);
@@ -800,7 +801,7 @@ fn dupGraph(ctx: ?*c.ggml_context, src_c: ?*c.ggml_cgraph) ?*c.ggml_cgraph {
 /// does; new entries are null.
 fn resizeList(list: *std.ArrayList([*c]c.ggml_tensor), n: usize) void {
     const old = list.items.len;
-    list.resize(allocator, n) catch oom();
+    list.resize(std.heap.c_allocator, n) catch oom();
     if (n > old) @memset(list.items[old..], null);
 }
 
@@ -811,10 +812,9 @@ fn resizeList(list: *std.ArrayList([*c]c.ggml_tensor), n: usize) void {
 /// the optimizer graph, allocating accumulators and momenta statically the
 /// first time through.
 ///
-/// Parameters:
 /// - `opt_ctx`: the context; its `gf`, `inputs` and `outputs` must be set.
 ///
-/// Return: nothing.
+/// - Returns: nothing.
 fn optBuild(opt_ctx: *Context) void {
     impl.assert(opt_ctx.ctx_compute != null, "opt_ctx->ctx_compute && \"no compute context set, either use static graphs or set one with ggml_opt_prepare_alloc\"");
     impl.assert(!opt_ctx.static_graphs or tensorOf(opt_ctx.inputs).data != null, "(!opt_ctx->static_graphs || opt_ctx->inputs->data) && \"when using static graphs the inputs must be allocated statically\"");
@@ -993,7 +993,7 @@ fn optBuild(opt_ctx: *Context) void {
     opt_ctx.opt_step_params = c.ggml_new_tensor_1d(opt_ctx.ctx_cpu, c.GGML_TYPE_F32, if (need_momenta) 7 else 2);
     const adamw_params = opt_ctx.opt_step_params;
     c.ggml_set_input(adamw_params);
-    const optimizer_name = ggml_opt_optimizer_name(opt_ctx.optimizer);
+    const optimizer_name = ggmlOptOptimizerName(opt_ctx.optimizer);
     _ = c.ggml_format_name(adamw_params, "%s_params", optimizer_name);
     const gb_opt = graphOf(opt_ctx.gb_opt);
     var i: isize = gf.n_nodes - 1;
@@ -1031,14 +1031,13 @@ fn optBuild(opt_ctx: *Context) void {
 
 /// Ports `ggml_opt_init` (ggml-opt.cpp:549 @cd959bae9).
 ///
-/// Parameters:
 /// - `params`: the context's configuration. With `ctx_compute`, `inputs` and
 ///   `outputs` set the graphs are static and built here; otherwise all three
 ///   must be unset and each step supplies its graph through
 ///   `ggml_opt_prepare_alloc`.
 ///
-/// Return: a new context; free it with `ggml_opt_free`.
-pub fn ggml_opt_init(params: c.struct_ggml_opt_params) callconv(.c) c.ggml_opt_context_t {
+/// - Returns: a new context; free it with `ggml_opt_free`.
+pub fn ggmlOptInit(params: c.struct_ggml_opt_params) callconv(.c) c.ggml_opt_context_t {
     const result = create(Context);
     result.rng = Mt19937.init(Mt19937.default_seed);
     result.backend_sched = params.backend_sched;
@@ -1076,11 +1075,10 @@ pub fn ggml_opt_init(params: c.struct_ggml_opt_params) callconv(.c) c.ggml_opt_c
 
 /// Ports `ggml_opt_free` (ggml-opt.cpp:584 @cd959bae9).
 ///
-/// Parameters:
 /// - `opt_ctx`: the context, or null; invalid afterwards.
 ///
-/// Return: nothing.
-pub fn ggml_opt_free(opt_ctx: c.ggml_opt_context_t) callconv(.c) void {
+/// - Returns: nothing.
+pub fn ggmlOptFree(opt_ctx: c.ggml_opt_context_t) callconv(.c) void {
     if (opt_ctx == null) return;
     const ctx = contextOf(opt_ctx);
     c.ggml_backend_buffer_free(ctx.buf_static);
@@ -1088,20 +1086,19 @@ pub fn ggml_opt_free(opt_ctx: c.ggml_opt_context_t) callconv(.c) void {
     c.ggml_free(ctx.ctx_static);
     c.ggml_free(ctx.ctx_cpu);
     c.ggml_free(ctx.ctx_copy);
-    ctx.grad_accs.deinit(allocator);
-    ctx.grad_m.deinit(allocator);
-    ctx.grad_v.deinit(allocator);
-    allocator.destroy(ctx);
+    ctx.grad_accs.deinit(std.heap.c_allocator);
+    ctx.grad_m.deinit(std.heap.c_allocator);
+    ctx.grad_v.deinit(std.heap.c_allocator);
+    std.heap.c_allocator.destroy(ctx);
 }
 
 /// Ports `ggml_opt_reset` (ggml-opt.cpp:596 @cd959bae9).
 ///
-/// Parameters:
 /// - `opt_ctx`: the context.
 /// - `optimizer`: also zero the momenta and restart the iteration count.
 ///
-/// Return: nothing.
-pub fn ggml_opt_reset(opt_ctx: c.ggml_opt_context_t, optimizer: bool) callconv(.c) void {
+/// - Returns: nothing.
+pub fn ggmlOptReset(opt_ctx: c.ggml_opt_context_t, optimizer: bool) callconv(.c) void {
     const ctx = contextOf(opt_ctx);
     if (optimizer) {
         c.ggml_graph_reset(ctx.gb_opt);
@@ -1113,86 +1110,78 @@ pub fn ggml_opt_reset(opt_ctx: c.ggml_opt_context_t, optimizer: bool) callconv(.
 
 /// Ports `ggml_opt_static_graphs` (ggml-opt.cpp:605 @cd959bae9).
 ///
-/// Parameters:
 /// - `opt_ctx`: the context.
 ///
-/// Return: whether the graphs are allocated statically.
-pub fn ggml_opt_static_graphs(opt_ctx: c.ggml_opt_context_t) callconv(.c) bool {
+/// - Returns: whether the graphs are allocated statically.
+pub fn ggmlOptStaticGraphs(opt_ctx: c.ggml_opt_context_t) callconv(.c) bool {
     return contextOf(opt_ctx).static_graphs;
 }
 
 /// Ports `ggml_opt_inputs` (ggml-opt.cpp:609 @cd959bae9).
 ///
-/// Parameters:
 /// - `opt_ctx`: the context.
 ///
-/// Return: the forward graph's input tensor; with dynamic graphs, valid
+/// - Returns: the forward graph's input tensor; with dynamic graphs, valid
 /// until the next `ggml_opt_alloc`.
-pub fn ggml_opt_inputs(opt_ctx: c.ggml_opt_context_t) callconv(.c) [*c]c.ggml_tensor {
+pub fn ggmlOptInputs(opt_ctx: c.ggml_opt_context_t) callconv(.c) [*c]c.ggml_tensor {
     return contextOf(opt_ctx).inputs;
 }
 
 /// Ports `ggml_opt_outputs` (ggml-opt.cpp:613 @cd959bae9).
 ///
-/// Parameters:
 /// - `opt_ctx`: the context.
 ///
-/// Return: the forward graph's output tensor; with dynamic graphs, valid
+/// - Returns: the forward graph's output tensor; with dynamic graphs, valid
 /// until the next `ggml_opt_alloc`.
-pub fn ggml_opt_outputs(opt_ctx: c.ggml_opt_context_t) callconv(.c) [*c]c.ggml_tensor {
+pub fn ggmlOptOutputs(opt_ctx: c.ggml_opt_context_t) callconv(.c) [*c]c.ggml_tensor {
     return contextOf(opt_ctx).outputs;
 }
 
 /// Ports `ggml_opt_labels` (ggml-opt.cpp:617 @cd959bae9).
 ///
-/// Parameters:
 /// - `opt_ctx`: the context.
 ///
-/// Return: the labels the outputs are compared against, or null for a loss
+/// - Returns: the labels the outputs are compared against, or null for a loss
 /// that has none.
-pub fn ggml_opt_labels(opt_ctx: c.ggml_opt_context_t) callconv(.c) [*c]c.ggml_tensor {
+pub fn ggmlOptLabels(opt_ctx: c.ggml_opt_context_t) callconv(.c) [*c]c.ggml_tensor {
     return contextOf(opt_ctx).labels;
 }
 
 /// Ports `ggml_opt_loss` (ggml-opt.cpp:621 @cd959bae9).
 ///
-/// Parameters:
 /// - `opt_ctx`: the context.
 ///
-/// Return: the scalar loss tensor.
-pub fn ggml_opt_loss(opt_ctx: c.ggml_opt_context_t) callconv(.c) [*c]c.ggml_tensor {
+/// - Returns: the scalar loss tensor.
+pub fn ggmlOptLoss(opt_ctx: c.ggml_opt_context_t) callconv(.c) [*c]c.ggml_tensor {
     return contextOf(opt_ctx).loss;
 }
 
 /// Ports `ggml_opt_pred` (ggml-opt.cpp:625 @cd959bae9).
 ///
-/// Parameters:
 /// - `opt_ctx`: the context.
 ///
-/// Return: the predictions, or null unless the loss is cross-entropy.
-pub fn ggml_opt_pred(opt_ctx: c.ggml_opt_context_t) callconv(.c) [*c]c.ggml_tensor {
+/// - Returns: the predictions, or null unless the loss is cross-entropy.
+pub fn ggmlOptPred(opt_ctx: c.ggml_opt_context_t) callconv(.c) [*c]c.ggml_tensor {
     return contextOf(opt_ctx).pred;
 }
 
 /// Ports `ggml_opt_ncorrect` (ggml-opt.cpp:629 @cd959bae9).
 ///
-/// Parameters:
 /// - `opt_ctx`: the context.
 ///
-/// Return: the count of correct predictions, or null unless the loss is
+/// - Returns: the count of correct predictions, or null unless the loss is
 /// cross-entropy.
-pub fn ggml_opt_ncorrect(opt_ctx: c.ggml_opt_context_t) callconv(.c) [*c]c.ggml_tensor {
+pub fn ggmlOptNcorrect(opt_ctx: c.ggml_opt_context_t) callconv(.c) [*c]c.ggml_tensor {
     return contextOf(opt_ctx).ncorrect;
 }
 
 /// Ports `ggml_opt_grad_acc` (ggml-opt.cpp:633 @cd959bae9).
 ///
-/// Parameters:
 /// - `opt_ctx`: the context.
 /// - `node`: a node of the forward graph.
 ///
-/// Return: its gradient accumulator in the optimizer graph, or null.
-pub fn ggml_opt_grad_acc(opt_ctx: c.ggml_opt_context_t, node: [*c]c.ggml_tensor) callconv(.c) [*c]c.ggml_tensor {
+/// - Returns: its gradient accumulator in the optimizer graph, or null.
+pub fn ggmlOptGradAcc(opt_ctx: c.ggml_opt_context_t, node: [*c]c.ggml_tensor) callconv(.c) [*c]c.ggml_tensor {
     return c.ggml_graph_get_grad_acc(contextOf(opt_ctx).gb_opt, node);
 }
 
@@ -1201,23 +1190,22 @@ pub fn ggml_opt_grad_acc(opt_ctx: c.ggml_opt_context_t, node: [*c]c.ggml_tensor)
 
 /// Ports `ggml_opt_result_init` (ggml-opt.cpp:639 @cd959bae9).
 ///
-/// Return: an empty result; free it with `ggml_opt_result_free`.
-pub fn ggml_opt_result_init() callconv(.c) c.ggml_opt_result_t {
+/// - Returns: an empty result; free it with `ggml_opt_result_free`.
+pub fn ggmlOptResultInit() callconv(.c) c.ggml_opt_result_t {
     return @ptrCast(create(Result));
 }
 
 /// Ports `ggml_opt_result_free` (ggml-opt.cpp:643 @cd959bae9).
 ///
-/// Parameters:
 /// - `result`: the result, or null; invalid afterwards.
 ///
-/// Return: nothing.
-pub fn ggml_opt_result_free(result: c.ggml_opt_result_t) callconv(.c) void {
+/// - Returns: nothing.
+pub fn ggmlOptResultFree(result: c.ggml_opt_result_t) callconv(.c) void {
     if (result == null) return; // `delete nullptr` is a no-op
     const r = resultOf(result);
-    r.loss.deinit(allocator);
-    r.pred.deinit(allocator);
-    allocator.destroy(r);
+    r.loss.deinit(std.heap.c_allocator);
+    r.pred.deinit(std.heap.c_allocator);
+    std.heap.c_allocator.destroy(r);
 }
 
 /// Ports `ggml_opt_result_reset` (ggml-opt.cpp:647 @cd959bae9).
@@ -1225,11 +1213,10 @@ pub fn ggml_opt_result_free(result: c.ggml_opt_result_t) callconv(.c) void {
 /// `opt_period` and `loss_per_datapoint` are left as they were; the next
 /// `ggml_opt_eval` overwrites them because `ndata` is 0.
 ///
-/// Parameters:
 /// - `result`: the result.
 ///
-/// Return: nothing.
-pub fn ggml_opt_result_reset(result: c.ggml_opt_result_t) callconv(.c) void {
+/// - Returns: nothing.
+pub fn ggmlOptResultReset(result: c.ggml_opt_result_t) callconv(.c) void {
     const r = resultOf(result);
     r.ndata = 0;
     r.loss.clearRetainingCapacity();
@@ -1239,12 +1226,11 @@ pub fn ggml_opt_result_reset(result: c.ggml_opt_result_t) callconv(.c) void {
 
 /// Ports `ggml_opt_result_ndata` (ggml-opt.cpp:654 @cd959bae9).
 ///
-/// Parameters:
 /// - `result`: the result.
 /// - `ndata`: receives the number of datapoints.
 ///
-/// Return: nothing.
-pub fn ggml_opt_result_ndata(result: c.ggml_opt_result_t, ndata: [*c]i64) callconv(.c) void {
+/// - Returns: nothing.
+pub fn ggmlOptResultNdata(result: c.ggml_opt_result_t, ndata: [*c]i64) callconv(.c) void {
     ndata.* = resultOf(result).ndata;
 }
 
@@ -1254,13 +1240,12 @@ pub fn ggml_opt_result_ndata(result: c.ggml_opt_result_t, ndata: [*c]i64) callco
 /// it is widened; `sum_squared/nbatches - mean*mean` is one fused
 /// multiply-subtract in the reference object, measured.
 ///
-/// Parameters:
 /// - `result`: the result.
 /// - `loss`: receives the mean loss per physical batch, or the sum.
 /// - `unc`: receives its uncertainty, or null to skip.
 ///
-/// Return: nothing.
-pub fn ggml_opt_result_loss(result: c.ggml_opt_result_t, loss: [*c]f64, unc: [*c]f64) callconv(.c) void {
+/// - Returns: nothing.
+pub fn ggmlOptResultLoss(result: c.ggml_opt_result_t, loss: [*c]f64, unc: [*c]f64) callconv(.c) void {
     const r = resultOf(result);
     const nbatches: i64 = @intCast(r.loss.items.len); // Number of physical batches.
 
@@ -1299,24 +1284,22 @@ pub fn ggml_opt_result_loss(result: c.ggml_opt_result_t, loss: [*c]f64, unc: [*c
 
 /// Ports `ggml_opt_result_pred` (ggml-opt.cpp:693 @cd959bae9).
 ///
-/// Parameters:
 /// - `result`: the result.
 /// - `pred`: receives one prediction per datapoint.
 ///
-/// Return: nothing.
-pub fn ggml_opt_result_pred(result: c.ggml_opt_result_t, pred: [*c]i32) callconv(.c) void {
+/// - Returns: nothing.
+pub fn ggmlOptResultPred(result: c.ggml_opt_result_t, pred: [*c]i32) callconv(.c) void {
     for (resultOf(result).pred.items, 0..) |p, i| pred[i] = p;
 }
 
 /// Ports `ggml_opt_result_accuracy` (ggml-opt.cpp:699 @cd959bae9).
 ///
-/// Parameters:
 /// - `result`: the result.
 /// - `accuracy`: receives the fraction of correct predictions, or NaN.
 /// - `unc`: receives its uncertainty, or null to skip.
 ///
-/// Return: nothing.
-pub fn ggml_opt_result_accuracy(result: c.ggml_opt_result_t, accuracy: [*c]f64, unc: [*c]f64) callconv(.c) void {
+/// - Returns: nothing.
+pub fn ggmlOptResultAccuracy(result: c.ggml_opt_result_t, accuracy: [*c]f64, unc: [*c]f64) callconv(.c) void {
     const r = resultOf(result);
     accuracy.* = if (r.ncorrect >= 0) @as(f64, @floatFromInt(r.ncorrect)) / @as(f64, @floatFromInt(r.ndata)) else std.math.nan(f64);
 
@@ -1333,15 +1316,14 @@ pub fn ggml_opt_result_accuracy(result: c.ggml_opt_result_t, accuracy: [*c]f64, 
 
 /// Ports `ggml_opt_prepare_alloc` (ggml-opt.cpp:712 @cd959bae9).
 ///
-/// Parameters:
 /// - `opt_ctx`: a context with dynamic graphs.
 /// - `ctx_compute`: the context the step's graphs are built in.
 /// - `gf`: the forward graph.
 /// - `inputs`: its input tensor.
 /// - `outputs`: its output tensor.
 ///
-/// Return: nothing.
-pub fn ggml_opt_prepare_alloc(
+/// - Returns: nothing.
+pub fn ggmlOptPrepareAlloc(
     opt_ctx: c.ggml_opt_context_t,
     ctx_compute: ?*c.ggml_context,
     gf: ?*c.ggml_cgraph,
@@ -1358,13 +1340,12 @@ pub fn ggml_opt_prepare_alloc(
 
 /// Ports `ggml_opt_alloc` (ggml-opt.cpp:725 @cd959bae9).
 ///
-/// Parameters:
 /// - `opt_ctx`: the context.
 /// - `backward`: allocate for a gradient (or optimizer) step rather than a
 ///   forward pass.
 ///
-/// Return: nothing.
-pub fn ggml_opt_alloc(opt_ctx: c.ggml_opt_context_t, backward: bool) callconv(.c) void {
+/// - Returns: nothing.
+pub fn ggmlOptAlloc(opt_ctx: c.ggml_opt_context_t, backward: bool) callconv(.c) void {
     const ctx = contextOf(opt_ctx);
     impl.assert(!ctx.eval_ready, "!opt_ctx->eval_ready");
     if (ctx.build_type == c.GGML_OPT_BUILD_TYPE_OPT and ctx.opt_period > 1 and ctx.opt_i == 0) {
@@ -1421,13 +1402,12 @@ pub fn ggml_opt_alloc(opt_ctx: c.ggml_opt_context_t, backward: bool) callconv(.c
 /// `powf(beta, iter)` converts the 64-bit iteration count to `float` and
 /// calls libm's `powf`, as the reference object does — two calls, measured.
 ///
-/// Parameters:
 /// - `opt_ctx`: the context, after `ggml_opt_alloc`.
 /// - `result`: accumulates this step's loss, predictions and correct count;
 ///   null to skip.
 ///
-/// Return: nothing.
-pub fn ggml_opt_eval(opt_ctx: c.ggml_opt_context_t, result: c.ggml_opt_result_t) callconv(.c) void {
+/// - Returns: nothing.
+pub fn ggmlOptEval(opt_ctx: c.ggml_opt_context_t, result: c.ggml_opt_result_t) callconv(.c) void {
     const ctx = contextOf(opt_ctx);
     impl.assert(ctx.eval_ready, "opt_ctx->eval_ready");
     if (ctx.allocated_graph == ctx.gb_opt) {
@@ -1503,14 +1483,14 @@ pub fn ggml_opt_eval(opt_ctx: c.ggml_opt_context_t, result: c.ggml_opt_result_t)
     impl.assert(tensorOf(ctx.loss).type == c.GGML_TYPE_F32, "opt_ctx->loss->type == GGML_TYPE_F32");
     var loss: f32 = undefined;
     c.ggml_backend_tensor_get(ctx.loss, &loss, 0, c.ggml_nbytes(ctx.loss));
-    r.loss.append(allocator, loss) catch oom();
+    r.loss.append(std.heap.c_allocator, loss) catch oom();
 
     if (ctx.pred != null) {
         impl.assert(tensorOf(ctx.pred).type == c.GGML_TYPE_I32, "opt_ctx->pred->type == GGML_TYPE_I32");
-        const pred = allocator.alloc(i32, @intCast(ndata)) catch oom();
-        defer allocator.free(pred);
+        const pred = std.heap.c_allocator.alloc(i32, @intCast(ndata)) catch oom();
+        defer std.heap.c_allocator.free(pred);
         c.ggml_backend_tensor_get(ctx.pred, pred.ptr, 0, c.ggml_nbytes(ctx.pred));
-        r.pred.appendSlice(allocator, pred) catch oom();
+        r.pred.appendSlice(std.heap.c_allocator, pred) catch oom();
     }
 
     if (ctx.ncorrect == null or r.ncorrect < 0) {
@@ -1530,7 +1510,6 @@ pub fn ggml_opt_eval(opt_ctx: c.ggml_opt_context_t, result: c.ggml_opt_result_t)
 
 /// Ports `ggml_opt_epoch` (ggml-opt.cpp:881 @cd959bae9).
 ///
-/// Parameters:
 /// - `opt_ctx`: a context with static graphs.
 /// - `dataset`: the data, in its current permutation.
 /// - `result_train`: accumulates the training batches; null to skip.
@@ -1540,8 +1519,8 @@ pub fn ggml_opt_eval(opt_ctx: c.ggml_opt_context_t, result: c.ggml_opt_result_t)
 /// - `callback_train`: called after each training batch; may be null.
 /// - `callback_eval`: called after each evaluation batch; may be null.
 ///
-/// Return: nothing.
-pub fn ggml_opt_epoch(
+/// - Returns: nothing.
+pub fn ggmlOptEpoch(
     opt_ctx: c.ggml_opt_context_t,
     dataset: c.ggml_opt_dataset_t,
     result_train: c.ggml_opt_result_t,
@@ -1550,10 +1529,10 @@ pub fn ggml_opt_epoch(
     callback_train: c.ggml_opt_epoch_callback,
     callback_eval: c.ggml_opt_epoch_callback,
 ) callconv(.c) void {
-    impl.assert(ggml_opt_static_graphs(opt_ctx), "ggml_opt_static_graphs(opt_ctx) && \"ggml_opt_epoch requires static graphs\"");
-    const inputs = ggml_opt_inputs(opt_ctx);
-    const labels = ggml_opt_labels(opt_ctx);
-    const data = ggml_opt_dataset_data(dataset);
+    impl.assert(ggmlOptStaticGraphs(opt_ctx), "ggml_opt_static_graphs(opt_ctx) && \"ggml_opt_epoch requires static graphs\"");
+    const inputs = ggmlOptInputs(opt_ctx);
+    const labels = ggmlOptLabels(opt_ctx);
+    const data = ggmlOptDatasetData(dataset);
     impl.assert(tensorOf(data).ne[0] == tensorOf(inputs).ne[0], "data->ne[0] == inputs->ne[0]");
 
     const ndata = tensorOf(data).ne[1];
@@ -1569,18 +1548,18 @@ pub fn ggml_opt_epoch(
     var ibatch: i64 = 0;
     var t_loop_start = c.ggml_time_us();
     while (ibatch < ibatch_split) : (ibatch += 1) {
-        ggml_opt_alloc(opt_ctx, true);
-        ggml_opt_dataset_get_batch(dataset, inputs, labels, ibatch);
-        ggml_opt_eval(opt_ctx, result_train);
+        ggmlOptAlloc(opt_ctx, true);
+        ggmlOptDatasetGetBatch(dataset, inputs, labels, ibatch);
+        ggmlOptEval(opt_ctx, result_train);
         if (callback_train) |cb| {
             cb(true, opt_ctx, dataset, result_train, ibatch + 1, ibatch_split, t_loop_start);
         }
     }
     t_loop_start = c.ggml_time_us();
     while (ibatch < nbatches) : (ibatch += 1) {
-        ggml_opt_alloc(opt_ctx, false);
-        ggml_opt_dataset_get_batch(dataset, inputs, labels, ibatch);
-        ggml_opt_eval(opt_ctx, result_eval);
+        ggmlOptAlloc(opt_ctx, false);
+        ggmlOptDatasetGetBatch(dataset, inputs, labels, ibatch);
+        ggmlOptEval(opt_ctx, result_eval);
         if (callback_eval) |cb| {
             cb(false, opt_ctx, dataset, result_eval, ibatch + 1 - ibatch_split, nbatches - ibatch_split, t_loop_start);
         }
@@ -1589,7 +1568,6 @@ pub fn ggml_opt_epoch(
 
 /// Ports `ggml_opt_epoch_callback_progress_bar` (ggml-opt.cpp:926 @cd959bae9).
 ///
-/// Parameters:
 /// - `train`: whether the batch just evaluated was a training batch.
 /// - `opt_ctx`: the context.
 /// - `dataset`: unused.
@@ -1598,8 +1576,8 @@ pub fn ggml_opt_epoch(
 /// - `ibatch_max`: batches in this section.
 /// - `t_start_us`: when this section started.
 ///
-/// Return: nothing; writes one progress line to stderr.
-pub fn ggml_opt_epoch_callback_progress_bar(
+/// - Returns: nothing; writes one progress line to stderr.
+pub fn ggmlOptEpochCallbackProgressBar(
     train: bool,
     opt_ctx: c.ggml_opt_context_t,
     dataset: c.ggml_opt_dataset_t,
@@ -1636,17 +1614,17 @@ pub fn ggml_opt_epoch_callback_progress_bar(
         _ = fprintf(cStderr(), block);
     }
 
-    const batch_size = tensorOf(ggml_opt_inputs(opt_ctx)).ne[1];
+    const batch_size = tensorOf(ggmlOptInputs(opt_ctx)).ne[1];
     const idata = ibatch * batch_size;
     const idata_max = ibatch_max * batch_size;
 
     var loss: f64 = undefined;
     var loss_unc: f64 = undefined;
-    ggml_opt_result_loss(result, &loss, &loss_unc);
+    ggmlOptResultLoss(result, &loss, &loss_unc);
 
     var accuracy: f64 = undefined;
     var accuracy_unc: f64 = undefined;
-    ggml_opt_result_accuracy(result, &accuracy, &accuracy_unc);
+    ggmlOptResultAccuracy(result, &accuracy, &accuracy_unc);
 
     const t_ibatch_us = c.ggml_time_us() - t_start_us;
     var t_ibatch_s = @divTrunc(t_ibatch_us, 1000000);
@@ -1688,7 +1666,6 @@ pub fn ggml_opt_epoch_callback_progress_bar(
 
 /// Ports `ggml_opt_fit` (ggml-opt.cpp:999 @cd959bae9).
 ///
-/// Parameters:
 /// - `backend_sched`: the scheduler the graphs are built for.
 /// - `ctx_compute`: the context holding the temporarily allocated tensors.
 /// - `inputs`: input tensor, `[ne_datapoint, ndata_batch]`.
@@ -1704,8 +1681,8 @@ pub fn ggml_opt_epoch_callback_progress_bar(
 /// - `val_split`: fraction held out for validation, in `[0, 1)`.
 /// - `silent`: suppress the progress output on stderr.
 ///
-/// Return: nothing.
-pub fn ggml_opt_fit(
+/// - Returns: nothing.
+pub fn ggmlOptFit(
     backend_sched: c.ggml_backend_sched_t,
     ctx_compute: ?*c.ggml_context,
     inputs: [*c]c.ggml_tensor,
@@ -1722,7 +1699,7 @@ pub fn ggml_opt_fit(
     c.ggml_time_init();
     const t_start_us = c.ggml_time_us();
 
-    const ndata = tensorOf(ggml_opt_dataset_data(dataset)).ne[1];
+    const ndata = tensorOf(ggmlOptDatasetData(dataset)).ne[1];
     const nbatch_physical = tensorOf(inputs).ne[1];
     impl.assert(@rem(ndata, nbatch_logical) == 0, "ndata          % nbatch_logical  == 0");
     impl.assert(@rem(nbatch_logical, nbatch_physical) == 0, "nbatch_logical % nbatch_physical == 0");
@@ -1737,7 +1714,7 @@ pub fn ggml_opt_fit(
 
     var epoch: i64 = 1;
 
-    var params = ggml_opt_default_params(backend_sched, loss_type);
+    var params = ggmlOptDefaultParams(backend_sched, loss_type);
     params.ctx_compute = ctx_compute;
     params.inputs = inputs;
     params.outputs = outputs;
@@ -1745,30 +1722,30 @@ pub fn ggml_opt_fit(
     params.get_opt_pars = get_opt_pars;
     params.get_opt_pars_ud = &epoch;
     params.optimizer = optimizer;
-    const opt_ctx = ggml_opt_init(params);
+    const opt_ctx = ggmlOptInit(params);
 
     // Shuffling the data is generally useful but there is only a point if not all data is used in a single batch.
     if (nbatch_logical < ndata) {
-        ggml_opt_dataset_shuffle(opt_ctx, dataset, -1); // Shuffle all data (train + validation).
+        ggmlOptDatasetShuffle(opt_ctx, dataset, -1); // Shuffle all data (train + validation).
     }
 
-    const result_train = ggml_opt_result_init();
-    const result_val = ggml_opt_result_init();
+    const result_train = ggmlOptResultInit();
+    const result_val = ggmlOptResultInit();
 
-    const epoch_callback: c.ggml_opt_epoch_callback = if (silent) null else &ggml_opt_epoch_callback_progress_bar;
+    const epoch_callback: c.ggml_opt_epoch_callback = if (silent) null else &ggmlOptEpochCallbackProgressBar;
 
     while (epoch <= nepoch) : (epoch += 1) {
         if (nbatch_logical < idata_split) {
-            ggml_opt_dataset_shuffle(opt_ctx, dataset, idata_split);
+            ggmlOptDatasetShuffle(opt_ctx, dataset, idata_split);
         }
 
-        ggml_opt_result_reset(result_train);
-        ggml_opt_result_reset(result_val);
+        ggmlOptResultReset(result_train);
+        ggmlOptResultReset(result_val);
 
         if (!silent) {
             _ = fprintf(cStderr(), "%s: epoch %04lld/%04lld:\n", "ggml_opt_fit", epoch, nepoch);
         }
-        ggml_opt_epoch(opt_ctx, dataset, result_train, result_val, idata_split, epoch_callback, epoch_callback);
+        ggmlOptEpoch(opt_ctx, dataset, result_train, result_val, idata_split, epoch_callback, epoch_callback);
         if (!silent) {
             _ = fprintf(cStderr(), "\n");
         }
@@ -1783,28 +1760,26 @@ pub fn ggml_opt_fit(
         _ = fprintf(cStderr(), "%s: training took %02lld:%02lld:%02lld\n", "ggml_opt_fit", t_total_h, t_total_m, t_total_s);
     }
 
-    ggml_opt_free(opt_ctx);
-    ggml_opt_result_free(result_train);
-    ggml_opt_result_free(result_val);
+    ggmlOptFree(opt_ctx);
+    ggmlOptResultFree(result_train);
+    ggmlOptResultFree(result_val);
 }
 
 /// Ports `ggml_opt_context_optimizer_type` (ggml-opt.cpp:1081 @cd959bae9).
 ///
-/// Parameters:
 /// - `opt_ctx`: the context.
 ///
-/// Return: its optimizer.
-pub fn ggml_opt_context_optimizer_type(opt_ctx: c.ggml_opt_context_t) callconv(.c) c.enum_ggml_opt_optimizer_type {
+/// - Returns: its optimizer.
+pub fn ggmlOptContextOptimizerType(opt_ctx: c.ggml_opt_context_t) callconv(.c) c.enum_ggml_opt_optimizer_type {
     return contextOf(opt_ctx).optimizer;
 }
 
 /// Ports `ggml_opt_optimizer_name` (ggml-opt.cpp:1085 @cd959bae9).
 ///
-/// Parameters:
 /// - `o`: an optimizer type.
 ///
-/// Return: `"adamw"`, `"sgd"`, or `"undefined"`; static storage.
-pub fn ggml_opt_optimizer_name(o: c.enum_ggml_opt_optimizer_type) callconv(.c) [*c]const u8 {
+/// - Returns: `"adamw"`, `"sgd"`, or `"undefined"`; static storage.
+pub fn ggmlOptOptimizerName(o: c.enum_ggml_opt_optimizer_type) callconv(.c) [*c]const u8 {
     return switch (o) {
         c.GGML_OPT_OPTIMIZER_TYPE_ADAMW => "adamw",
         c.GGML_OPT_OPTIMIZER_TYPE_SGD => "sgd",
@@ -1856,7 +1831,7 @@ test "shuffle is a permutation" {
 }
 
 test "the optimizer names are the C's" {
-    try std.testing.expectEqualStrings("adamw", std.mem.span(ggml_opt_optimizer_name(c.GGML_OPT_OPTIMIZER_TYPE_ADAMW)));
-    try std.testing.expectEqualStrings("sgd", std.mem.span(ggml_opt_optimizer_name(c.GGML_OPT_OPTIMIZER_TYPE_SGD)));
-    try std.testing.expectEqualStrings("undefined", std.mem.span(ggml_opt_optimizer_name(c.GGML_OPT_OPTIMIZER_TYPE_COUNT)));
+    try std.testing.expectEqualStrings("adamw", std.mem.span(ggmlOptOptimizerName(c.GGML_OPT_OPTIMIZER_TYPE_ADAMW)));
+    try std.testing.expectEqualStrings("sgd", std.mem.span(ggmlOptOptimizerName(c.GGML_OPT_OPTIMIZER_TYPE_SGD)));
+    try std.testing.expectEqualStrings("undefined", std.mem.span(ggmlOptOptimizerName(c.GGML_OPT_OPTIMIZER_TYPE_COUNT)));
 }

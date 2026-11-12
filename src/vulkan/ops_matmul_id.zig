@@ -16,7 +16,6 @@ const BackendCtx = m.context.BackendCtx;
 const Context = m.submit.Context;
 const Tensor = c.ggml_tensor;
 const Buffer = m.buffer.Buffer;
-const Subbuffer = m.buffer.Subbuffer;
 const Pipeline = m.pipeline.Pipeline;
 const MatmulPipelinePair = m.pipeline.MatmulPipelinePair;
 const push = m.push;

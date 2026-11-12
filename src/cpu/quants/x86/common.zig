@@ -34,18 +34,18 @@ pub inline fn as(comptime Block: type, p: ?*const anyopaque) [*]const Block {
 /// `((x0+x4) + (x2+x6)) + ((x1+x5) + (x3+x7))`: the halves summed, then
 /// `movehl` and `movehdup` fold the four lanes pairwise. The order is the
 /// answer's last bit.
-pub inline fn hsum_float_8(x: m256) f32 {
-    var res = avx.mm256_extractf128_ps(x, 1);
-    res = avx.mm_add_ps(res, avx.mm256_castps256_ps128(x));
-    res = avx.mm_add_ps(res, avx.mm_movehl_ps(res, res));
-    res = avx.mm_add_ss(res, avx.mm_movehdup_ps(res));
-    return avx.mm_cvtss_f32(res);
+pub inline fn hsumFloat8(x: m256) f32 {
+    var res = avx.mm256Extractf128Ps(x, 1);
+    res = avx.mmAddPs(res, avx.mm256Castps256Ps128(x));
+    res = avx.mmAddPs(res, avx.mmMovehlPs(res, res));
+    res = avx.mmAddSs(res, avx.mmMovehdupPs(res));
+    return avx.mmCvtssF32(res);
 }
 
 /// Ports `get_scale_shuffle_q3k` (arch/x86/quants.c:518 @cd959bae9): the
 /// control that broadcasts scale pair `4i, 4i+1` across the low 128-bit half
 /// and `4i+2, 4i+3` across the high one.
-pub inline fn get_scale_shuffle_q3k(i: usize) m256i {
+pub inline fn getScaleShuffleQ3k(i: usize) m256i {
     const k_shuffle: [128]u8 = comptime blk: {
         var t: [128]u8 = undefined;
         for (0..8) |u| {
@@ -56,13 +56,13 @@ pub inline fn get_scale_shuffle_q3k(i: usize) m256i {
         }
         break :blk t;
     };
-    return avx.mm256_loadu_si256(k_shuffle[32 * i ..].ptr);
+    return avx.mm256LoaduSi256(k_shuffle[32 * i ..].ptr);
 }
 
 /// Ports `get_scale_shuffle_k4` (arch/x86/quants.c:527 @cd959bae9): the
 /// `pshufb` control that broadcasts scale pair `i` -- bytes `2i` and `2i+1`
 /// of a 16-bit scale vector -- across all 32 bytes.
-pub inline fn get_scale_shuffle_k4(i: usize) m256i {
+pub inline fn getScaleShuffleK4(i: usize) m256i {
     const k_shuffle: [256]u8 = comptime blk: {
         var t: [256]u8 = undefined;
         for (0..8) |r| {
@@ -73,82 +73,82 @@ pub inline fn get_scale_shuffle_k4(i: usize) m256i {
         }
         break :blk t;
     };
-    return avx.mm256_loadu_si256(k_shuffle[32 * i ..].ptr);
+    return avx.mm256LoaduSi256(k_shuffle[32 * i ..].ptr);
 }
 
 /// Ports `hsum_i32_8` (arch/x86/quants.c:52 @cd959bae9): the halves summed,
 /// then the high pair onto the low, then lane 1 onto lane 0. Integer, so the
 /// order cannot change the answer, but it is the C's.
-pub inline fn hsum_i32_8(a: m256i) i32 {
-    const sum128 = avx.mm_add_epi32(avx.mm256_castsi256_si128(a), avx.mm256_extractf128_si256(a, 1));
-    const hi64 = avx.mm_unpackhi_epi64(sum128, sum128);
-    const sum64 = avx.mm_add_epi32(hi64, sum128);
-    const hi32 = avx.mm_shuffle_epi32(sum64, avx.MM_SHUFFLE(2, 3, 0, 1));
-    return avx.mm_cvtsi128_si32(avx.mm_add_epi32(sum64, hi32));
+pub inline fn hsumI328(a: m256i) i32 {
+    const sum128 = avx.mmAddEpi32(avx.mm256Castsi256Si128(a), avx.mm256_extractf128_si256(a, 1));
+    const hi64 = avx.mmUnpackhiEpi64(sum128, sum128);
+    const sum64 = avx.mmAddEpi32(hi64, sum128);
+    const hi32 = avx.mmShuffleEpi32(sum64, avx.mmShuffle(2, 3, 0, 1));
+    return avx.mmCvtsi128Si32(avx.mmAddEpi32(sum64, hi32));
 }
 
 /// Ports `mul_add_epi8` (arch/x86/quants.c:69 @cd959bae9): signed bytes times
 /// signed bytes, pairwise into `i16`, by moving `x`'s sign onto `y` so that
 /// `maddubs` can take `|x|` as its unsigned operand.
-pub inline fn mul_add_epi8(x: m256i, y: m256i) m256i {
-    const ax = avx.mm256_sign_epi8(x, x);
-    const sy = avx.mm256_sign_epi8(y, x);
-    return avx.mm256_maddubs_epi16(ax, sy);
+pub inline fn mulAddEpi8(x: m256i, y: m256i) m256i {
+    const ax = avx.mm256SignEpi8(x, x);
+    const sy = avx.mm256SignEpi8(y, x);
+    return avx.mm256MaddubsEpi16(ax, sy);
 }
 
 /// Ports `bytes_from_bits_32` (arch/x86/quants.c:76 @cd959bae9): 32 bits to
 /// 32 bytes, each `0xFF` where its bit is set and `0x00` where it is not.
-pub inline fn bytes_from_bits_32(x: *const [4]u8) m256i {
+pub inline fn bytesFromBits32(x: *const [4]u8) m256i {
     const x32 = std.mem.readInt(u32, x, .little);
-    const shuf_mask = avx.mm256_set_epi64x(0x0303030303030303, 0x0202020202020202, 0x0101010101010101, 0x0000000000000000);
-    var bytes = avx.mm256_shuffle_epi8(avx.mm256_set1_epi32(@bitCast(x32)), shuf_mask);
-    const bit_mask = avx.mm256_set1_epi64x(0x7fbfdfeff7fbfdfe);
-    bytes = avx.mm256_or_si256(bytes, bit_mask);
-    return avx.mm256_cmpeq_epi8(bytes, avx.mm256_set1_epi64x(-1));
+    const shuf_mask = avx.mm256SetEpi64x(0x0303030303030303, 0x0202020202020202, 0x0101010101010101, 0x0000000000000000);
+    var bytes = avx.mm256ShuffleEpi8(avx.mm256Set1Epi32(@bitCast(x32)), shuf_mask);
+    const bit_mask = avx.mm256Set1Epi64x(0x7fbfdfeff7fbfdfe);
+    bytes = avx.mm256OrSi256(bytes, bit_mask);
+    return avx.mm256CmpeqEpi8(bytes, avx.mm256Set1Epi64x(-1));
 }
 
 /// Ports `bytes_from_nibbles_32` (arch/x86/quants.c:90 @cd959bae9): sixteen
 /// bytes to 32 nibbles in `[0, 15]`, the low nibbles first.
-pub inline fn bytes_from_nibbles_32(rsi: *const [16]u8) m256i {
-    const tmp = avx.mm_loadu_si128(rsi);
-    const bytes = avx.mm256_set_m128i(avx.mm_srli_epi16(tmp, 4), tmp);
-    const lowMask = avx.mm256_set1_epi8(0xF);
-    return avx.mm256_and_si256(lowMask, bytes);
+pub inline fn bytesFromNibbles32(rsi: *const [16]u8) m256i {
+    const tmp = avx.mmLoaduSi128(rsi);
+    const bytes = avx.mm256SetM128i(avx.mmSrliEpi16(tmp, 4), tmp);
+    const lowMask = avx.mm256Set1Epi8(0xF);
+    return avx.mm256AndSi256(lowMask, bytes);
 }
 
 /// Ports `sum_i16_pairs_float` (arch/x86/quants.c:99 @cd959bae9).
-pub inline fn sum_i16_pairs_float(x: m256i) m256 {
-    const ones = avx.mm256_set1_epi16(1);
-    const summed_pairs = avx.mm256_madd_epi16(ones, x);
-    return avx.mm256_cvtepi32_ps(summed_pairs);
+pub inline fn sumI16PairsFloat(x: m256i) m256 {
+    const ones = avx.mm256Set1Epi16(1);
+    const summed_pairs = avx.mm256MaddEpi16(ones, x);
+    return avx.mm256Cvtepi32Ps(summed_pairs);
 }
 
 /// Ports `mul_sum_us8_pairs_float` (arch/x86/quants.c:105 @cd959bae9): the
 /// `__AVX512VNNI__ && __AVX512VL__` arm where the target has it, the plain
 /// arm otherwise -- neither VNNI is in x86-64-v3 or v4.
-pub inline fn mul_sum_us8_pairs_float(ax: m256i, sy: m256i) m256 {
+pub inline fn mulSumUs8PairsFloat(ax: m256i, sy: m256i) m256 {
     if (comptime avx.has_avx512vnni_vl) {
-        const zero = avx.mm256_setzero_si256();
-        const summed_pairs = avx.mm256_dpbusd_epi32(zero, ax, sy);
-        return avx.mm256_cvtepi32_ps(summed_pairs);
+        const zero = avx.mm256SetzeroSi256();
+        const summed_pairs = avx.mm256DpbusdEpi32(zero, ax, sy);
+        return avx.mm256Cvtepi32Ps(summed_pairs);
     }
     if (comptime avx.has_avxvnni_only) @compileError("the __AVXVNNI__ arm of mul_sum_us8_pairs_float is not ported");
-    const dot = avx.mm256_maddubs_epi16(ax, sy);
-    return sum_i16_pairs_float(dot);
+    const dot = avx.mm256MaddubsEpi16(ax, sy);
+    return sumI16PairsFloat(dot);
 }
 
 /// Ports `mul_sum_i8_pairs_float` (arch/x86/quants.c:122 @cd959bae9), the
 /// arm without `__AVXVNNIINT8__`.
-pub inline fn mul_sum_i8_pairs_float(x: m256i, y: m256i) m256 {
+pub inline fn mulSumI8PairsFloat(x: m256i, y: m256i) m256 {
     if (comptime avx.has_avxvnniint8) @compileError("the __AVXVNNIINT8__ arm of mul_sum_i8_pairs_float is not ported");
-    const ax = avx.mm256_sign_epi8(x, x);
-    const sy = avx.mm256_sign_epi8(y, x);
-    return mul_sum_us8_pairs_float(ax, sy);
+    const ax = avx.mm256SignEpi8(x, x);
+    const sy = avx.mm256SignEpi8(y, x);
+    return mulSumUs8PairsFloat(ax, sy);
 }
 
 /// Ports `get_scale_shuffle` (arch/x86/quants.c:540 @cd959bae9): the
 /// 128-bit control that broadcasts bytes `2i` and `2i+1` eight times each.
-pub inline fn get_scale_shuffle(i: usize) m128i {
+pub inline fn getScaleShuffle(i: usize) m128i {
     const k_shuffle: [128]u8 = comptime blk: {
         var t: [128]u8 = undefined;
         for (0..16) |r| {
@@ -156,7 +156,7 @@ pub inline fn get_scale_shuffle(i: usize) m128i {
         }
         break :blk t;
     };
-    return avx.mm_loadu_si128(k_shuffle[16 * i ..].ptr);
+    return avx.mmLoaduSi128(k_shuffle[16 * i ..].ptr);
 }
 
 /// The scale shuffle that opens each super-block of

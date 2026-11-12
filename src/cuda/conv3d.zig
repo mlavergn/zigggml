@@ -100,7 +100,6 @@ fn conv3dLaunchImplicitGemm(
 
 /// Ports `ggml_cuda_op_conv3d` (conv3d.cu:279 @cd959bae9).
 ///
-/// Parameters:
 /// - `ctx`: the backend context whose stream, pool and cuBLAS handle are used.
 /// - `dst`: the `CONV_3D` node; `src[0]` the F16 or F32 kernel, `src[1]` the
 ///   F32 input.

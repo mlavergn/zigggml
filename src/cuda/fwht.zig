@@ -9,7 +9,6 @@
 //! `llama.cpp/ggml/src/ggml-cuda/fwht.cuh` at v0.9.0 (`cd959bae9`). The
 //! kernels, `fwht_cuda` and (since v0.7.0) `fwht_cuda_block`, stay CUDA.
 
-const std = @import("std");
 const impl = @import("../impl.zig");
 const common = @import("common.zig");
 const kernels = @import("kernels.zig");
@@ -87,7 +86,7 @@ pub fn opMulMatUseFwht(op: *const Tensor) bool {
 
 /// Ports `ggml_cuda_op_fwht` (fwht.cu:225 @cd959bae9).
 ///
-/// Return: whether the transform could be used -- false for a
+/// - Returns: whether the transform could be used -- false for a
 /// non-contiguous operand, a non-F32 output, a source other than F32 or
 /// F16, or a row length other than a power of two from 64 to 8192, with
 /// nothing launched.

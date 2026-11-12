@@ -22,7 +22,7 @@ const c = impl.c;
 const common = m.common;
 const vk = common.vk;
 const d = &common.dispatch;
-const allocator = common.allocator;
+const allocator = std.heap.c_allocator;
 const Device = m.device.Device;
 
 fn oom() noreturn {
@@ -186,7 +186,7 @@ fn getMemoryProperties(device: *Device) vk.VkPhysicalDeviceMemoryProperties {
 /// backed by the first memory type, trying each set of flags in order,
 /// that allocates; or, given `import_ptr`, imported host memory.
 ///
-/// Return: the buffer; null where the C++ returns an empty pointer (an
+/// - Returns: the buffer; null where the C++ returns an empty pointer (an
 /// import that fails); `error.VulkanError` where it throws.
 pub fn createBuffer(device: *Device, size: usize, req_flags_list: []const vk.VkMemoryPropertyFlags, import_ptr: ?*anyopaque) common.VkError!?*Buffer {
     if (size > device.max_buffer_size) {
@@ -346,7 +346,7 @@ pub fn createBufferCheck(device: *Device, size: usize, req_flags: vk.VkMemoryPro
 /// device memory for a ggml buffer, with the fallbacks the device's
 /// settings allow.
 ///
-/// Return: the buffer, or `error.VulkanError` after printing why -- the
+/// - Returns: the buffer, or `error.VulkanError` after printing why -- the
 /// C++ rethrows to `alloc_buffer`, which returns null.
 pub fn createBufferDevice(device: *Device, size: usize) common.VkError!*Buffer {
     const hv = vk.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
@@ -421,7 +421,7 @@ var host_allocations_mutex: std.c.pthread_rwlock_t = .{};
 /// Ports `ggml_vk_host_allocation_find` (ggml-vulkan-buffers.cpp:272 @cd959bae9).
 /// The caller must hold `host_allocations_mutex`.
 ///
-/// Return: the index of the allocation holding `ptr`, or null.
+/// - Returns: the index of the allocation holding `ptr`, or null.
 fn hostAllocationFind(ptr: ?*const anyopaque) ?usize {
     const p = @intFromPtr(ptr);
     for (host_allocations.items, 0..) |entry, i| {
@@ -436,7 +436,7 @@ fn hostAllocationFind(ptr: ?*const anyopaque) ?usize {
 /// aligned host memory each device maps on first use; otherwise it is a
 /// host-visible buffer of device 0.
 ///
-/// Return: the mapping, or null if it could not be allocated or no
+/// - Returns: the mapping, or null if it could not be allocated or no
 /// host-visible memory was found.
 pub fn hostMalloc(size: usize) ?*anyopaque {
     logMemory("ggml_vk_host_malloc(%zu)", .{size});
@@ -501,7 +501,7 @@ pub fn hostFree(ptr: ?*anyopaque) void {
 /// allocation the first time it asks; a device whose import failed once is
 /// not asked again, and stages from then on.
 ///
-/// Return: the buffer, borrowed, or null when `ptr` is not pinned or this
+/// - Returns: the buffer, borrowed, or null when `ptr` is not pinned or this
 /// device cannot map it.
 pub fn hostGet(device: *Device, ptr: ?*const anyopaque, buf_offset: *usize) ?*Buffer {
     buf_offset.* = 0;

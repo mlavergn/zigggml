@@ -33,7 +33,6 @@
 //! `ggml_gemv_iq4_nl_8x8_q8_0` and its three siblings without a suffix, and
 //! the `4x4` pairs with one.
 
-const std = @import("std");
 const impl = @import("../../impl.zig");
 const blocks = @import("blocks.zig");
 const epilogue = @import("epilogue.zig");
@@ -188,31 +187,47 @@ fn gemm(
     }
 }
 
-pub export fn ggml_gemv_iq4_nl_4x4_q8_0_generic(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+comptime {
+    @export(&ggmlGemvIq4Nl4x4Q80Generic, .{ .name = "ggml_gemv_iq4_nl_4x4_q8_0_generic" });
+}
+
+pub fn ggmlGemvIq4Nl4x4Q80Generic(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
     gemv(.iq4_nl, 4, 4, blocks.block_iq4_nlx4, n, s, bs, vx, vy, nr, nc);
 }
-pub export fn ggml_gemm_iq4_nl_4x4_q8_0_generic(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+comptime {
+    @export(&ggmlGemmIq4Nl4x4Q80Generic, .{ .name = "ggml_gemm_iq4_nl_4x4_q8_0_generic" });
+}
+
+pub fn ggmlGemmIq4Nl4x4Q80Generic(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
     gemm(.iq4_nl, 4, 4, blocks.block_iq4_nlx4, n, s, bs, vx, vy, nr, nc);
 }
-pub export fn ggml_gemv_mxfp4_4x4_q8_0_generic(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+comptime {
+    @export(&ggmlGemvMxfp44x4Q80Generic, .{ .name = "ggml_gemv_mxfp4_4x4_q8_0_generic" });
+}
+
+pub fn ggmlGemvMxfp44x4Q80Generic(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
     gemv(.mxfp4, 4, 4, blocks.block_mxfp4x4, n, s, bs, vx, vy, nr, nc);
 }
-pub export fn ggml_gemm_mxfp4_4x4_q8_0_generic(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+comptime {
+    @export(&ggmlGemmMxfp44x4Q80Generic, .{ .name = "ggml_gemm_mxfp4_4x4_q8_0_generic" });
+}
+
+pub fn ggmlGemmMxfp44x4Q80Generic(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
     gemm(.mxfp4, 4, 4, blocks.block_mxfp4x4, n, s, bs, vx, vy, nr, nc);
 }
 
 // The four `8x8` shapes. ARM's `arch-fallback.h` renames these generics to
 // the bare names and x86 has its own, so they are exported per architecture
 // -- `arm/fallback.zig` -- not here.
-pub fn ggml_gemv_iq4_nl_8x8_q8_0_generic(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+pub fn ggmlGemvIq4Nl8x8Q80Generic(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
     gemv(.iq4_nl, 8, 8, blocks.block_iq4_nlx8, n, s, bs, vx, vy, nr, nc);
 }
-pub fn ggml_gemm_iq4_nl_8x8_q8_0_generic(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+pub fn ggmlGemmIq4Nl8x8Q80Generic(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
     gemm(.iq4_nl, 8, 8, blocks.block_iq4_nlx8, n, s, bs, vx, vy, nr, nc);
 }
-pub fn ggml_gemv_mxfp4_8x8_q8_0_generic(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+pub fn ggmlGemvMxfp48x8Q80Generic(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
     gemv(.mxfp4, 8, 8, blocks.block_mxfp4x8, n, s, bs, vx, vy, nr, nc);
 }
-pub fn ggml_gemm_mxfp4_8x8_q8_0_generic(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+pub fn ggmlGemmMxfp48x8Q80Generic(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
     gemm(.mxfp4, 8, 8, blocks.block_mxfp4x8, n, s, bs, vx, vy, nr, nc);
 }

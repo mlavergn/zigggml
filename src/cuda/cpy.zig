@@ -231,7 +231,6 @@ fn cpyAsMemcpy2d(src0: *const Tensor, src1: *const Tensor, m: *Memcpy2d) bool {
 
 /// Ports `ggml_cuda_cpy` (cpy.cu:429 @cd959bae9).
 ///
-/// Parameters:
 /// - `ctx`: the backend context whose stream is used.
 /// - `src0`: the tensor copied from.
 /// - `src1`: the tensor copied into; same element count as `src0`.

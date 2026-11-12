@@ -21,7 +21,6 @@
 //! byte serves eight quants across the interleave. Reusing the `qs` offset
 //! reads the wrong high bits and is the obvious way to get this wrong.
 
-const std = @import("std");
 const impl = @import("../../impl.zig");
 const blocks = @import("blocks.zig");
 const epilogue = @import("epilogue.zig");
@@ -57,8 +56,10 @@ inline fn fiveBit(bl: *const blocks.block_q5_Kx8, b_qs_offset: i32, b_qh_offset:
     const h0: u8 = (qh_val >> qh_shift) & 1;
     const h1: u8 = (qh_val >> (qh_shift + 1)) & 1;
     const q = bl.qs[@intCast(b_qs_offset)];
-    const v0: i32 = @as(i8, @bitCast((q & 0xF) | (h0 << 4)));
-    const v1: i32 = @as(i8, @bitCast((q >> 4) | (h1 << 4)));
+    const v0_raw: i8 = @bitCast((q & 0xF) | (h0 << 4));
+    const v0: i32 = v0_raw;
+    const v1_raw: i8 = @bitCast((q >> 4) | (h1 << 4));
+    const v1: i32 = v1_raw;
     return .{ v0, v1 };
 }
 
@@ -255,16 +256,32 @@ fn gemm(
     }
 }
 
-pub export fn ggml_gemv_q5_K_8x4_q8_K_generic(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+comptime {
+    @export(&ggmlGemvQ5K8x4Q8KGeneric, .{ .name = "ggml_gemv_q5_K_8x4_q8_K_generic" });
+}
+
+pub fn ggmlGemvQ5K8x4Q8KGeneric(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
     gemv(4, 8, n, s, bs, vx, vy, nr, nc);
 }
-pub export fn ggml_gemv_q5_K_8x8_q8_K_generic(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+comptime {
+    @export(&ggmlGemvQ5K8x8Q8KGeneric, .{ .name = "ggml_gemv_q5_K_8x8_q8_K_generic" });
+}
+
+pub fn ggmlGemvQ5K8x8Q8KGeneric(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
     gemv(8, 8, n, s, bs, vx, vy, nr, nc);
 }
-pub export fn ggml_gemm_q5_K_8x4_q8_K_generic(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+comptime {
+    @export(&ggmlGemmQ5K8x4Q8KGeneric, .{ .name = "ggml_gemm_q5_K_8x4_q8_K_generic" });
+}
+
+pub fn ggmlGemmQ5K8x4Q8KGeneric(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
     gemm(4, 8, n, s, bs, vx, vy, nr, nc);
 }
-pub export fn ggml_gemm_q5_K_8x8_q8_K_generic(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+comptime {
+    @export(&ggmlGemmQ5K8x8Q8KGeneric, .{ .name = "ggml_gemm_q5_K_8x8_q8_K_generic" });
+}
+
+pub fn ggmlGemmQ5K8x8Q8KGeneric(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
     gemm(8, 8, n, s, bs, vx, vy, nr, nc);
 }
 

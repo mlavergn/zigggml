@@ -35,7 +35,6 @@
 //! unreachable, rather than tidied into live code.
 
 const std = @import("std");
-const builtin = @import("builtin");
 const impl = @import("../impl.zig");
 const types = @import("../types.zig");
 const qblocks = @import("../quants/blocks.zig");
@@ -678,15 +677,18 @@ fn wsSize() usize {
     return kernel.ws_slot;
 }
 
+comptime {
+    @export(&ggmlTiledWdataSize, .{ .name = "ggml_tiled_wdata_size" });
+}
+
 /// Ports `ggml_tiled_wdata_size` (tiled.cpp:654 @cd959bae9).
 ///
-/// Parameters:
 /// - `n_tasks`: the threads the node runs on.
 /// - `dst`: the `MUL_MAT` or `MUL_MAT_ID` node.
 ///
-/// Return: the work-buffer bytes to reserve: 64 for alignment plus a slot
+/// - Returns: the work-buffer bytes to reserve: 64 for alignment plus a slot
 /// per thread, or 0 when the tiled path cannot take the node.
-pub export fn ggml_tiled_wdata_size(n_tasks: c_int, dst: *const Tensor) callconv(.c) usize {
+pub fn ggmlTiledWdataSize(n_tasks: c_int, dst: *const Tensor) callconv(.c) usize {
     if (!tiledSupported(impl.one(Tensor, dst.src[0]), impl.one(Tensor, dst.src[1]))) {
         return 0; // unsupported, don't allocate
     }
@@ -857,7 +859,7 @@ fn mmidGemmWindow(
     const r_end = @min(r + mmid_group, ne01);
     const n_src0: c_int = @intCast(r_end - r);
 
-    const src0_bs = types.ggml_type_size(src0.type);
+    const src0_bs = types.ggmlTypeSize(src0.type);
     const src0_stride: i64 = @intCast(src0.nb[1] / src0_bs);
 
     // the window is at most TILED_MMID_GROUP x TILED_TILE_K, so zero only that region of acc
@@ -940,7 +942,7 @@ fn mulMatIdOneExpert(
 
     const vec_dot_type = traits.table[@intCast(src0.type)].vec_dot_type;
 
-    const nbw1: usize = if (src1.type == vec_dot_type) l.nb11 else types.ggml_row_size(vec_dot_type, l.ne10);
+    const nbw1: usize = if (src1.type == vec_dot_type) l.nb11 else types.ggmlRowSize(vec_dot_type, l.ne10);
     const wdata: [*]const u8 = @ptrCast(if (src1.type == vec_dot_type) src1.data.? else params.wdata.?);
 
     const src0_cur: [*]const u8 = @as([*]const u8, @ptrCast(src0.data.?)) + @as(usize, @intCast(cur_a)) * l.nb02;
@@ -1006,9 +1008,9 @@ fn mulMatOneChunk(
     if (ir0_start >= ir0_end or ir1_start >= ir1_end) return;
 
     const wdata: [*]const u8 = @ptrCast(if (src1.type == vec_dot_type) src1.data.? else params.wdata.?);
-    const row_size = types.ggml_row_size(vec_dot_type, l.ne10);
-    const src0_bs = types.ggml_type_size(src0.type);
-    const src1_bs = types.ggml_type_size(vec_dot_type);
+    const row_size = types.ggmlRowSize(vec_dot_type, l.ne10);
+    const src0_bs = types.ggmlTypeSize(src0.type);
+    const src1_bs = types.ggmlTypeSize(vec_dot_type);
 
     impl.assert(@rem(l.ne00, 256) == 0, "ne00 % 256 == 0");
 
@@ -1130,7 +1132,7 @@ fn mulMatDriver(comptime a: Arm, comptime f: Format, params: *const ComputeParam
     impl.assert(l.ne3 == l.ne13, "ne3 == ne13");
 
     // we don't support permuted src0 or src1
-    impl.assert(l.nb10 == types.ggml_type_size(src1.type), "nb10 == ggml_type_size(src1->type)");
+    impl.assert(l.nb10 == types.ggmlTypeSize(src1.type), "nb10 == ggml_type_size(src1->type)");
 
     // dst cannot be transposed or permuted
     impl.assert(l.nb0 == @sizeOf(f32), "nb0 == sizeof(float)");
@@ -1141,8 +1143,8 @@ fn mulMatDriver(comptime a: Arm, comptime f: Format, params: *const ComputeParam
     if (src1.type != vec_dot_type) {
         const wdata: [*]u8 = @ptrCast(params.wdata.?);
 
-        const nbw0 = types.ggml_type_size(vec_dot_type);
-        const nbw1 = types.ggml_row_size(vec_dot_type, l.ne10);
+        const nbw0 = types.ggmlTypeSize(vec_dot_type);
+        const nbw1 = types.ggmlRowSize(vec_dot_type, l.ne10);
         const nbw2 = nbw1 * @as(usize, @intCast(l.ne11));
         const nbw3 = nbw2 * @as(usize, @intCast(l.ne12));
 
@@ -1151,7 +1153,7 @@ fn mulMatDriver(comptime a: Arm, comptime f: Format, params: *const ComputeParam
         for (0..@intCast(l.ne13)) |j13| {
             for (0..@intCast(l.ne12)) |j12| {
                 for (0..@intCast(l.ne11)) |j11| {
-                    const bs = types.ggml_blck_size(vec_dot_type);
+                    const bs = types.ggmlBlckSize(vec_dot_type);
                     const block_start = @divTrunc(@as(i64, ith) * @divTrunc(l.ne10, bs), nth);
                     const block_end = @divTrunc((@as(i64, ith) + 1) * @divTrunc(l.ne10, bs), nth);
                     from_float.?(
@@ -1166,10 +1168,10 @@ fn mulMatDriver(comptime a: Arm, comptime f: Format, params: *const ComputeParam
 
     if (ith == 0) {
         // Every thread starts at ith, so the first unprocessed chunk is nth.
-        threading.ggml_threadpool_chunk_set(params.threadpool.?, nth);
+        threading.ggmlThreadpoolChunkSet(params.threadpool.?, nth);
     }
 
-    threading.ggml_barrier(params.threadpool.?);
+    threading.ggmlBarrier(params.threadpool.?);
 
     const nr0 = l.ne0;
     const nr1 = l.ne1 * l.ne2 * l.ne3;
@@ -1194,7 +1196,7 @@ fn mulMatDriver(comptime a: Arm, comptime f: Format, params: *const ComputeParam
     // per-thread workspace: after any converted src1 data in wdata, aligned to 64
     var ws_base: usize = @intFromPtr(params.wdata.?);
     if (src1.type != vec_dot_type) {
-        ws_base += impl.pad(types.ggml_row_size(vec_dot_type, types.ggml_nelements(src1)), 64);
+        ws_base += impl.pad(types.ggmlRowSize(vec_dot_type, types.ggmlNelements(src1)), 64);
     }
     ws_base = (ws_base + 63) & ~@as(usize, 63);
     const ws: *Ws = @ptrFromInt(ws_base + @as(usize, @intCast(ith)) * wsSize());
@@ -1213,7 +1215,7 @@ fn mulMatDriver(comptime a: Arm, comptime f: Format, params: *const ComputeParam
 
         if (nth >= nchunk0 * nchunk1) break;
 
-        current_chunk = threading.ggml_threadpool_chunk_add(params.threadpool.?, 1);
+        current_chunk = threading.ggmlThreadpoolChunkAdd(params.threadpool.?, 1);
     }
 }
 
@@ -1222,7 +1224,7 @@ fn mulMatDriver(comptime a: Arm, comptime f: Format, params: *const ComputeParam
 /// `src0` type switch both ops share -- one expert of `MUL_MAT_ID` when
 /// `expert_rows` is set, the whole `MUL_MAT` otherwise.
 ///
-/// Return: false for a type the tiled path does not take.
+/// - Returns: false for a type the tiled path does not take.
 fn typeDispatch(
     comptime a: Arm,
     params: *const ComputeParams,
@@ -1252,15 +1254,18 @@ fn minBatch(rows: i64) bool {
     return rows >= 8 or matmulForced();
 }
 
+comptime {
+    @export(&ggmlComputeForwardMulMatTiled, .{ .name = "ggml_compute_forward_mul_mat_tiled" });
+}
+
 /// Ports `ggml_compute_forward_mul_mat_tiled` (tiled.cpp:1209 @cd959bae9).
 ///
-/// Parameters:
 /// - `params`: this thread's index, count and work buffer.
 /// - `dst`: the `MUL_MAT` node.
 ///
-/// Return: true when the whole op was computed here; false to fall through
+/// - Returns: true when the whole op was computed here; false to fall through
 /// to the `vec_dot` path, always so off x86.
-pub export fn ggml_compute_forward_mul_mat_tiled(params: *const ComputeParams, dst: *Tensor) callconv(.c) bool {
+pub fn ggmlComputeForwardMulMatTiled(params: *const ComputeParams, dst: *Tensor) callconv(.c) bool {
     // --use-ref means bail out and go back to vec_dot reference impl
     if (params.use_ref) return false;
     if (!tiledSupported(impl.one(Tensor, dst.src[0]), impl.one(Tensor, dst.src[1]))) return false;
@@ -1268,10 +1273,13 @@ pub export fn ggml_compute_forward_mul_mat_tiled(params: *const ComputeParams, d
     return typeDispatch(kernel.arm, params, dst, null, 0, 0, null);
 }
 
+comptime {
+    @export(&ggmlComputeForwardMulMatIdTiled, .{ .name = "ggml_compute_forward_mul_mat_id_tiled" });
+}
+
 /// Ports `ggml_compute_forward_mul_mat_id_tiled` (tiled.cpp:1227
 /// @cd959bae9): one expert of `MUL_MAT_ID`, its eligibility decided here.
 ///
-/// Parameters:
 /// - `params`: this thread's index, count and work buffer.
 /// - `dst`: the `MUL_MAT_ID` node.
 /// - `cur_a`: the expert.
@@ -1279,8 +1287,8 @@ pub export fn ggml_compute_forward_mul_mat_tiled(params: *const ComputeParams, d
 /// - `expert_rows`: its `(slot, token)` pairs in the routing table.
 /// - `scratch`: the per-thread workspaces `ggml_tiled_wdata_size` reserved.
 ///
-/// Return: true when the expert was computed here.
-pub export fn ggml_compute_forward_mul_mat_id_tiled(
+/// - Returns: true when the expert was computed here.
+pub fn ggmlComputeForwardMulMatIdTiled(
     params: *const ComputeParams,
     dst: *Tensor,
     cur_a: i64,
@@ -1311,7 +1319,7 @@ test "off x86 the tiled path declines and reserves nothing" {
     var dst = std.mem.zeroes(Tensor);
     dst.src[0] = &src0;
     dst.src[1] = &src1;
-    try std.testing.expectEqual(@as(usize, 0), ggml_tiled_wdata_size(4, &dst));
+    try std.testing.expectEqual(@as(usize, 0), ggmlTiledWdataSize(4, &dst));
 }
 
 test "narrowKExtent divides ne00 and fits the budget" {
@@ -1347,8 +1355,8 @@ fn testTensor(t: c.enum_ggml_type, ne: [4]i64, data: *anyopaque) Tensor {
     var x = std.mem.zeroes(Tensor);
     x.type = t;
     x.ne = ne;
-    x.nb[0] = types.ggml_type_size(t);
-    x.nb[1] = types.ggml_row_size(t, ne[0]);
+    x.nb[0] = types.ggmlTypeSize(t);
+    x.nb[1] = types.ggmlRowSize(t, ne[0]);
     x.nb[2] = x.nb[1] * @as(usize, @intCast(ne[1]));
     x.nb[3] = x.nb[2] * @as(usize, @intCast(ne[2]));
     x.data = data;
@@ -1368,7 +1376,7 @@ fn vecDotRow(t: c.enum_ggml_type, n: i64, x: *const anyopaque, y: *const anyopaq
 fn checkMulMat(comptime a: Arm, comptime t: c.enum_ggml_type, ne00: i64, ne01: i64, ne11: i64, rand: std.Random) !void {
     const alloc = std.testing.allocator;
     const nblk: usize = @intCast(@divExact(ne00, c.QK_K));
-    const bsize = types.ggml_type_size(t);
+    const bsize = types.ggmlTypeSize(t);
     const row_bytes = bsize * nblk;
 
     const w0 = try alloc.alignedAlloc(u8, .@"64", row_bytes * @as(usize, @intCast(ne01)));
@@ -1388,7 +1396,7 @@ fn checkMulMat(comptime a: Arm, comptime t: c.enum_ggml_type, ne00: i64, ne01: i
     dst.src[0] = &src0;
     dst.src[1] = &src1;
 
-    const nbw1 = types.ggml_row_size(c.GGML_TYPE_Q8_K, ne00);
+    const nbw1 = types.ggmlRowSize(c.GGML_TYPE_Q8_K, ne00);
     const wsize = impl.pad(nbw1 * @as(usize, @intCast(ne11)), 64) + 64 + kernel.ws_slot;
     const work = try alloc.alignedAlloc(u8, .@"64", wsize);
     defer alloc.free(work);
@@ -1442,7 +1450,7 @@ test "the MUL_MAT_ID expert path agrees with vec_dot" {
             const ne11: i64 = 2;
             const ne12: i64 = 13;
             const nblk: usize = 2;
-            const bsize = types.ggml_type_size(t);
+            const bsize = types.ggmlTypeSize(t);
             const row_bytes = bsize * nblk;
 
             const w0 = try alloc.alignedAlloc(u8, .@"64", row_bytes * @as(usize, @intCast(ne01 * n_as)));
@@ -1459,7 +1467,7 @@ test "the MUL_MAT_ID expert path agrees with vec_dot" {
             dst.src[0] = &src0;
             dst.src[1] = &src1;
 
-            const nbw1 = types.ggml_row_size(c.GGML_TYPE_Q8_K, ne00);
+            const nbw1 = types.ggmlRowSize(c.GGML_TYPE_Q8_K, ne00);
             const n_q8: usize = @intCast(ne11 * ne12);
             const scratch_off = impl.pad(n_q8 * nbw1, 64);
             const work = try alloc.alignedAlloc(u8, .@"64", scratch_off + kernel.ws_slot);

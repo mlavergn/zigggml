@@ -42,7 +42,6 @@ const avx = @import("../../quants/x86/avx2.zig");
 const common = @import("common.zig");
 
 const m256i = avx.m256i;
-const m128i = avx.m128i;
 const m256 = avx.m256;
 
 /// The C's `__AVX512BW__ && __AVX512DQ__`, which compiles the gemms'
@@ -56,13 +55,11 @@ pub const has_avx512bw_dq = builtin.cpu.arch == .x86_64 and
 const has_avx512vnni = builtin.cpu.arch == .x86_64 and
     std.Target.x86.featureSetHas(builtin.cpu.features, .avx512vnni);
 
-const sysv: std.builtin.CallingConvention = .{ .x86_64_sysv = .{} };
-
-extern fn @"llvm.x86.avx512.pmaddubs.w.512"(@Vector(64, u8), @Vector(64, i8)) callconv(sysv) @Vector(32, i16);
-extern fn @"llvm.x86.avx512.pmaddw.d.512"(@Vector(32, i16), @Vector(32, i16)) callconv(sysv) @Vector(16, i32);
-extern fn @"llvm.x86.avx512.pshuf.b.512"(@Vector(64, i8), @Vector(64, i8)) callconv(sysv) @Vector(64, i8);
-extern fn @"llvm.x86.avx512.psrli.w.512"(@Vector(32, i16), i32) callconv(sysv) @Vector(32, i16);
-extern fn @"llvm.x86.avx512.vpdpbusd.512"(@Vector(16, i32), @Vector(64, i8), @Vector(64, i8)) callconv(sysv) @Vector(16, i32);
+extern fn @"llvm.x86.avx512.pmaddubs.w.512"(@Vector(64, u8), @Vector(64, i8)) callconv(.{ .x86_64_sysv = .{} }) @Vector(32, i16);
+extern fn @"llvm.x86.avx512.pmaddw.d.512"(@Vector(32, i16), @Vector(32, i16)) callconv(.{ .x86_64_sysv = .{} }) @Vector(16, i32);
+extern fn @"llvm.x86.avx512.pshuf.b.512"(@Vector(64, i8), @Vector(64, i8)) callconv(.{ .x86_64_sysv = .{} }) @Vector(64, i8);
+extern fn @"llvm.x86.avx512.psrli.w.512"(@Vector(32, i16), i32) callconv(.{ .x86_64_sysv = .{} }) @Vector(32, i16);
+extern fn @"llvm.x86.avx512.vpdpbusd.512"(@Vector(16, i32), @Vector(64, i8), @Vector(64, i8)) callconv(.{ .x86_64_sysv = .{} }) @Vector(16, i32);
 
 /// The intrinsics at `bits` wide, 256 or 512.
 pub fn Wide(comptime bits: u16) type {
@@ -114,56 +111,56 @@ pub fn Wide(comptime bits: u16) type {
             return @splat(0);
         }
 
-        pub inline fn setzero_ps() F {
+        pub inline fn setzeroPs() F {
             return @splat(0);
         }
 
-        pub inline fn set1_epi8(x: i8) I {
+        pub inline fn set1Epi8(x: i8) I {
             return as(I, @as(@Vector(n8, i8), @splat(x)));
         }
 
-        pub inline fn and_si(a: I, b: I) I {
+        pub inline fn andSi(a: I, b: I) I {
             return a & b;
         }
 
-        pub inline fn add_epi16(a: I, b: I) I {
-            if (bits == 256) return avx.mm256_add_epi16(a, b);
+        pub inline fn addEpi16(a: I, b: I) I {
+            if (bits == 256) return avx.mm256AddEpi16(a, b);
             return as(I, as(@Vector(n16, i16), a) +% as(@Vector(n16, i16), b));
         }
 
-        pub inline fn add_epi32(a: I, b: I) I {
-            if (bits == 256) return avx.mm256_add_epi32(a, b);
+        pub inline fn addEpi32(a: I, b: I) I {
+            if (bits == 256) return avx.mm256AddEpi32(a, b);
             return as(I, as(@Vector(n32, i32), a) +% as(@Vector(n32, i32), b));
         }
 
         /// `srli_epi16` by a constant, as every repack call site shifts.
-        pub inline fn srli_epi16(a: I, comptime count: u32) I {
-            if (bits == 256) return avx.mm256_srli_epi16(a, count);
+        pub inline fn srliEpi16(a: I, comptime count: u32) I {
+            if (bits == 256) return avx.mm256SrliEpi16(a, count);
             return as(I, @"llvm.x86.avx512.psrli.w.512"(as(@Vector(32, i16), a), count));
         }
 
         /// `pmaddubsw`: unsigned bytes of `a` times signed bytes of `b`,
         /// pairs summed with signed saturation.
-        pub inline fn maddubs_epi16(a: I, b: I) I {
-            if (bits == 256) return avx.mm256_maddubs_epi16(a, b);
+        pub inline fn maddubsEpi16(a: I, b: I) I {
+            if (bits == 256) return avx.mm256MaddubsEpi16(a, b);
             return as(I, @"llvm.x86.avx512.pmaddubs.w.512"(as(@Vector(64, u8), a), as(@Vector(64, i8), b)));
         }
 
-        pub inline fn madd_epi16(a: I, b: I) I {
-            if (bits == 256) return avx.mm256_madd_epi16(a, b);
+        pub inline fn maddEpi16(a: I, b: I) I {
+            if (bits == 256) return avx.mm256MaddEpi16(a, b);
             return as(I, @"llvm.x86.avx512.pmaddw.d.512"(as(@Vector(32, i16), a), as(@Vector(32, i16), b)));
         }
 
         /// `pshufb`, within each 128-bit lane.
-        pub inline fn shuffle_epi8(a: I, b: I) I {
-            if (bits == 256) return avx.mm256_shuffle_epi8(a, b);
+        pub inline fn shuffleEpi8(a: I, b: I) I {
+            if (bits == 256) return avx.mm256ShuffleEpi8(a, b);
             return as(I, @"llvm.x86.avx512.pshuf.b.512"(as(@Vector(64, i8), a), as(@Vector(64, i8), b)));
         }
 
         /// `_mm256_shuffle_epi32` / `_mm512_shuffle_epi32`: the same
         /// four-lane permute in every 128-bit lane.
-        pub inline fn shuffle_epi32(a: I, comptime imm: u8) I {
-            if (bits == 256) return avx.mm256_shuffle_epi32(a, imm);
+        pub inline fn shuffleEpi32(a: I, comptime imm: u8) I {
+            if (bits == 256) return avx.mm256ShuffleEpi32(a, imm);
             const sel = comptime blk: {
                 @setEvalBranchQuota(10000);
                 var m: [n32]i32 = undefined;
@@ -176,8 +173,8 @@ pub fn Wide(comptime bits: u16) type {
         /// `_mm256_blend_epi32(a, b, imm)` and the `_mm512_mask_blend_epi32`
         /// the AVX-512 arms write for it, whose 16-bit mask repeats `imm`
         /// (`204` and `0xCCCC`).
-        pub inline fn blend_epi32(a: I, b: I, comptime imm: u8) I {
-            if (bits == 256) return avx.mm256_blend_epi32(a, b, imm);
+        pub inline fn blendEpi32(a: I, b: I, comptime imm: u8) I {
+            if (bits == 256) return avx.mm256BlendEpi32(a, b, imm);
             const mask: @Vector(n32, bool) = comptime blk: {
                 @setEvalBranchQuota(10000);
                 var m: [n32]bool = undefined;
@@ -189,8 +186,8 @@ pub fn Wide(comptime bits: u16) type {
 
         /// `_mm256_shuffle_ps(a, a, imm)` / `_mm512_shuffle_ps(a, a, imm)`:
         /// every call site shuffles a register with itself.
-        pub inline fn shuffle_ps(a: F, comptime imm: u8) F {
-            if (bits == 256) return avx.mm256_shuffle_ps(a, a, imm);
+        pub inline fn shufflePs(a: F, comptime imm: u8) F {
+            if (bits == 256) return avx.mm256ShufflePs(a, a, imm);
             const sel = comptime blk: {
                 @setEvalBranchQuota(10000);
                 var m: [n32]i32 = undefined;
@@ -200,24 +197,24 @@ pub fn Wide(comptime bits: u16) type {
             return @shuffle(f32, a, undefined, sel);
         }
 
-        pub inline fn cvtepi32_ps(a: I) F {
+        pub inline fn cvtepi32Ps(a: I) F {
             return @floatFromInt(as(@Vector(n32, i32), a));
         }
 
         /// `fmadd_ps(a, b, c)`: `a * b + c`, fused.
-        pub inline fn fmadd_ps(a: F, b: F, cc: F) F {
+        pub inline fn fmaddPs(a: F, b: F, cc: F) F {
             return @mulAdd(F, a, b, cc);
         }
 
-        pub inline fn mul_ps(a: F, b: F) F {
+        pub inline fn mulPs(a: F, b: F) F {
             return a * b;
         }
 
-        pub inline fn sub_ps(a: F, b: F) F {
+        pub inline fn subPs(a: F, b: F) F {
             return a - b;
         }
 
-        pub inline fn storeu_ps(p: [*]f32, v: F) void {
+        pub inline fn storeuPs(p: [*]f32, v: F) void {
             p[0..cols].* = v;
         }
 
@@ -227,8 +224,8 @@ pub fn Wide(comptime bits: u16) type {
         /// `mul_sum_us8_pairs_acc_int32x16` and `sum_i16_pairs_acc_int32x16`
         /// (arch/x86/repack.cpp:123, 118 @cd959bae9) inlined: `vpdpbusd` with
         /// `__AVX512VNNI__`, `maddubs` then `madd` without.
-        pub inline fn mul_sum_i8_pairs_acc(acc: I, x: I, y: I) I {
-            if (bits == 256) return common.mul_sum_i8_pairs_acc_int32x8(acc, x, y);
+        pub inline fn mulSumI8PairsAcc(acc: I, x: I, y: I) I {
+            if (bits == 256) return common.mulSumI8PairsAccInt32x8(acc, x, y);
             const xb = as(@Vector(64, i8), x);
             const yb = as(@Vector(64, i8), y);
             // `_mm512_abs_epi8`, wrapping: |-128| is 0x80.
@@ -236,8 +233,8 @@ pub fn Wide(comptime bits: u16) type {
             // `_mm512_mask_sub_epi8(y, movepi8_mask(x), 0, y)`.
             const sy = @select(i8, xb < @as(@Vector(64, i8), @splat(0)), @as(@Vector(64, i8), @splat(0)) -% yb, yb);
             if (has_avx512vnni) return as(I, @"llvm.x86.avx512.vpdpbusd.512"(as(@Vector(16, i32), acc), ax, sy));
-            const dot = maddubs_epi16(as(I, ax), as(I, sy));
-            return add_epi32(acc, madd_epi16(as(I, @as(@Vector(32, i16), @splat(1))), dot));
+            const dot = maddubsEpi16(as(I, ax), as(I, sy));
+            return addEpi32(acc, maddEpi16(as(I, @as(@Vector(32, i16), @splat(1))), dot));
         }
     };
 }

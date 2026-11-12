@@ -104,7 +104,7 @@ fn addQF32(params: *const ComputeParams, dst: *Tensor) void {
         // unquantize row from src0 to temp buffer
         dequantize_row_q(src0_row, wdata, l.ne00);
         // add src1
-        vec.acc_f32(l.ne00, wdata, src1_row);
+        vec.accF32(l.ne00, wdata, src1_row);
         // quantize row to dst
         if (quantize_row_q) |q| {
             q(wdata, dst_row, l.ne00);
@@ -115,8 +115,12 @@ fn addQF32(params: *const ComputeParams, dst: *Tensor) void {
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardAdd, .{ .name = "ggml_compute_forward_add" });
+}
+
 /// Ports `ggml_compute_forward_add` (ops.cpp:663 @cd959bae9).
-pub export fn ggml_compute_forward_add(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardAdd(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
 
     switch (src0.type) {
@@ -208,12 +212,16 @@ fn addIdF32(params: *const ComputeParams, dst: *Tensor) void {
             continue;
         }
 
-        vec.add_f32(l.ne0, dst_row, src0_row, @ptrCast(@alignCast(s1 + @as(usize, @intCast(j11)) * l.nb11)));
+        vec.addF32(l.ne0, dst_row, src0_row, @ptrCast(@alignCast(s1 + @as(usize, @intCast(j11)) * l.nb11)));
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardAddId, .{ .name = "ggml_compute_forward_add_id" });
+}
+
 /// Ports `ggml_compute_forward_add_id` (ops.cpp:770 @cd959bae9).
-pub export fn ggml_compute_forward_add_id(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardAddId(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
 
     switch (src0.type) {
@@ -263,7 +271,7 @@ fn add1F32(params: *const ComputeParams, dst: *Tensor) void {
         if (comptime impl.use_accelerate) {
             vDSP_vadd(row_src, 1, s1, 0, row_dst, 1, @intCast(l.ne0));
         } else {
-            vec.add1_f32(l.ne0, row_dst, row_src, s1[0]);
+            vec.add1F32(l.ne0, row_dst, row_src, s1[0]);
         }
     }
 }
@@ -387,14 +395,18 @@ fn add1QF32(params: *const ComputeParams, dst: *Tensor) void {
         // unquantize row from src0 to temp buffer
         dequantize_row_q(src0_row, wdata, l.ne0);
         // add src1
-        vec.acc1_f32(l.ne0, wdata, v);
+        vec.acc1F32(l.ne0, wdata, v);
         // quantize row to dst
         quantize_row_q(wdata, dst_row, l.ne0);
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardAdd1, .{ .name = "ggml_compute_forward_add1" });
+}
+
 /// Ports `ggml_compute_forward_add1` (ops.cpp:1097 @cd959bae9).
-pub export fn ggml_compute_forward_add1(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardAdd1(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
     const src1 = impl.one(Tensor, dst.src[1]);
 
@@ -476,7 +488,7 @@ fn accF32(params: *const ComputeParams, dst: *Tensor) void {
             const s: [*]const u8 = @ptrCast(src0.data.?);
             @memcpy(d[0..n], s[0..n]);
         }
-        threading.ggml_barrier(@ptrCast(@alignCast(params.threadpool.?)));
+        threading.ggmlBarrier(@ptrCast(@alignCast(params.threadpool.?)));
     }
 
     const ith: i64 = params.ith;
@@ -531,13 +543,17 @@ fn accF32(params: *const ComputeParams, dst: *Tensor) void {
         if (comptime impl.use_accelerate) {
             vDSP_vadd(row_src0, 1, row_src1, 1, row_dst, 1, @intCast(nc));
         } else {
-            vec.add_f32(nc, row_dst, row_src0, row_src1);
+            vec.addF32(nc, row_dst, row_src0, row_src1);
         }
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardAcc, .{ .name = "ggml_compute_forward_acc" });
+}
+
 /// Ports `ggml_compute_forward_acc` (ops.cpp:1252 @cd959bae9).
-pub export fn ggml_compute_forward_acc(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardAcc(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
 
     switch (src0.type) {

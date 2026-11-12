@@ -251,8 +251,12 @@ fn iq2XxsImpl(x: [*]const f32, vy: ?*anyopaque, n: i64, quant_weights: [*]const 
     }
 }
 
+comptime {
+    @export(&quantizeIq2Xxs, .{ .name = "quantize_iq2_xxs" });
+}
+
 /// Ports `quantize_iq2_xxs` (ggml-quants.c:3668 @cd959bae9).
-pub export fn quantize_iq2_xxs(src: [*c]const f32, dst: ?*anyopaque, nrow: i64, n_per_row: i64, quant_weights: [*c]const f32) usize {
+pub fn quantizeIq2Xxs(src: [*c]const f32, dst: ?*anyopaque, nrow: i64, n_per_row: i64, quant_weights: [*c]const f32) callconv(.c) usize {
     impl.assert(@rem(n_per_row, QK_K) == 0, "n_per_row%QK_K == 0");
     impl.assert(quant_weights != null, "missing quantization weights");
     const nblock: usize = @intCast(@divExact(n_per_row, QK_K));
@@ -459,8 +463,12 @@ fn iq2XsImpl(x: [*]const f32, vy: ?*anyopaque, n: i64, quant_weights: [*]const f
     }
 }
 
+comptime {
+    @export(&quantizeIq2Xs, .{ .name = "quantize_iq2_xs" });
+}
+
 /// Ports `quantize_iq2_xs` (ggml-quants.c:3680 @cd959bae9).
-pub export fn quantize_iq2_xs(src: [*c]const f32, dst: ?*anyopaque, nrow: i64, n_per_row: i64, quant_weights: [*c]const f32) usize {
+pub fn quantizeIq2Xs(src: [*c]const f32, dst: ?*anyopaque, nrow: i64, n_per_row: i64, quant_weights: [*c]const f32) callconv(.c) usize {
     impl.assert(@rem(n_per_row, QK_K) == 0, "n_per_row%QK_K == 0");
     impl.assert(quant_weights != null, "missing quantization weights");
     const nblock: usize = @intCast(@divExact(n_per_row, QK_K));
@@ -653,8 +661,12 @@ fn iq2SImpl(x: [*]const f32, vy: ?*anyopaque, n: i64, quant_weights: ?[*]const f
     }
 }
 
+comptime {
+    @export(&quantizeIq2S, .{ .name = "quantize_iq2_s" });
+}
+
 /// Ports `quantize_iq2_s` (ggml-quants.c:5299 @cd959bae9).
-pub export fn quantize_iq2_s(src: [*c]const f32, dst: ?*anyopaque, nrow: i64, n_per_row: i64, quant_weights: [*c]const f32) usize {
+pub fn quantizeIq2S(src: [*c]const f32, dst: ?*anyopaque, nrow: i64, n_per_row: i64, quant_weights: [*c]const f32) callconv(.c) usize {
     impl.assert(@rem(n_per_row, QK_K) == 0, "n_per_row%QK_K == 0");
     const nblock: usize = @intCast(@divExact(n_per_row, QK_K));
     var qrow: [*]u8 = @ptrCast(dst.?);
@@ -667,8 +679,12 @@ pub export fn quantize_iq2_s(src: [*c]const f32, dst: ?*anyopaque, nrow: i64, n_
     return @as(usize, @intCast(nrow)) * nblock * @sizeOf(blocks.IQ2_S);
 }
 
+comptime {
+    @export(&quantizeRowIq2SRef, .{ .name = "quantize_row_iq2_s_ref" });
+}
+
 /// Ports `quantize_row_iq2_s_ref` (ggml-quants.c:5311 @cd959bae9).
-pub export fn quantize_row_iq2_s_ref(x: [*c]const f32, y: [*c]blocks.IQ2_S, k: i64) void {
+pub fn quantizeRowIq2SRef(x: [*c]const f32, y: [*c]blocks.IQ2_S, k: i64) callconv(.c) void {
     std.debug.assert(@rem(k, QK_K) == 0);
-    _ = quantize_iq2_s(x, @ptrCast(y), 1, k, null);
+    _ = quantizeIq2S(x, @ptrCast(y), 1, k, null);
 }

@@ -30,7 +30,7 @@ fn u32Of(x: i64) u32 {
 }
 
 /// Ports `quantize_row_q8_1_cuda` (quantize.cu:559 @cd959bae9).
-pub fn quantizeRowQ8_1(x: ?*const f32, ids: ?*const i32, vy: ?*anyopaque, type_src0: c.enum_ggml_type, ne00: i64, s01: i64, s02: i64, s03: i64, ne0: i64, ne1: i64, ne2: i64, ne3: i64, stream: cu.cudaStream_t) void {
+pub fn quantizeRowQ81(x: ?*const f32, ids: ?*const i32, vy: ?*anyopaque, type_src0: c.enum_ggml_type, ne00: i64, s01: i64, s02: i64, s03: i64, ne0: i64, ne1: i64, ne2: i64, ne3: i64, stream: cu.cudaStream_t) void {
     _ = type_src0;
     impl.assert(ids == null, "!ids");
     impl.assert(@rem(ne0, c.QK8_1) == 0, "ne0 % QK8_1 == 0");
@@ -45,12 +45,12 @@ pub fn quantizeRowQ8_1(x: ?*const f32, ids: ?*const i32, vy: ?*anyopaque, type_s
     }, .{ x, vy, ne00, s01, s02, s03, ne0, u32Of(ne1), ne2_fastdiv });
 }
 
-fn q8_1MmqKernel(comptime layout: mmq.Q8_1DsLayout, comptime scatter: bool) kernels.Kernel {
+fn q81MmqKernel(comptime layout: mmq.Q8_1DsLayout, comptime scatter: bool) kernels.Kernel {
     return kernels.get("quantize", kernels.tmpl("quantize_mmq_q8_1", &.{ std.fmt.comptimePrint("(mmq_q8_1_ds_layout){d}", .{@backingInt(layout)}), kernels.boolean(scatter) }));
 }
 
 /// Ports `quantize_mmq_q8_1_cuda` (quantize.cu:576 @cd959bae9).
-pub fn quantizeMmqQ8_1(x: ?*const f32, ids: ?*const i32, vy: ?*anyopaque, type_src0: c.enum_ggml_type, ne00: i64, s01: i64, s02: i64, s03: i64, ne0: i64, ne1: i64, ne2: i64, ne3: i64, stream: cu.cudaStream_t) void {
+pub fn quantizeMmqQ81(x: ?*const f32, ids: ?*const i32, vy: ?*anyopaque, type_src0: c.enum_ggml_type, ne00: i64, s01: i64, s02: i64, s03: i64, ne0: i64, ne1: i64, ne2: i64, ne3: i64, stream: cu.cudaStream_t) void {
     impl.assert(@rem(ne00, 4) == 0, "ne00 % 4 == 0");
     impl.assert(@rem(ne0, mmq.qk8_1_mmq) == 0, "ne0 % QK8_1_MMQ == 0");
 
@@ -63,13 +63,13 @@ pub fn quantizeMmqQ8_1(x: ?*const f32, ids: ?*const i32, vy: ?*anyopaque, type_s
         .stream = stream,
     };
     const args = .{ x, ids, vy, ne00, s01, s02, s03, ne0, @as(c_int, @truncate(ne1)), @as(c_int, @truncate(ne2)), @as(c_int, 0) };
-    switch (mmq.getQ8_1DsLayout(type_src0)) {
-        inline else => |layout| kernels.launch(q8_1MmqKernel(layout, false), p, args),
+    switch (mmq.getQ81DsLayout(type_src0)) {
+        inline else => |layout| kernels.launch(q81MmqKernel(layout, false), p, args),
     }
 }
 
 /// Ports `quantize_scatter_mmq_q8_1_cuda` (quantize.cu:606 @cd959bae9).
-pub fn quantizeScatterMmqQ8_1(x: ?*const f32, ids_src1_inv: ?*const i32, vy: ?*anyopaque, type_src0: c.enum_ggml_type, ne00: i64, stride_token: i64, ne0: i64, n_tokens: i64, nrows_dst: i64, n_expert_used: c_int, stream: cu.cudaStream_t) void {
+pub fn quantizeScatterMmqQ81(x: ?*const f32, ids_src1_inv: ?*const i32, vy: ?*anyopaque, type_src0: c.enum_ggml_type, ne00: i64, stride_token: i64, ne0: i64, n_tokens: i64, nrows_dst: i64, n_expert_used: c_int, stream: cu.cudaStream_t) void {
     impl.assert(@rem(ne00, 4) == 0, "ne00 % 4 == 0");
     impl.assert(@rem(ne0, mmq.qk8_1_mmq) == 0, "ne0 % QK8_1_MMQ == 0");
 
@@ -80,8 +80,8 @@ pub fn quantizeScatterMmqQ8_1(x: ?*const f32, ids_src1_inv: ?*const i32, vy: ?*a
         .stream = stream,
     };
     const args = .{ x, ids_src1_inv, vy, ne00, @as(i64, 0), stride_token, @as(i64, 0), ne0, @as(c_int, @truncate(nrows_dst)), @as(c_int, 1), n_expert_used };
-    switch (mmq.getQ8_1DsLayout(type_src0)) {
-        inline else => |layout| kernels.launch(q8_1MmqKernel(layout, true), p, args),
+    switch (mmq.getQ81DsLayout(type_src0)) {
+        inline else => |layout| kernels.launch(q81MmqKernel(layout, true), p, args),
     }
 }
 

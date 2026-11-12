@@ -17,7 +17,6 @@ const m = @import("module.zig");
 
 const c = impl.c;
 const common = m.common;
-const allocator = common.allocator;
 const BackendCtx = m.context.BackendCtx;
 const Context = m.submit.Context;
 const Pipeline = m.pipeline.Pipeline;
@@ -612,7 +611,7 @@ pub fn rmsPartialsSize(ctx: *const BackendCtx, node: *const Tensor) u32 {
 
 /// The `switch (node->op)` of `ggml_vk_build_graph` (ggml-vulkan.cpp:12387 @cd959bae9).
 ///
-/// Return: false where the C++ returns false, for an op it has no
+/// - Returns: false where the C++ returns false, for an op it has no
 /// dispatch for.
 pub fn dispatchNode(ctx: *BackendCtx, compute_ctx: *Context, cgraph: *CGraph, node_idx: c_int, node: *Tensor, src0_: ?*Tensor, src1_: ?*Tensor, src2_: ?*Tensor, src3_: ?*Tensor) bool {
     const B = m.ops_basic;

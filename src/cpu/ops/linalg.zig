@@ -43,9 +43,9 @@ const at = common.byteOff;
 /// three `out_prod` kernels share verbatim.
 fn zeroDstAndSync(params: *const ComputeParams, dst: *Tensor, l: common.BinaryLocals) void {
     if (params.ith == 0) {
-        vec.set_f32(l.ne0 * l.ne1 * l.ne2 * l.ne3, @ptrCast(@alignCast(dst.data.?)), 0);
+        vec.setF32(l.ne0 * l.ne1 * l.ne2 * l.ne3, @ptrCast(@alignCast(dst.data.?)), 0);
     }
-    threading.ggml_barrier(@ptrCast(@alignCast(params.threadpool.?)));
+    threading.ggmlBarrier(@ptrCast(@alignCast(params.threadpool.?)));
 }
 
 /// Ports `ggml_compute_forward_out_prod_f32` (ops.cpp:4529 @cd959bae9), the
@@ -138,7 +138,7 @@ fn outProdF32(params: *const ComputeParams, dst: *Tensor) void {
                     const s0: [*]const f32 = @ptrCast(@alignCast(s0b + at(j01, l.nb01) + at(j02, l.nb02) + at(j03, l.nb03)));
                     const s1: [*]const f32 = @ptrCast(@alignCast(s1b + at(j1, l.nb10) + at(j11, l.nb11) + at(j12, l.nb12) + at(j13, l.nb13)));
 
-                    vec.mad_f32_unroll(l.ne0, @intCast(l.nb01), @intCast(l.nb11), d, s0, s1);
+                    vec.madF32Unroll(l.ne0, @intCast(l.nb01), @intCast(l.nb11), d, s0, s1);
                 }
                 j01 = bne01_unroll;
                 while (j01 < bne01) : (j01 += 1) {
@@ -147,7 +147,7 @@ fn outProdF32(params: *const ComputeParams, dst: *Tensor) void {
                     const s0: [*]const f32 = @ptrCast(@alignCast(s0b + at(j01, l.nb01) + at(j02, l.nb02) + at(j03, l.nb03)));
                     const s1: [*]const f32 = @ptrCast(@alignCast(s1b + at(j1, l.nb10) + at(j11, l.nb11) + at(j12, l.nb12) + at(j13, l.nb13)));
 
-                    vec.mad_f32(l.ne0, d, s0, s1[0]);
+                    vec.madF32(l.ne0, d, s0, s1[0]);
                 }
             }
         }
@@ -246,13 +246,17 @@ fn outProdWiden(comptime is_f16: bool, params: *const ComputeParams, dst: *Tenso
             } else {
                 dequantize_row_q(s0, wdata, l.ne0);
             }
-            vec.mad_f32(l.ne0, d, wdata, s1[0]);
+            vec.madF32(l.ne0, d, wdata, s1[0]);
         }
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardOutProd, .{ .name = "ggml_compute_forward_out_prod" });
+}
+
 /// Ports `ggml_compute_forward_out_prod` (ops.cpp:4803 @cd959bae9).
-pub export fn ggml_compute_forward_out_prod(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardOutProd(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
 
     switch (src0.type) {
@@ -338,9 +342,9 @@ fn scaleF32(params: *const ComputeParams, dst: *Tensor) void {
                 const n = @as(usize, @intCast(nc)) * @sizeOf(f32);
                 @memcpy(y[0..n], x[0..n]);
             }
-            vec.scale_f32(nc, @ptrCast(@alignCast(y)), s);
+            vec.scaleF32(nc, @ptrCast(@alignCast(y)), s);
         } else {
-            vec.mad1_f32(nc, @ptrCast(@alignCast(y)), @ptrCast(@alignCast(x)), s, b);
+            vec.mad1F32(nc, @ptrCast(@alignCast(y)), @ptrCast(@alignCast(x)), s, b);
         }
     }
 }
@@ -397,8 +401,12 @@ fn scaleBf16(params: *const ComputeParams, dst: *Tensor) void {
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardScale, .{ .name = "ggml_compute_forward_scale" });
+}
+
 /// Ports `ggml_compute_forward_scale` (ops.cpp:4952 @cd959bae9).
-pub export fn ggml_compute_forward_scale(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardScale(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
 
     switch (src0.type) {
@@ -437,7 +445,7 @@ fn setT(comptime T: type, params: *const ComputeParams, dst: *Tensor) void {
             const s: [*]const u8 = @ptrCast(src0.data.?);
             @memcpy(d[0..n], s[0..n]);
         }
-        threading.ggml_barrier(@ptrCast(@alignCast(params.threadpool.?)));
+        threading.ggmlBarrier(@ptrCast(@alignCast(params.threadpool.?)));
     }
 
     const ith: c_int = params.ith;
@@ -487,12 +495,16 @@ fn setT(comptime T: type, params: *const ComputeParams, dst: *Tensor) void {
 
         const y: [*]T = @ptrCast(@alignCast(dd + at(j3, nb3) + at(j2, nb2) + at(j1, nb1) + offset));
         const x: [*]const T = @ptrCast(@alignCast(s1 + at(j3, nb13) + at(j2, nb12) + at(j1, nb11)));
-        if (T == f32) vec.cpy_f32(nc, y, x) else vec.cpy_i32(nc, y, x);
+        if (T == f32) vec.cpyF32(nc, y, x) else vec.cpyI32(nc, y, x);
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardSet, .{ .name = "ggml_compute_forward_set" });
+}
+
 /// Ports `ggml_compute_forward_set` (ops.cpp:5118 @cd959bae9).
-pub export fn ggml_compute_forward_set(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardSet(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
 
     switch (src0.type) {

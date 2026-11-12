@@ -64,11 +64,15 @@ inline fn signOf(signs: u8, j: usize) i32 {
     return if ((signs & c.kmask_iq2xs[j]) != 0) -1 else 1;
 }
 
+comptime {
+    @export(&ggmlVecDotIq2XxsQ8KGeneric, .{ .name = "ggml_vec_dot_iq2_xxs_q8_K_generic" });
+}
+
 /// Ports `ggml_vec_dot_iq2_xxs_q8_K_generic` (ggml-cpu/quants.c:954 @cd959bae9).
 ///
 /// Each group of 32 packs four 8-bit grid indices and a 28-bit sign field into
 /// two words; the top four bits are the group's scale.
-pub export fn ggml_vec_dot_iq2_xxs_q8_K_generic(
+pub fn ggmlVecDotIq2XxsQ8KGeneric(
     n: c_int,
     s: [*c]f32,
     bs: usize,
@@ -77,7 +81,7 @@ pub export fn ggml_vec_dot_iq2_xxs_q8_K_generic(
     vy: ?*const anyopaque,
     by: usize,
     nrc: c_int,
-) void {
+) callconv(.c) void {
     std.debug.assert(@rem(n, c.QK_K) == 0);
     std.debug.assert(nrc == 1);
     _ = .{ bs, bx, by };
@@ -120,12 +124,16 @@ pub export fn ggml_vec_dot_iq2_xxs_q8_K_generic(
     s[0] = 0.125 * sumf;
 }
 
+comptime {
+    @export(&ggmlVecDotIq2XsQ8KGeneric, .{ .name = "ggml_vec_dot_iq2_xs_q8_K_generic" });
+}
+
 /// Ports `ggml_vec_dot_iq2_xs_q8_K_generic` (ggml-cpu/quants.c:996 @cd959bae9).
 ///
 /// Nine-bit grid indices with the sign index in the top seven bits, and two
 /// four-bit scales per group of 32 -- so the group is processed in two halves
 /// with different scales.
-pub export fn ggml_vec_dot_iq2_xs_q8_K_generic(
+pub fn ggmlVecDotIq2XsQ8KGeneric(
     n: c_int,
     s: [*c]f32,
     bs: usize,
@@ -134,7 +142,7 @@ pub export fn ggml_vec_dot_iq2_xs_q8_K_generic(
     vy: ?*const anyopaque,
     by: usize,
     nrc: c_int,
-) void {
+) callconv(.c) void {
     std.debug.assert(@rem(n, c.QK_K) == 0);
     std.debug.assert(nrc == 1);
     _ = .{ bs, bx, by };
@@ -187,12 +195,16 @@ pub export fn ggml_vec_dot_iq2_xs_q8_K_generic(
     s[0] = 0.125 * sumf;
 }
 
+comptime {
+    @export(&ggmlVecDotIq2SQ8KGeneric, .{ .name = "ggml_vec_dot_iq2_s_q8_K_generic" });
+}
+
 /// Ports `ggml_vec_dot_iq2_s_q8_K_generic` (ggml-cpu/quants.c:1046 @cd959bae9).
 ///
 /// Ten-bit grid indices: eight bits in `qs` and two more taken from `qh` by a
 /// shift that *decreases* with `l` -- `qh[ib32] << (8 - 2*l) & 0x300`. The
 /// signs live in a second half of `qs`, `QK_K/8` bytes in.
-pub export fn ggml_vec_dot_iq2_s_q8_K_generic(
+pub fn ggmlVecDotIq2SQ8KGeneric(
     n: c_int,
     s: [*c]f32,
     bs: usize,
@@ -201,7 +213,7 @@ pub export fn ggml_vec_dot_iq2_s_q8_K_generic(
     vy: ?*const anyopaque,
     by: usize,
     nrc: c_int,
-) void {
+) callconv(.c) void {
     std.debug.assert(@rem(n, c.QK_K) == 0);
     std.debug.assert(nrc == 1);
     _ = .{ bs, bx, by };
@@ -256,12 +268,16 @@ pub export fn ggml_vec_dot_iq2_s_q8_K_generic(
     s[0] = 0.125 * sumf;
 }
 
+comptime {
+    @export(&ggmlVecDotIq3XxsQ8KGeneric, .{ .name = "ggml_vec_dot_iq3_xxs_q8_K_generic" });
+}
+
 /// Ports `ggml_vec_dot_iq3_xxs_q8_K_generic` (ggml-cpu/quants.c:1098 @cd959bae9).
 ///
 /// Two 32-bit grid lookups per group of eight, because `iq3xxs_grid` holds
 /// four bytes per entry rather than eight. The sign field and scale come from
 /// a word packed after the indices, at `QK_K/4`.
-pub export fn ggml_vec_dot_iq3_xxs_q8_K_generic(
+pub fn ggmlVecDotIq3XxsQ8KGeneric(
     n: c_int,
     s: [*c]f32,
     bs: usize,
@@ -270,7 +286,7 @@ pub export fn ggml_vec_dot_iq3_xxs_q8_K_generic(
     vy: ?*const anyopaque,
     by: usize,
     nrc: c_int,
-) void {
+) callconv(.c) void {
     std.debug.assert(@rem(n, c.QK_K) == 0);
     std.debug.assert(nrc == 1);
     _ = .{ bs, bx, by };
@@ -313,13 +329,17 @@ pub export fn ggml_vec_dot_iq3_xxs_q8_K_generic(
     s[0] = 0.25 * sumf;
 }
 
+comptime {
+    @export(&ggmlVecDotIq3SQ8KGeneric, .{ .name = "ggml_vec_dot_iq3_s_q8_K_generic" });
+}
+
 /// Ports `ggml_vec_dot_iq3_s_q8_K_generic` (ggml-cpu/quants.c:1142 @cd959bae9).
 ///
 /// Nine-bit indices into the 32-bit `iq3s_grid`. The two lookups in a pair use
 /// shifts of `8 - 2*l` and `7 - 2*l`, one apart -- the high bit for the odd
 /// index sits one place further along in `qh`. Groups are handled two at a
 /// time so the two nibbles of one scale byte can be applied.
-pub export fn ggml_vec_dot_iq3_s_q8_K_generic(
+pub fn ggmlVecDotIq3SQ8KGeneric(
     n: c_int,
     s: [*c]f32,
     bs: usize,
@@ -328,7 +348,7 @@ pub export fn ggml_vec_dot_iq3_s_q8_K_generic(
     vy: ?*const anyopaque,
     by: usize,
     nrc: c_int,
-) void {
+) callconv(.c) void {
     std.debug.assert(@rem(n, c.QK_K) == 0);
     std.debug.assert(nrc == 1);
     _ = .{ bs, bx, by };
@@ -379,13 +399,17 @@ pub export fn ggml_vec_dot_iq3_s_q8_K_generic(
     s[0] = sumf;
 }
 
+comptime {
+    @export(&ggmlVecDotIq1SQ8KGeneric, .{ .name = "ggml_vec_dot_iq1_s_q8_K_generic" });
+}
+
 /// Ports `ggml_vec_dot_iq1_s_q8_K_generic` (ggml-cpu/quants.c:1198 @cd959bae9).
 ///
 /// One-bit weights whose grid values are already signed, so there is no sign
 /// field. Instead each group carries a `delta` of +/-1 applied to the right
 /// operand's group sums -- the `IQ1S_DELTA` offset that makes a "zero" weight
 /// not exactly zero.
-pub export fn ggml_vec_dot_iq1_s_q8_K_generic(
+pub fn ggmlVecDotIq1SQ8KGeneric(
     n: c_int,
     s: [*c]f32,
     bs: usize,
@@ -394,7 +418,7 @@ pub export fn ggml_vec_dot_iq1_s_q8_K_generic(
     vy: ?*const anyopaque,
     by: usize,
     nrc: c_int,
-) void {
+) callconv(.c) void {
     std.debug.assert(@rem(n, c.QK_K) == 0);
     std.debug.assert(nrc == 1);
     _ = .{ bs, bx, by };
@@ -438,13 +462,17 @@ pub export fn ggml_vec_dot_iq1_s_q8_K_generic(
     s[0] = sumf;
 }
 
+comptime {
+    @export(&ggmlVecDotIq1MQ8KGeneric, .{ .name = "ggml_vec_dot_iq1_m_q8_K_generic" });
+}
+
 /// Ports `ggml_vec_dot_iq1_m_q8_K_generic` (ggml-cpu/quants.c:1241 @cd959bae9).
 ///
 /// Like `iq1_s`, but the block has no `d` field: the f16 scale is scattered
 /// across four nibbles of `scales` and reassembled by `blocks.iq1mScale`. The
 /// delta is per *quarter*-group rather than per group, which is why `sum2`
 /// accumulates the right operand's raw sum separately from `sum1`.
-pub export fn ggml_vec_dot_iq1_m_q8_K_generic(
+pub fn ggmlVecDotIq1MQ8KGeneric(
     n: c_int,
     s: [*c]f32,
     bs: usize,
@@ -453,7 +481,7 @@ pub export fn ggml_vec_dot_iq1_m_q8_K_generic(
     vy: ?*const anyopaque,
     by: usize,
     nrc: c_int,
-) void {
+) callconv(.c) void {
     std.debug.assert(@rem(n, c.QK_K) == 0);
     std.debug.assert(nrc == 1);
     _ = .{ bs, bx, by };
@@ -521,13 +549,17 @@ pub export fn ggml_vec_dot_iq1_m_q8_K_generic(
     s[0] = sumf;
 }
 
+comptime {
+    @export(&ggmlVecDotIq4XsQ8KGeneric, .{ .name = "ggml_vec_dot_iq4_xs_q8_K_generic" });
+}
+
 /// Ports `ggml_vec_dot_iq4_xs_q8_K_generic` (ggml-cpu/quants.c:1331 @cd959bae9).
 ///
 /// Four-bit indices into `kvalues_iq4nl`, with six-bit scales biased by 32 and
 /// split between `scales_l` and `scales_h`. `h` is consumed four bits at a
 /// time, and the shift differs between the two halves of the pair -- `h << 4`
 /// then `h << 2` -- which is easy to transpose.
-pub export fn ggml_vec_dot_iq4_xs_q8_K_generic(
+pub fn ggmlVecDotIq4XsQ8KGeneric(
     n: c_int,
     s: [*c]f32,
     bs: usize,
@@ -536,7 +568,7 @@ pub export fn ggml_vec_dot_iq4_xs_q8_K_generic(
     vy: ?*const anyopaque,
     by: usize,
     nrc: c_int,
-) void {
+) callconv(.c) void {
     std.debug.assert(@rem(n, c.QK_K) == 0);
     std.debug.assert(nrc == 1);
     _ = .{ bs, bx, by };
@@ -591,35 +623,35 @@ const testing = @import("testing.zig");
 const golden = @import("golden.zig");
 
 test "iq2_xxs dot matches the C" {
-    try testing.check(ggml_vec_dot_iq2_xxs_q8_K_generic, c.GGML_TYPE_IQ2_XXS, c.GGML_TYPE_Q8_K, golden.iq2_xxs);
+    try testing.check(ggmlVecDotIq2XxsQ8KGeneric, c.GGML_TYPE_IQ2_XXS, c.GGML_TYPE_Q8_K, golden.iq2_xxs);
 }
 
 test "iq2_xs dot matches the C" {
-    try testing.check(ggml_vec_dot_iq2_xs_q8_K_generic, c.GGML_TYPE_IQ2_XS, c.GGML_TYPE_Q8_K, golden.iq2_xs);
+    try testing.check(ggmlVecDotIq2XsQ8KGeneric, c.GGML_TYPE_IQ2_XS, c.GGML_TYPE_Q8_K, golden.iq2_xs);
 }
 
 test "iq2_s dot matches the C" {
-    try testing.check(ggml_vec_dot_iq2_s_q8_K_generic, c.GGML_TYPE_IQ2_S, c.GGML_TYPE_Q8_K, golden.iq2_s);
+    try testing.check(ggmlVecDotIq2SQ8KGeneric, c.GGML_TYPE_IQ2_S, c.GGML_TYPE_Q8_K, golden.iq2_s);
 }
 
 test "iq3_xxs dot matches the C" {
-    try testing.check(ggml_vec_dot_iq3_xxs_q8_K_generic, c.GGML_TYPE_IQ3_XXS, c.GGML_TYPE_Q8_K, golden.iq3_xxs);
+    try testing.check(ggmlVecDotIq3XxsQ8KGeneric, c.GGML_TYPE_IQ3_XXS, c.GGML_TYPE_Q8_K, golden.iq3_xxs);
 }
 
 test "iq3_s dot matches the C" {
-    try testing.check(ggml_vec_dot_iq3_s_q8_K_generic, c.GGML_TYPE_IQ3_S, c.GGML_TYPE_Q8_K, golden.iq3_s);
+    try testing.check(ggmlVecDotIq3SQ8KGeneric, c.GGML_TYPE_IQ3_S, c.GGML_TYPE_Q8_K, golden.iq3_s);
 }
 
 test "iq1_s dot matches the C" {
-    try testing.check(ggml_vec_dot_iq1_s_q8_K_generic, c.GGML_TYPE_IQ1_S, c.GGML_TYPE_Q8_K, golden.iq1_s);
+    try testing.check(ggmlVecDotIq1SQ8KGeneric, c.GGML_TYPE_IQ1_S, c.GGML_TYPE_Q8_K, golden.iq1_s);
 }
 
 test "iq1_m dot matches the C" {
-    try testing.check(ggml_vec_dot_iq1_m_q8_K_generic, c.GGML_TYPE_IQ1_M, c.GGML_TYPE_Q8_K, golden.iq1_m);
+    try testing.check(ggmlVecDotIq1MQ8KGeneric, c.GGML_TYPE_IQ1_M, c.GGML_TYPE_Q8_K, golden.iq1_m);
 }
 
 test "iq4_xs dot matches the C" {
-    try testing.check(ggml_vec_dot_iq4_xs_q8_K_generic, c.GGML_TYPE_IQ4_XS, c.GGML_TYPE_Q8_K, golden.iq4_xs);
+    try testing.check(ggmlVecDotIq4XsQ8KGeneric, c.GGML_TYPE_IQ4_XS, c.GGML_TYPE_Q8_K, golden.iq4_xs);
 }
 
 test "the 32-bit grids are half the width of the 64-bit ones" {

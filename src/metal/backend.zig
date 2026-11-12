@@ -50,11 +50,6 @@ const metal_common = @import("common.zig");
 const c = impl.c;
 const Tensor = c.ggml_tensor;
 
-/// The C `malloc`s the backend and `new`s the devices, and nothing hands
-/// it an allocator. libc's is what a C entry point can reach — the same
-/// reasoning as `backend_reg.zig`, `backend.zig` and `cpu_backend.zig`.
-const allocator = std.heap.c_allocator;
-
 /// Zig 0.16's `std.c` does not declare `setenv`, only `getenv`. The C's
 /// macOS workaround below needs it, so it is declared here.
 extern fn setenv(name: [*:0]const u8, value: [*:0]const u8, overwrite: c_int) c_int;
@@ -89,7 +84,6 @@ fn bufferIsMetal(buffer: c.ggml_backend_buffer_t) bool {
 /// `ggml_backend_metal_buffer_private_free_buffer`
 /// (ggml-metal.cpp:31, 140 @cd959bae9) down.
 ///
-/// Parameters:
 /// - `shared`: which of the two the C writes out. The bodies are
 ///   identical; `diff` says the only difference is that the private set
 ///   asserts `!ggml_metal_buffer_is_shared`.
@@ -211,7 +205,6 @@ const BufferTypeCtx = extern struct {
 /// Ports `ggml_backend_metal_buffer_type_alloc_buffer` (ggml-metal.cpp:270
 /// @cd959bae9): the body the three buffer types share.
 ///
-/// Parameters:
 /// - `buft`: the buffer type being allocated from.
 /// - `size`: bytes.
 /// - `shared`: whether to ask Metal for shared memory. The C asks, then
@@ -245,16 +238,16 @@ fn bufferTypeGetAllocSize(buft: c.ggml_backend_buffer_type_t, tensor: [*c]const 
     // some operations require additional memory for fleeting data:
     switch (t.op) {
         c.GGML_OP_MUL_MAT_ID => {
-            res += mc.ggml_metal_op_mul_mat_id_extra_tpe(t);
-            res += mc.ggml_metal_op_mul_mat_id_extra_ids(t);
+            res += mc.ggmlMetalOpMulMatIdExtraTpe(t);
+            res += mc.ggmlMetalOpMulMatIdExtraIds(t);
         },
         c.GGML_OP_FLASH_ATTN_EXT => {
-            res += mc.ggml_metal_op_flash_attn_ext_extra_pad(t);
-            res += mc.ggml_metal_op_flash_attn_ext_extra_blk(t);
-            res += mc.ggml_metal_op_flash_attn_ext_extra_tmp(t);
-            res += mc.ggml_metal_op_flash_attn_ext_extra_kv_f16(t);
-            res += mc.ggml_metal_op_flash_attn_ext_extra_idx(t);
-            res += mc.ggml_metal_op_flash_attn_ext_extra_rows(t);
+            res += mc.ggmlMetalOpFlashAttnExtExtraPad(t);
+            res += mc.ggmlMetalOpFlashAttnExtExtraBlk(t);
+            res += mc.ggmlMetalOpFlashAttnExtExtraTmp(t);
+            res += mc.ggmlMetalOpFlashAttnExtExtraKvF16(t);
+            res += mc.ggmlMetalOpFlashAttnExtExtraIdx(t);
+            res += mc.ggmlMetalOpFlashAttnExtExtraRows(t);
         },
         c.GGML_OP_CUMSUM, c.GGML_OP_ARGSORT => {
             res *= 2;
@@ -263,7 +256,7 @@ fn bufferTypeGetAllocSize(buft: c.ggml_backend_buffer_type_t, tensor: [*c]const 
             res = 2 * @sizeOf(i32) * @as(usize, @intCast(c.ggml_nelements(t.src[0])));
         },
         c.GGML_OP_ARGMAX => {
-            res += mc.ggml_metal_op_argmax_extra(t);
+            res += mc.ggmlMetalOpArgmaxExtra(t);
         },
         else => {},
     }
@@ -358,10 +351,9 @@ fn BufferType(comptime kind: Kind) type {
         /// initialized`, written out. Zig 0.16 has no `std.once`; this is
         /// the shape `cpu_backend.zig` and `repack/dispatch.zig` use.
         ///
-        /// Parameters:
         /// - `device`: which device's buffer type to return.
         ///
-        /// Return: the buffer type, borrowed for the life of the process.
+        /// - Returns: the buffer type, borrowed for the life of the process.
         fn get(device: c_int) c.ggml_backend_buffer_type_t {
             if (!ready.load(.acquire)) {
                 _ = std.c.pthread_mutex_lock(&mutex);
@@ -381,7 +373,7 @@ fn BufferType(comptime kind: Kind) type {
 
                         bufts[u] = .{
                             .iface = iface,
-                            .device = c.ggml_backend_reg_dev_get(ggml_backend_metal_reg(), @intCast(i)),
+                            .device = c.ggml_backend_reg_dev_get(ggmlBackendMetalReg(), @intCast(i)),
                             .context = &ctxs[u],
                         };
                     }
@@ -442,7 +434,7 @@ fn backendGetTensorAsync(backend: c.ggml_backend_t, tensor: [*c]const Tensor, da
 /// Ports `ggml_backend_metal_cpy_tensor_async` (ggml-metal.cpp:599
 /// @cd959bae9): only reached in multi-GPU setups.
 fn backendCpyTensorAsync(backend_src: c.ggml_backend_t, backend_dst: c.ggml_backend_t, src: [*c]const Tensor, dst: [*c]Tensor) callconv(.c) bool {
-    if (!ggml_backend_is_metal(backend_src) or !ggml_backend_is_metal(backend_dst)) return false;
+    if (!ggmlBackendIsMetal(backend_src) or !ggmlBackendIsMetal(backend_dst)) return false;
 
     const s = impl.one(Tensor, @constCast(src));
     const d = impl.one(Tensor, dst);
@@ -485,14 +477,14 @@ fn backendGraphOptimize(backend: c.ggml_backend_t, cgraph: ?*c.ggml_cgraph, para
 
     // keep the MoE weighted-reduction inputs alive until the fused output
     // so the allocator cannot reuse them while the fused kernel is still reading them
-    fusion.ggml_metal_fusion_add_alloc_deps(p.user_data, @ptrCast(p.add_alloc_dep.?), @ptrCast(@alignCast(cgraph.?)));
+    fusion.ggmlMetalFusionAddAllocDeps(p.user_data, @ptrCast(p.add_alloc_dep.?), @ptrCast(@alignCast(cgraph.?)));
 
     mc.ggml_metal_graph_optimize(ctxOfBackend(backend), cgraph.?);
 }
 
 /// Ports `ggml_backend_metal_set_n_cb` (ggml-metal.cpp:652 @cd959bae9).
 fn backendSetNCb(backend: c.ggml_backend_t, n_cb: c_int) void {
-    impl.assert(ggml_backend_is_metal(backend), "ggml_backend_is_metal(backend)");
+    impl.assert(ggmlBackendIsMetal(backend), "ggml_backend_is_metal(backend)");
     mc.ggml_metal_set_n_cb(ctxOfBackend(backend), n_cb);
 }
 
@@ -552,42 +544,62 @@ fn backendFromDevice(dev: c.ggml_backend_dev_t) c.ggml_backend_t {
     return backend;
 }
 
+comptime {
+    @export(&ggmlBackendMetalInit, .{ .name = "ggml_backend_metal_init" });
+}
+
 /// Ports `ggml_backend_metal_init` (ggml-metal.cpp:684 @cd959bae9).
 ///
-/// Return: a new Metal backend on device 0, or null if the context could
+/// - Returns: a new Metal backend on device 0, or null if the context could
 /// not be allocated. Owned by the caller, freed with `ggml_backend_free`.
-pub export fn ggml_backend_metal_init() callconv(.c) c.ggml_backend_t {
-    return backendFromDevice(c.ggml_backend_reg_dev_get(ggml_backend_metal_reg(), 0));
+pub fn ggmlBackendMetalInit() callconv(.c) c.ggml_backend_t {
+    return backendFromDevice(c.ggml_backend_reg_dev_get(ggmlBackendMetalReg(), 0));
+}
+
+comptime {
+    @export(&ggmlBackendIsMetal, .{ .name = "ggml_backend_is_metal" });
 }
 
 /// Ports `ggml_backend_is_metal` (ggml-metal.cpp:708 @cd959bae9).
-pub export fn ggml_backend_is_metal(backend: c.ggml_backend_t) callconv(.c) bool {
+pub fn ggmlBackendIsMetal(backend: c.ggml_backend_t) callconv(.c) bool {
     return backend != null and
         c.ggml_guid_matches(impl.one(c.struct_ggml_backend, backend).guid, guid());
 }
 
+comptime {
+    @export(&ggmlBackendMetalSetAbortCallback, .{ .name = "ggml_backend_metal_set_abort_callback" });
+}
+
 /// Ports `ggml_backend_metal_set_abort_callback` (ggml-metal.cpp:712
 /// @cd959bae9).
-pub export fn ggml_backend_metal_set_abort_callback(
+pub fn ggmlBackendMetalSetAbortCallback(
     backend: c.ggml_backend_t,
     abort_callback: c.ggml_abort_callback,
     user_data: ?*anyopaque,
 ) callconv(.c) void {
-    impl.assert(ggml_backend_is_metal(backend), "ggml_backend_is_metal(backend)");
+    impl.assert(ggmlBackendIsMetal(backend), "ggml_backend_is_metal(backend)");
     mc.ggml_metal_set_abort_callback(ctxOfBackend(backend), abort_callback, user_data);
+}
+
+comptime {
+    @export(&ggmlBackendMetalSupportsFamily, .{ .name = "ggml_backend_metal_supports_family" });
 }
 
 /// Ports `ggml_backend_metal_supports_family` (ggml-metal.cpp:720
 /// @cd959bae9).
-pub export fn ggml_backend_metal_supports_family(backend: c.ggml_backend_t, family: c_int) callconv(.c) bool {
-    impl.assert(ggml_backend_is_metal(backend), "ggml_backend_is_metal(backend)");
+pub fn ggmlBackendMetalSupportsFamily(backend: c.ggml_backend_t, family: c_int) callconv(.c) bool {
+    impl.assert(ggmlBackendIsMetal(backend), "ggml_backend_is_metal(backend)");
     return mc.ggml_metal_supports_family(ctxOfBackend(backend), family);
+}
+
+comptime {
+    @export(&ggmlBackendMetalCaptureNextCompute, .{ .name = "ggml_backend_metal_capture_next_compute" });
 }
 
 /// Ports `ggml_backend_metal_capture_next_compute` (ggml-metal.cpp:728
 /// @cd959bae9).
-pub export fn ggml_backend_metal_capture_next_compute(backend: c.ggml_backend_t) callconv(.c) void {
-    impl.assert(ggml_backend_is_metal(backend), "ggml_backend_is_metal(backend)");
+pub fn ggmlBackendMetalCaptureNextCompute(backend: c.ggml_backend_t) callconv(.c) void {
+    impl.assert(ggmlBackendIsMetal(backend), "ggml_backend_is_metal(backend)");
     mc.ggml_metal_capture_next_compute(ctxOfBackend(backend));
 }
 
@@ -711,7 +723,7 @@ fn deviceEventNew(dev: c.ggml_backend_dev_t) callconv(.c) c.ggml_backend_event_t
     const event = mc.ggml_metal_device_event_init(devOf(dev));
     impl.assert(event != null, "event");
 
-    const ev = allocator.create(c.struct_ggml_backend_event) catch impl.abort("metal: out of memory allocating an event");
+    const ev = std.heap.c_allocator.create(c.struct_ggml_backend_event) catch impl.abort("metal: out of memory allocating an event");
     ev.* = .{ .device = dev, .context = event };
     return ev;
 }
@@ -722,7 +734,7 @@ fn deviceEventFree(dev: c.ggml_backend_dev_t, event: c.ggml_backend_event_t) cal
     const e = impl.one(c.struct_ggml_backend_event, event);
     const ev: *mc.Event = @ptrCast(e.context.?);
     mc.ggml_metal_device_event_free(devOf(dev), ev);
-    allocator.destroy(e);
+    std.heap.c_allocator.destroy(e);
 }
 
 /// Ports `ggml_backend_metal_device_event_synchronize` (ggml-metal.cpp:882
@@ -863,25 +875,25 @@ fn fusionGet(dev: c.ggml_backend_dev_t) callconv(.c) ?*anyopaque {
 /// Ports `ggml_backend_metal_fusion_stats_init` (ggml-metal.cpp:999
 /// @cd959bae9).
 fn fusionStatsInit(finfo: ?*anyopaque) callconv(.c) void {
-    fusion.ggml_metal_fusion_info_stats_init(@ptrCast(@alignCast(finfo.?)));
+    fusion.ggmlMetalFusionInfoStatsInit(@ptrCast(@alignCast(finfo.?)));
 }
 
 /// Ports `ggml_backend_metal_fusion_stats_reset` (ggml-metal.cpp:1003
 /// @cd959bae9).
 fn fusionStatsReset(finfo: ?*anyopaque) callconv(.c) void {
-    fusion.ggml_metal_fusion_info_stats_reset(@ptrCast(@alignCast(finfo.?)));
+    fusion.ggmlMetalFusionInfoStatsReset(@ptrCast(@alignCast(finfo.?)));
 }
 
 /// Ports `ggml_backend_metal_fusion_stats_get` (ggml-metal.cpp:1007
 /// @cd959bae9).
 fn fusionStatsGet(finfo: ?*anyopaque, labels: ?[*][*:0]const u8, counts: ?[*]u64, n: c_int) callconv(.c) c_int {
-    return fusion.ggml_metal_fusion_info_stats_get(@ptrCast(@alignCast(finfo.?)), labels, counts, n);
+    return fusion.ggmlMetalFusionInfoStatsGet(@ptrCast(@alignCast(finfo.?)), labels, counts, n);
 }
 
 /// Ports `ggml_backend_metal_fusion_set_enabled` (ggml-metal.cpp:1011
 /// @cd959bae9).
 fn fusionSetEnabled(finfo: ?*anyopaque, enabled: bool) callconv(.c) void {
-    fusion.ggml_metal_fusion_info_set_enabled(@ptrCast(@alignCast(finfo.?)), enabled);
+    fusion.ggmlMetalFusionInfoSetEnabled(@ptrCast(@alignCast(finfo.?)), enabled);
 }
 
 /// Ports `ggml_backend_metal_get_proc_address` (ggml-metal.cpp:1015
@@ -925,10 +937,14 @@ var reg_devices: [max_devices]c.struct_ggml_backend_device = undefined;
 var reg_ready = std.atomic.Value(bool).init(false);
 var reg_mutex: std.c.pthread_mutex_t = .{};
 
+comptime {
+    @export(&ggmlBackendMetalReg, .{ .name = "ggml_backend_metal_reg" });
+}
+
 /// Ports `ggml_backend_metal_reg` (ggml-metal.cpp:910 @cd959bae9).
 ///
-/// Return: the Metal registry, borrowed for the life of the process.
-pub export fn ggml_backend_metal_reg() callconv(.c) c.ggml_backend_reg_t {
+/// - Returns: the Metal registry, borrowed for the life of the process.
+pub fn ggmlBackendMetalReg() callconv(.c) c.ggml_backend_reg_t {
     if (!reg_ready.load(.acquire)) {
         _ = std.c.pthread_mutex_lock(&reg_mutex);
         defer _ = std.c.pthread_mutex_unlock(&reg_mutex);
@@ -952,7 +968,7 @@ pub export fn ggml_backend_metal_reg() callconv(.c) c.ggml_backend_reg_t {
                 reg_devices[u] = .{
                     .iface = device_i,
                     .reg = &reg_storage,
-                    .context = mc.ggml_metal_device_get(i, g_devices),
+                    .context = mc.ggmlMetalDeviceGet(i, g_devices),
                 };
                 reg_ctx.devices[u] = &reg_devices[u];
                 reg_ctx.n_devices = u + 1;
@@ -1038,5 +1054,5 @@ test "op batch size reads the dimension the op indexes by" {
 
 test "the guid is stable and matches itself" {
     try std.testing.expect(c.ggml_guid_matches(guid(), guid()));
-    try std.testing.expect(!ggml_backend_is_metal(null));
+    try std.testing.expect(!ggmlBackendIsMetal(null));
 }

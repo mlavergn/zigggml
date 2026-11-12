@@ -10,7 +10,6 @@
 //! HIP/MUSA arm, which always takes the vector kernel, is not compiled
 //! here.
 
-const std = @import("std");
 const impl = @import("../impl.zig");
 const common = @import("common.zig");
 const kernels = @import("kernels.zig");

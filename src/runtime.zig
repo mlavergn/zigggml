@@ -86,11 +86,15 @@ const efault: c_int = 14;
 /// Counter behind `ggml_graph_next_uid`.
 var graph_uid = std.atomic.Value(u64).init(0);
 
+comptime {
+    @export(&ggmlGraphNextUid, .{ .name = "ggml_graph_next_uid" });
+}
+
 /// Ports `ggml_graph_next_uid` (ggml.c:57 @cd959bae9).
 ///
-/// Return: a value unique across the process. Graphs use it to recognise that
+/// - Returns: a value unique across the process. Graphs use it to recognise that
 /// two of them are the same, so a repeat must never occur.
-export fn ggml_graph_next_uid() u64 {
+fn ggmlGraphNextUid() callconv(.c) u64 {
     return graph_uid.fetchAdd(1, .monotonic);
 }
 
@@ -114,6 +118,10 @@ fn printBacktraceSymbols() void {
     backtrace_symbols_fd(&trace, nptrs, std.posix.STDERR_FILENO);
 }
 
+comptime {
+    @export(&ggmlPrintBacktrace, .{ .name = "ggml_print_backtrace" });
+}
+
 /// Ports `ggml_print_backtrace`, `ggml_print_backtrace` (ggml.c:158, 239
 /// @cd959bae9): the Unix arm and the `#else` that prints nothing.
 ///
@@ -121,7 +129,7 @@ fn printBacktraceSymbols() void {
 /// macOS, forking to attach a debugger; that path is not ported, because it is
 /// documented upstream as crashing Terminal and is opt-in only. Windows takes
 /// the `#else`, which does not read the variable either.
-export fn ggml_print_backtrace() void {
+fn ggmlPrintBacktrace() callconv(.c) void {
     if (comptime is_windows) return;
     if (getenv("GGML_NO_BACKTRACE") != null) return;
     if (comptime builtin.os.tag == .linux) return printBacktraceLinux();
@@ -193,11 +201,15 @@ fn printBacktraceLinux() void {
     }
 }
 
+comptime {
+    @export(&ggmlSetAbortCallback, .{ .name = "ggml_set_abort_callback" });
+}
+
 /// Ports `ggml_set_abort_callback` (ggml.c:247 @cd959bae9).
 ///
-/// Return: the previous callback, so a caller can chain or restore it. Passing
+/// - Returns: the previous callback, so a caller can chain or restore it. Passing
 /// null restores the default of printing a message and a backtrace.
-export fn ggml_set_abort_callback(callback: c.ggml_abort_callback_t) c.ggml_abort_callback_t {
+fn ggmlSetAbortCallback(callback: c.ggml_abort_callback_t) callconv(.c) c.ggml_abort_callback_t {
     const previous = abort_callback;
     abort_callback = callback;
     return previous;
@@ -232,7 +244,7 @@ fn abortWith(message: [*:0]const u8) callconv(.c) noreturn {
         callback(message);
     } else {
         _ = fprintf(cStderr(), "%s\n", message);
-        ggml_print_backtrace();
+        ggmlPrintBacktrace();
     }
 
     abort();
@@ -248,7 +260,7 @@ const LoggerState = struct {
 };
 
 var logger_state: LoggerState = .{
-    .log_callback = ggml_log_callback_default,
+    .log_callback = ggmlLogCallbackDefault,
     .log_callback_user_data = null,
 };
 
@@ -303,8 +315,12 @@ comptime {
     }
 }
 
+comptime {
+    @export(&ggmlLogCallbackDefault, .{ .name = "ggml_log_callback_default" });
+}
+
 /// Ports `ggml_log_callback_default` (ggml.c:314 @cd959bae9).
-export fn ggml_log_callback_default(
+fn ggmlLogCallbackDefault(
     level: c.enum_ggml_log_level,
     text: [*c]const u8,
     user_data: ?*anyopaque,
@@ -315,18 +331,26 @@ export fn ggml_log_callback_default(
     _ = fflush(cStderr());
 }
 
+comptime {
+    @export(&ggmlLogGet, .{ .name = "ggml_log_get" });
+}
+
 /// Ports `ggml_log_get` (ggml.c:8278 @cd959bae9).
-export fn ggml_log_get(log_callback: *c.ggml_log_callback, user_data: *?*anyopaque) void {
+fn ggmlLogGet(log_callback: *c.ggml_log_callback, user_data: *?*anyopaque) callconv(.c) void {
     log_callback.* = logger_state.log_callback;
     user_data.* = logger_state.log_callback_user_data;
+}
+
+comptime {
+    @export(&ggmlLogSet, .{ .name = "ggml_log_set" });
 }
 
 /// Ports `ggml_log_set` (ggml.c:8283 @cd959bae9).
 ///
 /// A null callback restores the default rather than disabling logging, so
 /// there is always something to call.
-export fn ggml_log_set(log_callback: c.ggml_log_callback, user_data: ?*anyopaque) void {
-    logger_state.log_callback = log_callback orelse ggml_log_callback_default;
+fn ggmlLogSet(log_callback: c.ggml_log_callback, user_data: ?*anyopaque) callconv(.c) void {
+    logger_state.log_callback = log_callback orelse ggmlLogCallbackDefault;
     logger_state.log_callback_user_data = user_data;
 }
 
@@ -346,6 +370,10 @@ const tsan_enabled = builtin.sanitize_thread;
 /// alone, and iOS took `posix_memalign`.
 const use_vm_allocate = builtin.os.tag.isDarwin() and !tsan_enabled;
 
+comptime {
+    @export(&ggmlAlignedMalloc, .{ .name = "ggml_aligned_malloc" });
+}
+
 /// Ports `ggml_aligned_malloc` (ggml.c:343 @cd959bae9).
 ///
 /// On every Apple OS this goes to the Mach VM rather than `posix_memalign`,
@@ -357,8 +385,8 @@ const use_vm_allocate = builtin.os.tag.isDarwin() and !tsan_enabled;
 /// MinGW takes the first arm, `_aligned_malloc` at 64 bytes, which has
 /// neither the zero-size warning nor the failure log.
 ///
-/// Return: the allocation, or null on failure after logging why.
-export fn ggml_aligned_malloc(size: usize) ?*anyopaque {
+/// - Returns: the allocation, or null on failure after logging why.
+fn ggmlAlignedMalloc(size: usize) callconv(.c) ?*anyopaque {
     if (comptime is_windows) return win32._aligned_malloc(size, 64);
 
     if (size == 0) {
@@ -409,12 +437,16 @@ fn logAllocFailure(result: c_int, size: usize) void {
     });
 }
 
+comptime {
+    @export(&ggmlAlignedFree, .{ .name = "ggml_aligned_free" });
+}
+
 /// Ports `ggml_aligned_free` (ggml.c:400 @cd959bae9).
 ///
 /// On an Apple OS `size` is required, not decorative: `vm_deallocate` needs the
 /// length that was allocated, so this cannot be a plain `free`. Elsewhere it
 /// is the C's plain `free`, or on MinGW `_aligned_free`, and `size` is unused.
-export fn ggml_aligned_free(ptr: ?*anyopaque, size: usize) void {
+fn ggmlAlignedFree(ptr: ?*anyopaque, size: usize) callconv(.c) void {
     if (comptime is_windows) return win32._aligned_free(ptr);
     if (comptime !use_vm_allocate) return std.c.free(ptr);
     const p = ptr orelse return;
@@ -424,8 +456,12 @@ export fn ggml_aligned_free(ptr: ?*anyopaque, size: usize) void {
 // -----------------------------------------------------------------------------
 // Status and version
 
+comptime {
+    @export(&ggmlStatusToString, .{ .name = "ggml_status_to_string" });
+}
+
 /// Ports `ggml_status_to_string` (ggml.c:450 @cd959bae9).
-export fn ggml_status_to_string(status: c.enum_ggml_status) [*:0]const u8 {
+fn ggmlStatusToString(status: c.enum_ggml_status) callconv(.c) [*:0]const u8 {
     return switch (status) {
         c.GGML_STATUS_ALLOC_FAILED => "GGML status: error (failed to allocate memory)",
         c.GGML_STATUS_FAILED => "GGML status: error (operation failed)",
@@ -435,13 +471,21 @@ export fn ggml_status_to_string(status: c.enum_ggml_status) [*:0]const u8 {
     };
 }
 
+comptime {
+    @export(&ggmlVersion, .{ .name = "ggml_version" });
+}
+
 /// Ports `ggml_version` (ggml.c:525 @cd959bae9).
-export fn ggml_version() [*:0]const u8 {
+fn ggmlVersion() callconv(.c) [*:0]const u8 {
     return build_version;
 }
 
+comptime {
+    @export(&ggmlCommit, .{ .name = "ggml_commit" });
+}
+
 /// Ports `ggml_commit` (ggml.c:529 @cd959bae9).
-export fn ggml_commit() [*:0]const u8 {
+fn ggmlCommit() callconv(.c) [*:0]const u8 {
     return build_commit;
 }
 
@@ -453,8 +497,12 @@ export fn ggml_commit() [*:0]const u8 {
 const build_version: [*:0]const u8 = "0.29.0";
 const build_commit: [*:0]const u8 = "cd959bae9";
 
+comptime {
+    @export(&ggmlGuidMatches, .{ .name = "ggml_guid_matches" });
+}
+
 /// Ports `ggml_guid_matches` (ggml.c:521 @cd959bae9).
-export fn ggml_guid_matches(guid_a: c.ggml_guid_t, guid_b: c.ggml_guid_t) bool {
+fn ggmlGuidMatches(guid_a: c.ggml_guid_t, guid_b: c.ggml_guid_t) callconv(.c) bool {
     const a: [*]const u8 = @ptrCast(guid_a);
     const b: [*]const u8 = @ptrCast(guid_b);
     return std.mem.eql(u8, a[0..16], b[0..16]);
@@ -467,14 +515,26 @@ export fn ggml_guid_matches(guid_a: c.ggml_guid_t, guid_b: c.ggml_guid_t) bool {
 // without the header's macros. The row variants are what the type traits table
 // points at, so they are on the hot path for every dequantized tensor.
 
+comptime {
+    @export(&ggmlFp16ToFp32, .{ .name = "ggml_fp16_to_fp32" });
+}
+
 /// Ports `ggml_fp16_to_fp32` (ggml.c:462 @cd959bae9).
-export fn ggml_fp16_to_fp32(x: c.ggml_fp16_t) f32 {
+fn ggmlFp16ToFp32(x: c.ggml_fp16_t) callconv(.c) f32 {
     return impl.fp16ToFp32(x);
 }
 
+comptime {
+    @export(&ggmlFp32ToFp16, .{ .name = "ggml_fp32_to_fp16" });
+}
+
 /// Ports `ggml_fp32_to_fp16` (ggml.c:467 @cd959bae9).
-export fn ggml_fp32_to_fp16(x: f32) c.ggml_fp16_t {
+fn ggmlFp32ToFp16(x: f32) callconv(.c) c.ggml_fp16_t {
     return impl.fp32ToFp16(x);
+}
+
+comptime {
+    @export(&ggmlBf16ToFp32, .{ .name = "ggml_bf16_to_fp32" });
 }
 
 /// Ports `ggml_bf16_to_fp32` (ggml.c:472 @cd959bae9).
@@ -488,40 +548,64 @@ export fn ggml_fp32_to_fp16(x: f32) c.ggml_fp16_t {
 /// does now. `u16` has the same size and is passed correctly, and the C
 /// caller is unaffected: `ggml_bf16_t` is a one-field struct over exactly
 /// those bits. See `CLAUDE.md`, "Threads in ported code".
-export fn ggml_bf16_to_fp32(x: u16) f32 {
+fn ggmlBf16ToFp32(x: u16) callconv(.c) f32 {
     return impl.bf16ToFp32(x);
 }
 
+comptime {
+    @export(&ggmlFp32ToBf16, .{ .name = "ggml_fp32_to_bf16" });
+}
+
 /// Ports `ggml_fp32_to_bf16` (ggml.c:477 @cd959bae9).
-export fn ggml_fp32_to_bf16(x: f32) c.ggml_bf16_t {
+fn ggmlFp32ToBf16(x: f32) callconv(.c) c.ggml_bf16_t {
     return .{ .bits = impl.fp32ToBf16(x) };
 }
 
+comptime {
+    @export(&ggmlFp16ToFp32Row, .{ .name = "ggml_fp16_to_fp32_row" });
+}
+
 /// Ports `ggml_fp16_to_fp32_row` (ggml.c:481 @cd959bae9).
-export fn ggml_fp16_to_fp32_row(x: [*]const c.ggml_fp16_t, y: [*]f32, n: i64) void {
+fn ggmlFp16ToFp32Row(x: [*]const c.ggml_fp16_t, y: [*]f32, n: i64) callconv(.c) void {
     for (0..@intCast(n)) |i| y[i] = impl.fp16ToFp32(x[i]);
 }
 
+comptime {
+    @export(&ggmlFp32ToFp16Row, .{ .name = "ggml_fp32_to_fp16_row" });
+}
+
 /// Ports `ggml_fp32_to_fp16_row` (ggml.c:487 @cd959bae9).
-export fn ggml_fp32_to_fp16_row(x: [*]const f32, y: [*]c.ggml_fp16_t, n: i64) void {
+fn ggmlFp32ToFp16Row(x: [*]const f32, y: [*]c.ggml_fp16_t, n: i64) callconv(.c) void {
     for (0..@intCast(n)) |i| y[i] = impl.fp32ToFp16(x[i]);
 }
 
+comptime {
+    @export(&ggmlBf16ToFp32Row, .{ .name = "ggml_bf16_to_fp32_row" });
+}
+
 /// Ports `ggml_bf16_to_fp32_row` (ggml.c:493 @cd959bae9).
-export fn ggml_bf16_to_fp32_row(x: [*]const c.ggml_bf16_t, y: [*]f32, n: i64) void {
+fn ggmlBf16ToFp32Row(x: [*]const c.ggml_bf16_t, y: [*]f32, n: i64) callconv(.c) void {
     for (0..@intCast(n)) |i| y[i] = impl.bf16ToFp32(x[i].bits);
 }
 
+comptime {
+    @export(&ggmlFp32ToBf16RowRef, .{ .name = "ggml_fp32_to_bf16_row_ref" });
+}
+
 /// Ports `ggml_fp32_to_bf16_row_ref` (ggml.c:499 @cd959bae9).
-export fn ggml_fp32_to_bf16_row_ref(x: [*]const f32, y: [*]c.ggml_bf16_t, n: i64) void {
+fn ggmlFp32ToBf16RowRef(x: [*]const f32, y: [*]c.ggml_bf16_t, n: i64) callconv(.c) void {
     for (0..@intCast(n)) |i| y[i] = .{ .bits = impl.fp32ToBf16(x[i]) };
+}
+
+comptime {
+    @export(&ggmlFp32ToBf16Row, .{ .name = "ggml_fp32_to_bf16_row" });
 }
 
 /// Ports `ggml_fp32_to_bf16_row` (ggml.c:505 @cd959bae9).
 ///
 /// The C has an AVX512-BF16 fast path here; on ARM it falls through to the
 /// same scalar loop as the reference version.
-export fn ggml_fp32_to_bf16_row(x: [*]const f32, y: [*]c.ggml_bf16_t, n: i64) void {
+fn ggmlFp32ToBf16Row(x: [*]const f32, y: [*]c.ggml_bf16_t, n: i64) callconv(.c) void {
     for (0..@intCast(n)) |i| y[i] = .{ .bits = impl.fp32ToBf16(x[i]) };
 }
 
@@ -547,11 +631,15 @@ fn timeInitOnce(once: *win32.INIT_ONCE, param: ?*anyopaque, ctx: ?*?*anyopaque) 
     return 1;
 }
 
+comptime {
+    @export(&ggmlTimeInit, .{ .name = "ggml_time_init" });
+}
+
 /// Ports `ggml_time_init`, `ggml_time_init` (ggml.c:553, 568 @cd959bae9).
 ///
 /// A no-op outside Windows, where the C initialises a performance counter
 /// once per process.
-export fn ggml_time_init() void {
+fn ggmlTimeInit() callconv(.c) void {
     if (comptime !is_windows) return;
     const S = struct {
         var once: win32.INIT_ONCE = std.os.windows.INIT_ONCE_STATIC_INIT;
@@ -559,8 +647,12 @@ export fn ggml_time_init() void {
     _ = win32.InitOnceExecuteOnce(&S.once, timeInitOnce, null, null);
 }
 
+comptime {
+    @export(&ggmlTimeMs, .{ .name = "ggml_time_ms" });
+}
+
 /// Ports `ggml_time_ms`, `ggml_time_ms` (ggml.c:557, 569 @cd959bae9).
-export fn ggml_time_ms() i64 {
+fn ggmlTimeMs() callconv(.c) i64 {
     if (comptime is_windows) {
         var t: i64 = undefined;
         _ = win32.QueryPerformanceCounter(&t);
@@ -571,8 +663,12 @@ export fn ggml_time_ms() i64 {
     return @as(i64, ts.sec) * 1000 + @divTrunc(@as(i64, ts.nsec), 1_000_000);
 }
 
+comptime {
+    @export(&ggmlTimeUs, .{ .name = "ggml_time_us" });
+}
+
 /// Ports `ggml_time_us`, `ggml_time_us` (ggml.c:562, 575 @cd959bae9).
-export fn ggml_time_us() i64 {
+fn ggmlTimeUs() callconv(.c) i64 {
     if (comptime is_windows) {
         var t: i64 = undefined;
         _ = win32.QueryPerformanceCounter(&t);
@@ -583,21 +679,33 @@ export fn ggml_time_us() i64 {
     return @as(i64, ts.sec) * 1_000_000 + @divTrunc(@as(i64, ts.nsec), 1_000);
 }
 
+comptime {
+    @export(&ggmlCycles, .{ .name = "ggml_cycles" });
+}
+
 /// Ports `ggml_cycles` (ggml.c:582 @cd959bae9).
-export fn ggml_cycles() i64 {
+fn ggmlCycles() callconv(.c) i64 {
     return @intCast(clock());
 }
 
+comptime {
+    @export(&ggmlCyclesPerMs, .{ .name = "ggml_cycles_per_ms" });
+}
+
 /// Ports `ggml_cycles_per_ms` (ggml.c:586 @cd959bae9).
-export fn ggml_cycles_per_ms() i64 {
+fn ggmlCyclesPerMs() callconv(.c) i64 {
     return @divTrunc(clocks_per_sec, 1000);
 }
 
 // -----------------------------------------------------------------------------
 // Threadpool parameters
 
+comptime {
+    @export(&ggmlThreadpoolParamsInit, .{ .name = "ggml_threadpool_params_init" });
+}
+
 /// Ports `ggml_threadpool_params_init` (ggml.c:8288 @cd959bae9).
-export fn ggml_threadpool_params_init(p: *c.struct_ggml_threadpool_params, n_threads: c_int) void {
+fn ggmlThreadpoolParamsInit(p: *c.struct_ggml_threadpool_params, n_threads: c_int) callconv(.c) void {
     p.n_threads = n_threads;
     p.prio = 0; // normal, or inherited
     p.poll = 50; // hybrid polling
@@ -607,18 +715,26 @@ export fn ggml_threadpool_params_init(p: *c.struct_ggml_threadpool_params, n_thr
     @memset(&p.cpumask, false);
 }
 
+comptime {
+    @export(&ggmlThreadpoolParamsDefault, .{ .name = "ggml_threadpool_params_default" });
+}
+
 /// Ports `ggml_threadpool_params_default` (ggml.c:8297 @cd959bae9).
-export fn ggml_threadpool_params_default(n_threads: c_int) c.struct_ggml_threadpool_params {
+fn ggmlThreadpoolParamsDefault(n_threads: c_int) callconv(.c) c.struct_ggml_threadpool_params {
     var p: c.struct_ggml_threadpool_params = undefined;
-    ggml_threadpool_params_init(&p, n_threads);
+    ggmlThreadpoolParamsInit(&p, n_threads);
     return p;
 }
 
+comptime {
+    @export(&ggmlThreadpoolParamsMatch, .{ .name = "ggml_threadpool_params_match" });
+}
+
 /// Ports `ggml_threadpool_params_match` (ggml.c:8303 @cd959bae9).
-export fn ggml_threadpool_params_match(
+fn ggmlThreadpoolParamsMatch(
     p0: *const c.struct_ggml_threadpool_params,
     p1: *const c.struct_ggml_threadpool_params,
-) bool {
+) callconv(.c) bool {
     if (p0.n_threads != p1.n_threads) return false;
     if (p0.prio != p1.prio) return false;
     if (p0.poll != p1.poll) return false;
@@ -631,45 +747,49 @@ export fn ggml_threadpool_params_match(
 // Unit Tests
 
 test "graph uids are unique and monotonic" {
-    const a = ggml_graph_next_uid();
-    const b = ggml_graph_next_uid();
+    const a = ggmlGraphNextUid();
+    const b = ggmlGraphNextUid();
     try std.testing.expect(b > a);
 }
 
 test "status strings cover every status" {
-    try std.testing.expectEqualStrings("GGML status: success", std.mem.span(ggml_status_to_string(c.GGML_STATUS_SUCCESS)));
-    try std.testing.expectEqualStrings("GGML status: unknown", std.mem.span(ggml_status_to_string(@intCast(999))));
+    try std.testing.expectEqualStrings("GGML status: success", std.mem.span(ggmlStatusToString(c.GGML_STATUS_SUCCESS)));
+    try std.testing.expectEqualStrings("GGML status: unknown", std.mem.span(ggmlStatusToString(@intCast(999))));
 }
 
 test "threadpool params round-trip and compare" {
-    const a = ggml_threadpool_params_default(4);
-    var b = ggml_threadpool_params_default(4);
-    try std.testing.expect(ggml_threadpool_params_match(&a, &b));
+    const a = ggmlThreadpoolParamsDefault(4);
+    var b = ggmlThreadpoolParamsDefault(4);
+    try std.testing.expect(ggmlThreadpoolParamsMatch(&a, &b));
     b.n_threads = 8;
-    try std.testing.expect(!ggml_threadpool_params_match(&a, &b));
+    try std.testing.expect(!ggmlThreadpoolParamsMatch(&a, &b));
 }
 
 test "aligned malloc returns aligned memory and frees it" {
     const size = 4096 * 4;
-    const p = ggml_aligned_malloc(size) orelse return error.AllocFailed;
+    const p = ggmlAlignedMalloc(size) orelse return error.AllocFailed;
     // `vm_allocate` hands out whole pages; `posix_memalign` promises the 64
     // bytes asked of it.
     const alignment: usize = if (builtin.os.tag == .macos) 4096 else 64;
     try std.testing.expectEqual(@as(usize, 0), @intFromPtr(p) % alignment);
     // Writing proves the pages are actually mapped, not just reserved.
     @memset(@as([*]u8, @ptrCast(p))[0..size], 0xAB);
-    ggml_aligned_free(p, size);
+    ggmlAlignedFree(p, size);
 }
 
 // -----------------------------------------------------------------------------
 // File access
+
+comptime {
+    @export(&ggmlFopen, .{ .name = "ggml_fopen" });
+}
 
 /// Ports `ggml_fopen` (ggml.c:614 @cd959bae9), both arms.
 ///
 /// A plain `fopen`, except on Windows, where both arguments are converted from
 /// UTF-8 to wide characters and the file is opened with `_wfopen`, so a path
 /// outside the ANSI code page still opens.
-pub export fn ggml_fopen(fname: [*:0]const u8, mode: [*:0]const u8) ?*std.c.FILE {
+pub fn ggmlFopen(fname: [*:0]const u8, mode: [*:0]const u8) callconv(.c) ?*std.c.FILE {
     if (comptime !is_windows) return fopen(fname, mode);
 
     var file: ?*std.c.FILE = null;

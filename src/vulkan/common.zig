@@ -21,10 +21,6 @@ const impl = @import("../impl.zig");
 /// `dispatch`, as `vulkan.hpp`'s dynamic dispatcher reaches it.
 pub const vk = @import("vulkan_c");
 
-/// The allocator for host-side bookkeeping, libc's heap as everywhere else
-/// in ggml.
-pub const allocator = std.heap.c_allocator;
-
 /// Ports `GGML_VK_NAME` (ggml-vulkan.h:10 @cd959bae9).
 pub const name = "Vulkan";
 
@@ -178,7 +174,6 @@ pub const Dispatch = struct {
 
     /// Loads every command through `instance`. Ports `init(instance)`.
     ///
-    /// Parameters:
     /// - `instance`: the instance the commands are looked up through.
     pub fn loadInstance(self: *Dispatch, instance: vk.VkInstance) void {
         inline for (@typeInfo(Dispatch).@"struct".field_names) |field| {
@@ -201,12 +196,11 @@ pub threadlocal var last_error: struct { result: vk.VkResult = vk.VK_SUCCESS, wh
 
 /// `vulkan.hpp`'s `resultCheck`: anything but `VK_SUCCESS` throws.
 ///
-/// Parameters:
 /// - `result`: what the command returned.
 /// - `what`: the command's `vulkan.hpp` name, as the exception's message
 ///   names it.
 ///
-/// Return: nothing on success; `error.VulkanError` otherwise, with
+/// - Returns: nothing on success; `error.VulkanError` otherwise, with
 /// `last_error` set.
 pub fn check(result: vk.VkResult, what: [*:0]const u8) VkError!void {
     if (result == vk.VK_SUCCESS) return;
@@ -217,7 +211,6 @@ pub fn check(result: vk.VkResult, what: [*:0]const u8) VkError!void {
 /// What a `vk::SystemError` nothing catches comes to: the C++ terminates
 /// with the exception's message; the port prints it and aborts.
 ///
-/// Parameters:
 /// - `result`: what the command returned.
 /// - `what`: the command's `vulkan.hpp` name.
 pub fn checkOrAbort(result: vk.VkResult, what: [*:0]const u8) void {
@@ -233,7 +226,7 @@ pub fn abortLastError() noreturn {
 /// `vk::to_string(vk::Result)`: the enumerant's name without its `VK_`
 /// prefix, in `vulkan.hpp`'s camel case, or `invalid ( 0x... )`.
 ///
-/// Return: the name; an unknown value's text lives in a thread-local buffer
+/// - Returns: the name; an unknown value's text lives in a thread-local buffer
 /// until the next call.
 pub fn resultString(result: vk.VkResult) [:0]const u8 {
     return switch (result) {
@@ -267,7 +260,7 @@ pub fn resultString(result: vk.VkResult) [:0]const u8 {
             const S = struct {
                 threadlocal var buf: [32]u8 = undefined;
             };
-            break :blk std.fmt.bufPrintSentinel(&S.buf, "invalid ( 0x{x} )", .{@as(u32, @bitCast(result))}, 0) catch unreachable;
+            break :blk std.fmt.bufPrintSentinel(&S.buf, "invalid ( 0x{x} )", .{@as(u32, @bitCast(result))}, 0) catch @panic("name buffer too small");
         },
     };
 }
@@ -276,29 +269,28 @@ pub fn resultString(result: vk.VkResult) [:0]const u8 {
 /// fetch, and start again while the command returns `VK_INCOMPLETE` --
 /// which it does when the set grew between the calls.
 ///
-/// Parameters:
 /// - `T`: the element type.
 /// - `what`: the `vulkan.hpp` name, for `check`.
 /// - `f`: the command, bound to its leading arguments.
 /// - `args`: those leading arguments.
 ///
-/// Return: the elements, owned by the caller and freed with `allocator`.
+/// - Returns: the elements, owned by the caller and freed with `allocator`.
 pub fn enumerate(comptime T: type, what: [*:0]const u8, f: anytype, args: anytype) VkError![]T {
     while (true) {
         var count: u32 = 0;
         try check(@call(.auto, f, args ++ .{ &count, @as([*c]T, null) }), what);
-        const items = allocator.alloc(T, count) catch impl.abort("ggml_vulkan: out of memory");
+        const items = std.heap.c_allocator.alloc(T, count) catch impl.abort("ggml_vulkan: out of memory");
         const result = @call(.auto, f, args ++ .{ &count, items.ptr });
         if (result == vk.VK_INCOMPLETE) {
-            allocator.free(items);
+            std.heap.c_allocator.free(items);
             continue;
         }
         check(result, what) catch |err| {
-            allocator.free(items);
+            std.heap.c_allocator.free(items);
             return err;
         };
         // The second call may report fewer than the first.
-        return allocator.realloc(items, count) catch items[0..count];
+        return std.heap.c_allocator.realloc(items, count) catch items[0..count];
     }
 }
 
@@ -308,18 +300,18 @@ pub fn enumerateWith(comptime T: type, s_type: vk.VkStructureType, what: [*:0]co
     while (true) {
         var count: u32 = 0;
         try check(@call(.auto, f, args ++ .{ &count, @as([*c]T, null) }), what);
-        const items = allocator.alloc(T, count) catch impl.abort("ggml_vulkan: out of memory");
+        const items = std.heap.c_allocator.alloc(T, count) catch impl.abort("ggml_vulkan: out of memory");
         for (items) |*item| item.* = structure(T, s_type);
         const result = @call(.auto, f, args ++ .{ &count, items.ptr });
         if (result == vk.VK_INCOMPLETE) {
-            allocator.free(items);
+            std.heap.c_allocator.free(items);
             continue;
         }
         check(result, what) catch |err| {
-            allocator.free(items);
+            std.heap.c_allocator.free(items);
             return err;
         };
-        return allocator.realloc(items, count) catch items[0..count];
+        return std.heap.c_allocator.realloc(items, count) catch items[0..count];
     }
 }
 

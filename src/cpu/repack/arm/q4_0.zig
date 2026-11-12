@@ -62,8 +62,12 @@ inline fn hi4(v: i8x16) i8x16 {
     return @bitCast(u & @as(@Vector(16, u8), @splat(0xf0)));
 }
 
+comptime {
+    @export(&ggmlGemvQ404x4Q80, .{ .name = "ggml_gemv_q4_0_4x4_q8_0" });
+}
+
 /// Ports `ggml_gemv_q4_0_4x4_q8_0` (arch/arm/repack.cpp:230 @cd959bae9).
-pub export fn ggml_gemv_q4_0_4x4_q8_0(n: c_int, s_out: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+pub fn ggmlGemvQ404x4Q80(n: c_int, s_out: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
     if (comptime !neon.has_dotprod) return ggml_gemv_q4_0_4x4_q8_0_generic(n, s_out, bs, vx, vy, nr, nc);
     const qk: c_int = 32;
     const nb = @divTrunc(n, qk);
@@ -83,24 +87,24 @@ pub export fn ggml_gemv_q4_0_4x4_q8_0(n: c_int, s_out: [*]f32, bs: usize, vx: *c
             const b1 = loadq(qs + 16);
             const b2 = loadq(qs + 32);
             const b3 = loadq(qs + 48);
-            const bd = neon.load_f16x4(@ptrCast(&b_ptr[0].d));
+            const bd = neon.loadF16x4(@ptrCast(&b_ptr[0].d));
 
             const aqs: [*]const i8 = @ptrCast(&a_ptr[0].qs);
             const a0 = loadq(aqs);
             const a1 = loadq(aqs + @as(usize, @intCast(@divTrunc(qk, 2))));
-            const ad = neon.dup_f16x4(a_ptr[0].d);
+            const ad = neon.dupF16x4(a_ptr[0].d);
 
             var ret: i32x4 = @splat(0);
-            ret = neon.dotq_laneq_s32(ret, shl4(b0), a0, 0);
-            ret = neon.dotq_laneq_s32(ret, shl4(b1), a0, 1);
-            ret = neon.dotq_laneq_s32(ret, shl4(b2), a0, 2);
-            ret = neon.dotq_laneq_s32(ret, shl4(b3), a0, 3);
-            ret = neon.dotq_laneq_s32(ret, hi4(b0), a1, 0);
-            ret = neon.dotq_laneq_s32(ret, hi4(b1), a1, 1);
-            ret = neon.dotq_laneq_s32(ret, hi4(b2), a1, 2);
-            ret = neon.dotq_laneq_s32(ret, hi4(b3), a1, 3);
+            ret = neon.dotqLaneqS32(ret, shl4(b0), a0, 0);
+            ret = neon.dotqLaneqS32(ret, shl4(b1), a0, 1);
+            ret = neon.dotqLaneqS32(ret, shl4(b2), a0, 2);
+            ret = neon.dotqLaneqS32(ret, shl4(b3), a0, 3);
+            ret = neon.dotqLaneqS32(ret, hi4(b0), a1, 0);
+            ret = neon.dotqLaneqS32(ret, hi4(b1), a1, 1);
+            ret = neon.dotqLaneqS32(ret, hi4(b2), a1, 2);
+            ret = neon.dotqLaneqS32(ret, hi4(b3), a1, 3);
 
-            acc = neon.fma_f32(acc, neon.cvtq_n_f32_s32(ret, 4), neon.cvt_f32_f16(ad) * neon.cvt_f32_f16(bd));
+            acc = neon.fmaF32(acc, neon.cvtqNF32S32(ret, 4), neon.cvtF32F16(ad) * neon.cvtF32F16(bd));
             a_ptr += 1;
             b_ptr += 1;
         }
@@ -109,8 +113,12 @@ pub export fn ggml_gemv_q4_0_4x4_q8_0(n: c_int, s_out: [*]f32, bs: usize, vx: *c
     }
 }
 
+comptime {
+    @export(&ggmlGemvQ404x8Q80, .{ .name = "ggml_gemv_q4_0_4x8_q8_0" });
+}
+
 /// Ports `ggml_gemv_q4_0_4x8_q8_0` (arch/arm/repack.cpp:291 @cd959bae9).
-pub export fn ggml_gemv_q4_0_4x8_q8_0(n: c_int, s_out: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+pub fn ggmlGemvQ404x8Q80(n: c_int, s_out: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
     if (comptime !neon.has_dotprod) return ggml_gemv_q4_0_4x8_q8_0_generic(n, s_out, bs, vx, vy, nr, nc);
     const nb = @divTrunc(n, 32);
     const ncols_interleaved: c_int = 4;
@@ -129,29 +137,29 @@ pub export fn ggml_gemv_q4_0_4x8_q8_0(n: c_int, s_out: [*]f32, bs: usize, vx: *c
             const b1 = loadq(qs + 16);
             const b2 = loadq(qs + 32);
             const b3 = loadq(qs + 48);
-            const bd = neon.load_f16x4(@ptrCast(&b_ptr[0].d));
+            const bd = neon.loadF16x4(@ptrCast(&b_ptr[0].d));
 
             const aqs: [*]const i8 = @ptrCast(&a_ptr[0].qs);
-            const a0 = neon.dupq_i8x16_from8(aqs);
-            const a1 = neon.dupq_i8x16_from8(aqs + 8);
-            const a2 = neon.dupq_i8x16_from8(aqs + 16);
-            const a3 = neon.dupq_i8x16_from8(aqs + 24);
-            const ad = neon.dup_f16x4(a_ptr[0].d);
+            const a0 = neon.dupqI8x16From8(aqs);
+            const a1 = neon.dupqI8x16From8(aqs + 8);
+            const a2 = neon.dupqI8x16From8(aqs + 16);
+            const a3 = neon.dupqI8x16From8(aqs + 24);
+            const ad = neon.dupF16x4(a_ptr[0].d);
 
             var ret0: i32x4 = @splat(0);
             var ret1: i32x4 = @splat(0);
-            ret0 = neon.dotq_s32(ret0, shl4(b0), a0);
-            ret1 = neon.dotq_s32(ret1, shl4(b1), a0);
-            ret0 = neon.dotq_s32(ret0, shl4(b2), a1);
-            ret1 = neon.dotq_s32(ret1, shl4(b3), a1);
-            ret0 = neon.dotq_s32(ret0, hi4(b0), a2);
-            ret1 = neon.dotq_s32(ret1, hi4(b1), a2);
-            ret0 = neon.dotq_s32(ret0, hi4(b2), a3);
-            ret1 = neon.dotq_s32(ret1, hi4(b3), a3);
+            ret0 = neon.dotqS32(ret0, shl4(b0), a0);
+            ret1 = neon.dotqS32(ret1, shl4(b1), a0);
+            ret0 = neon.dotqS32(ret0, shl4(b2), a1);
+            ret1 = neon.dotqS32(ret1, shl4(b3), a1);
+            ret0 = neon.dotqS32(ret0, hi4(b0), a2);
+            ret1 = neon.dotqS32(ret1, hi4(b1), a2);
+            ret0 = neon.dotqS32(ret0, hi4(b2), a3);
+            ret1 = neon.dotqS32(ret1, hi4(b3), a3);
 
-            const ret = neon.paddq_s32(ret0, ret1);
+            const ret = neon.paddqS32(ret0, ret1);
 
-            acc = neon.fma_f32(acc, neon.cvtq_n_f32_s32(ret, 4), neon.cvt_f32_f16(ad) * neon.cvt_f32_f16(bd));
+            acc = neon.fmaF32(acc, neon.cvtqNF32S32(ret, 4), neon.cvtF32F16(ad) * neon.cvtF32F16(bd));
             a_ptr += 1;
             b_ptr += 1;
         }

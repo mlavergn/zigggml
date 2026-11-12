@@ -130,8 +130,11 @@ fn unaryRows(
     const ith: i64 = params.ith;
     const nth: i64 = params.nth;
 
-    const nc: i64 = @as(c_int, @truncate(src0.ne[0]));
-    const nr: i64 = @as(c_int, @truncate(c.ggml_nrows(src0)));
+    const nc_raw: c_int = @truncate(src0.ne[0]);
+
+    const nc: i64 = nc_raw;
+    const nr_raw: c_int = @truncate(c.ggml_nrows(src0));
+    const nr: i64 = nr_raw;
 
     // rows per thread
     const dr = @divTrunc(nr + nth - 1, nth);
@@ -177,19 +180,19 @@ fn unaryByType(
 /// Ports `ggml_compute_forward_gelu` (ops.cpp:2156 @cd959bae9) and
 /// `ggml_compute_forward_gelu_bf16` (ops.cpp:2150 @cd959bae9).
 fn gelu(params: *const ComputeParams, dst: *Tensor) void {
-    unaryByType(vec.gelu_f32, vec.gelu_f16, vec.gelu_bf16, params, dst);
+    unaryByType(vec.geluF32, vec.geluF16, vec.geluBf16, params, dst);
 }
 
 /// Ports `ggml_compute_forward_gelu_erf` (ops.cpp:2396 @cd959bae9) and
 /// `ggml_compute_forward_gelu_erf_bf16` (ops.cpp:2390 @cd959bae9).
 fn geluErf(params: *const ComputeParams, dst: *Tensor) void {
-    unaryByType(vec.gelu_erf_f32, vec.gelu_erf_f16, vec.gelu_erf_bf16, params, dst);
+    unaryByType(vec.geluErfF32, vec.geluErfF16, vec.geluErfBf16, params, dst);
 }
 
 /// Ports `ggml_compute_forward_gelu_quick` (ops.cpp:2525 @cd959bae9) and
 /// `ggml_compute_forward_gelu_quick_bf16` (ops.cpp:2519 @cd959bae9).
 fn geluQuick(params: *const ComputeParams, dst: *Tensor) void {
-    unaryByType(geluQuickF32, vec.gelu_quick_f16, vec.gelu_quick_bf16, params, dst);
+    unaryByType(geluQuickF32, vec.geluQuickF16, vec.geluQuickBf16, params, dst);
 }
 
 /// Ports `ggml_compute_forward_silu` (ops.cpp:2654 @cd959bae9) and
@@ -200,7 +203,7 @@ fn geluQuick(params: *const ComputeParams, dst: *Tensor) void {
 /// `vec.h` inlines with libm's `expf`. They are not the same function of
 /// `x`, as in the C.
 fn silu(params: *const ComputeParams, dst: *Tensor) void {
-    unaryByType(siluF32, vec.silu_f16, vec.silu_bf16, params, dst);
+    unaryByType(siluF32, vec.vecSiluF16, vec.siluBf16, params, dst);
 }
 
 // -----------------------------------------------------------------------------
@@ -217,8 +220,11 @@ fn leakyReluRows(comptime T: type, params: *const ComputeParams, dst: *Tensor) v
 
     if (params.ith != 0) return;
 
-    const n: i64 = @as(c_int, @truncate(c.ggml_nrows(src0)));
-    const nc: i64 = @as(c_int, @truncate(src0.ne[0]));
+    const n_raw: c_int = @truncate(c.ggml_nrows(src0));
+
+    const n: i64 = n_raw;
+    const nc_raw: c_int = @truncate(src0.ne[0]);
+    const nc: i64 = nc_raw;
 
     const negative_slope: f32 = impl.getOpParamsF32(dst, 0);
 
@@ -229,12 +235,16 @@ fn leakyReluRows(comptime T: type, params: *const ComputeParams, dst: *Tensor) v
     while (i < n) : (i += 1) {
         const y: [*]T = @ptrCast(@alignCast(dd + @as(usize, @intCast(i)) * dst.nb[1]));
         const x: [*]const T = @ptrCast(@alignCast(s0 + @as(usize, @intCast(i)) * src0.nb[1]));
-        if (T == f32) vec.leaky_relu_f32(nc, y, x, negative_slope) else vec.leaky_relu_f16(nc, y, x, negative_slope);
+        if (T == f32) vec.leakyReluF32(nc, y, x, negative_slope) else vec.leakyReluF16(nc, y, x, negative_slope);
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardLeakyRelu, .{ .name = "ggml_compute_forward_leaky_relu" });
+}
+
 /// Ports `ggml_compute_forward_leaky_relu` (ops.cpp:2741 @cd959bae9).
-pub export fn ggml_compute_forward_leaky_relu(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardLeakyRelu(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
 
     switch (src0.type) {
@@ -259,8 +269,11 @@ fn siluBackRows(comptime T: type, params: *const ComputeParams, dst: *Tensor) vo
     const ith: i64 = params.ith;
     const nth: i64 = params.nth;
 
-    const nc: i64 = @as(c_int, @truncate(src1.ne[0]));
-    const nr: i64 = @as(c_int, @truncate(c.ggml_nrows(src1)));
+    const nc_raw: c_int = @truncate(src1.ne[0]);
+
+    const nc: i64 = nc_raw;
+    const nr_raw: c_int = @truncate(c.ggml_nrows(src1));
+    const nr: i64 = nr_raw;
 
     // rows per thread
     const dr = @divTrunc(nr + nth - 1, nth);
@@ -279,12 +292,16 @@ fn siluBackRows(comptime T: type, params: *const ComputeParams, dst: *Tensor) vo
         const dx: [*]T = @ptrCast(@alignCast(dd + row * dst.nb[1]));
         const x: [*]const T = @ptrCast(@alignCast(s1 + row * src1.nb[1]));
         const dy: [*]const T = @ptrCast(@alignCast(gd + row * grad.nb[1]));
-        if (T == f32) vec.silu_backward_f32(nc, dx, x, dy) else vec.silu_backward_f16(nc, dx, x, dy);
+        if (T == f32) vec.vecSiluBackwardF32(nc, dx, x, dy) else vec.vecSiluBackwardF16(nc, dx, x, dy);
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardSiluBack, .{ .name = "ggml_compute_forward_silu_back" });
+}
+
 /// Ports `ggml_compute_forward_silu_back` (ops.cpp:2852 @cd959bae9).
-pub export fn ggml_compute_forward_silu_back(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardSiluBack(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
 
     switch (src0.type) {
@@ -333,8 +350,11 @@ const GluRows = struct {
         const ith: i64 = params.ith;
         const nth: i64 = params.nth;
 
-        const nc: i64 = @as(c_int, @truncate(if (src1 != null) src0.ne[0] else @divTrunc(src0.ne[0], 2)));
-        const nr: i64 = @as(c_int, @truncate(c.ggml_nrows(src0)));
+        const nc_raw: c_int = @truncate(if (src1 != null) src0.ne[0] else @divTrunc(src0.ne[0], 2));
+
+        const nc: i64 = nc_raw;
+        const nr_raw: c_int = @truncate(c.ggml_nrows(src0));
+        const nr: i64 = nr_raw;
 
         impl.assert(dst.ne[0] == nc, "dst->ne[0] == nc");
         impl.assert(c.ggml_nrows(dst) == nr, "ggml_nrows(dst) == nr");
@@ -361,7 +381,7 @@ const GluRows = struct {
         };
     }
 
-    /// Return: the value and gate rows for row `j1`, as `src0_p` and `src1_p`.
+    /// - Returns: the value and gate rows for row `j1`, as `src0_p` and `src1_p`.
     fn halves(self: GluRows, comptime T: type, j1: i64) struct { [*]T, [*]T } {
         const row: usize = @intCast(j1);
         var src0_p: [*]T = @ptrCast(@alignCast(self.src0_d + row * self.src0_o));
@@ -426,31 +446,31 @@ fn gluByType(
 /// Ports `ggml_compute_forward_reglu` (ops.cpp:3054 @cd959bae9) and
 /// `ggml_compute_forward_reglu_bf16` (ops.cpp:3048 @cd959bae9).
 fn reglu(params: *const ComputeParams, dst: *Tensor) void {
-    gluByType(vec.reglu_f32, vec.reglu_f16, vec.reglu_bf16, params, dst);
+    gluByType(vec.regluF32, vec.regluF16, vec.regluBf16, params, dst);
 }
 
 /// Ports `ggml_compute_forward_geglu` (ops.cpp:3207 @cd959bae9) and
 /// `ggml_compute_forward_geglu_bf16` (ops.cpp:3201 @cd959bae9).
 fn geglu(params: *const ComputeParams, dst: *Tensor) void {
-    gluByType(vec.geglu_f32, vec.geglu_f16, vec.geglu_bf16, params, dst);
+    gluByType(vec.gegluF32, vec.gegluF16, vec.gegluBf16, params, dst);
 }
 
 /// Ports `ggml_compute_forward_swiglu` (ops.cpp:3360 @cd959bae9) and
 /// `ggml_compute_forward_swiglu_bf16` (ops.cpp:3354 @cd959bae9).
 fn swiglu(params: *const ComputeParams, dst: *Tensor) void {
-    gluByType(swigluF32, vec.swiglu_f16, vec.swiglu_bf16, params, dst);
+    gluByType(swigluF32, vec.swigluF16, vec.swigluBf16, params, dst);
 }
 
 /// Ports `ggml_compute_forward_geglu_erf` (ops.cpp:3804 @cd959bae9) and
 /// `ggml_compute_forward_geglu_erf_bf16` (ops.cpp:3798 @cd959bae9).
 fn gegluErf(params: *const ComputeParams, dst: *Tensor) void {
-    gluByType(vec.geglu_erf_f32, vec.geglu_erf_f16, vec.geglu_erf_bf16, params, dst);
+    gluByType(vec.gegluErfF32, vec.gegluErfF16, vec.gegluErfBf16, params, dst);
 }
 
 /// Ports `ggml_compute_forward_geglu_quick` (ops.cpp:3957 @cd959bae9) and
 /// `ggml_compute_forward_geglu_quick_bf16` (ops.cpp:3951 @cd959bae9).
 fn gegluQuick(params: *const ComputeParams, dst: *Tensor) void {
-    gluByType(gegluQuickF32, vec.geglu_quick_f16, vec.geglu_quick_bf16, params, dst);
+    gluByType(gegluQuickF32, vec.gegluQuickF16, vec.gegluQuickBf16, params, dst);
 }
 
 /// `std::min` with the C++'s NaN behaviour; see `common.stdMin`.
@@ -561,8 +581,12 @@ fn swigluClamp(params: *const ComputeParams, dst: *Tensor) void {
 // -----------------------------------------------------------------------------
 // The dispatchers
 
+comptime {
+    @export(&ggmlComputeForwardUnary, .{ .name = "ggml_compute_forward_unary" });
+}
+
 /// Ports `ggml_compute_forward_unary` (ops.cpp:10377 @cd959bae9).
-pub export fn ggml_compute_forward_unary(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardUnary(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const op = c.ggml_get_unary_op(dst);
 
     switch (op) {
@@ -592,8 +616,12 @@ pub export fn ggml_compute_forward_unary(params: *const ComputeParams, dst: *Ten
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardGlu, .{ .name = "ggml_compute_forward_glu" });
+}
+
 /// Ports `ggml_compute_forward_glu` (ops.cpp:10481 @cd959bae9).
-pub export fn ggml_compute_forward_glu(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardGlu(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const op = c.ggml_get_glu_op(dst);
 
     switch (op) {

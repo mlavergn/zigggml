@@ -72,8 +72,12 @@ inline fn load4d(p: [*]const i8) [4]i8x8 {
     };
 }
 
+comptime {
+    @export(&ggmlGemvQ804x4Q80, .{ .name = "ggml_gemv_q8_0_4x4_q8_0" });
+}
+
 /// Ports `ggml_gemv_q8_0_4x4_q8_0` (arch/arm/repack.cpp:1771 @cd959bae9).
-pub export fn ggml_gemv_q8_0_4x4_q8_0(n: c_int, s_out: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+pub fn ggmlGemvQ804x4Q80(n: c_int, s_out: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
     if (comptime !neon.has_dotprod) return ggml_gemv_q8_0_4x4_q8_0_generic(n, s_out, bs, vx, vy, nr, nc);
     const nb = @divTrunc(n, 32);
     const ncols_interleaved: c_int = 4;
@@ -90,16 +94,16 @@ pub export fn ggml_gemv_q8_0_4x4_q8_0(n: c_int, s_out: [*]f32, bs: usize, vx: *c
             const qs: [*]const i8 = @ptrCast(&b_ptr[0].qs);
             const b_low = load4q(qs);
             const b_high = load4q(qs + 64);
-            const bd = neon.load_f16x4(@ptrCast(&b_ptr[0].d));
+            const bd = neon.loadF16x4(@ptrCast(&b_ptr[0].d));
 
             const a = load2q(@ptrCast(&a_ptr[0].qs));
-            const ad = neon.dup_f16x4(a_ptr[0].d);
+            const ad = neon.dupF16x4(a_ptr[0].d);
 
             var ret: i32x4 = @splat(0);
-            inline for (0..4) |l| ret = neon.dotq_laneq_s32(ret, b_low[l], a[0], l);
-            inline for (0..4) |l| ret = neon.dotq_laneq_s32(ret, b_high[l], a[1], l);
+            inline for (0..4) |l| ret = neon.dotqLaneqS32(ret, b_low[l], a[0], l);
+            inline for (0..4) |l| ret = neon.dotqLaneqS32(ret, b_high[l], a[1], l);
 
-            acc = neon.fma_f32(acc, neon.cvt_f32_s32(ret), neon.cvt_f32_f16(ad) * neon.cvt_f32_f16(bd));
+            acc = neon.fmaF32(acc, neon.cvtF32S32(ret), neon.cvtF32F16(ad) * neon.cvtF32F16(bd));
             a_ptr += 1;
             b_ptr += 1;
         }
@@ -108,10 +112,14 @@ pub export fn ggml_gemv_q8_0_4x4_q8_0(n: c_int, s_out: [*]f32, bs: usize, vx: *c
     }
 }
 
+comptime {
+    @export(&ggmlGemvQ804x8Q80, .{ .name = "ggml_gemv_q8_0_4x8_q8_0" });
+}
+
 /// Ports `ggml_gemv_q8_0_4x8_q8_0` (arch/arm/repack.cpp:1829 @cd959bae9).
 /// The `__ARM_FEATURE_SVE` arm v0.9.0 added is not ported: no Apple core has
 /// SVE.
-pub export fn ggml_gemv_q8_0_4x8_q8_0(n: c_int, s_out: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+pub fn ggmlGemvQ804x8Q80(n: c_int, s_out: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
     if (comptime !neon.has_dotprod) return ggml_gemv_q8_0_4x8_q8_0_generic(n, s_out, bs, vx, vy, nr, nc);
     const nb = @divTrunc(n, 32);
     const ncols_interleaved: c_int = 4;
@@ -128,10 +136,10 @@ pub export fn ggml_gemv_q8_0_4x8_q8_0(n: c_int, s_out: [*]f32, bs: usize, vx: *c
             const qs: [*]const i8 = @ptrCast(&b_ptr[0].qs);
             const b_low = load4q(qs);
             const b_high = load4q(qs + 64);
-            const bd = neon.load_f16x4(@ptrCast(&b_ptr[0].d));
+            const bd = neon.loadF16x4(@ptrCast(&b_ptr[0].d));
 
             const a_chunks = load4d(@ptrCast(&a_ptr[0].qs));
-            const ad = neon.dup_f16x4(a_ptr[0].d);
+            const ad = neon.dupF16x4(a_ptr[0].d);
 
             // Each 8-byte half is used twice, so it is duplicated into a
             // full vector rather than lane-broadcast.
@@ -142,19 +150,19 @@ pub export fn ggml_gemv_q8_0_4x8_q8_0(n: c_int, s_out: [*]f32, bs: usize, vx: *c
 
             var ret0: i32x4 = @splat(0);
             var ret1: i32x4 = @splat(0);
-            ret0 = neon.dotq_s32(ret0, b_low[0], a0);
-            ret1 = neon.dotq_s32(ret1, b_low[1], a0);
-            ret0 = neon.dotq_s32(ret0, b_low[2], a1);
-            ret1 = neon.dotq_s32(ret1, b_low[3], a1);
-            ret0 = neon.dotq_s32(ret0, b_high[0], a2);
-            ret1 = neon.dotq_s32(ret1, b_high[1], a2);
-            ret0 = neon.dotq_s32(ret0, b_high[2], a3);
-            ret1 = neon.dotq_s32(ret1, b_high[3], a3);
+            ret0 = neon.dotqS32(ret0, b_low[0], a0);
+            ret1 = neon.dotqS32(ret1, b_low[1], a0);
+            ret0 = neon.dotqS32(ret0, b_low[2], a1);
+            ret1 = neon.dotqS32(ret1, b_low[3], a1);
+            ret0 = neon.dotqS32(ret0, b_high[0], a2);
+            ret1 = neon.dotqS32(ret1, b_high[1], a2);
+            ret0 = neon.dotqS32(ret0, b_high[2], a3);
+            ret1 = neon.dotqS32(ret1, b_high[3], a3);
 
             // Pairwise across the two accumulators, not `ret0 + ret1`.
-            const ret = neon.paddq_s32(ret0, ret1);
+            const ret = neon.paddqS32(ret0, ret1);
 
-            acc = neon.fma_f32(acc, neon.cvt_f32_s32(ret), neon.cvt_f32_f16(ad) * neon.cvt_f32_f16(bd));
+            acc = neon.fmaF32(acc, neon.cvtF32S32(ret), neon.cvtF32F16(ad) * neon.cvtF32F16(bd));
             a_ptr += 1;
             b_ptr += 1;
         }
@@ -163,13 +171,17 @@ pub export fn ggml_gemv_q8_0_4x8_q8_0(n: c_int, s_out: [*]f32, bs: usize, vx: *c
     }
 }
 
+comptime {
+    @export(&ggmlGemmQ804x4Q80, .{ .name = "ggml_gemm_q8_0_4x4_q8_0" });
+}
+
 /// Ports `ggml_gemm_q8_0_4x4_q8_0` (arch/arm/repack.cpp:5388 @cd959bae9).
 ///
 /// Four row accumulators, each fed by `vdotq_laneq_s32` on a different
 /// 32-bit lane of the activation — so one pass over the weights serves all
 /// four rows. The per-row scale is `b_d * a_d[m]` with `a_d[m]` broadcast,
 /// and `vmlaq_f32` folds it in **fused**, like its `_n_` sibling.
-pub export fn ggml_gemm_q8_0_4x4_q8_0(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+pub fn ggmlGemmQ804x4Q80(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
     if (comptime !neon.has_dotprod) return ggml_gemm_q8_0_4x4_q8_0_generic(n, s, bs, vx, vy, nr, nc);
     const nb = @divTrunc(n, 32);
     const ncols_interleaved: c_int = 4;
@@ -187,8 +199,8 @@ pub export fn ggml_gemm_q8_0_4x4_q8_0(n: c_int, s: [*]f32, bs: usize, vx: *const
 
             var l: usize = 0;
             while (l < @as(usize, @intCast(nb))) : (l += 1) {
-                const a_d = neon.cvt_f32_f16(neon.load_f16x4(@ptrCast(&a_ptr[l].d)));
-                const b_d = neon.cvt_f32_f16(neon.load_f16x4(@ptrCast(&b_ptr[l].d)));
+                const a_d = neon.cvtF32F16(neon.loadF16x4(@ptrCast(&a_ptr[l].d)));
+                const b_d = neon.cvtF32F16(neon.loadF16x4(@ptrCast(&b_ptr[l].d)));
 
                 var sumi: [4]i32x4 = @splat(@as(i32x4, @splat(0)));
 
@@ -198,14 +210,14 @@ pub export fn ggml_gemm_q8_0_4x4_q8_0(n: c_int, s: [*]f32, bs: usize, vx: *const
                     const b = load4q(@as([*]const i8, @ptrCast(&b_ptr[l].qs)) + 16 * k_group);
                     for (0..4) |k| {
                         inline for (0..4) |m| {
-                            sumi[m] = neon.dotq_laneq_s32(sumi[m], b[k], a[k], m);
+                            sumi[m] = neon.dotqLaneqS32(sumi[m], b[k], a[k], m);
                         }
                     }
                 }
 
                 inline for (0..4) |m| {
                     const scale = b_d * @as(f32x4, @splat(a_d[m]));
-                    sumf[m] = neon.fma_f32(sumf[m], scale, neon.cvt_f32_s32(sumi[m]));
+                    sumf[m] = neon.fmaF32(sumf[m], scale, neon.cvtF32S32(sumi[m]));
                 }
             }
 

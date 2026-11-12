@@ -11,7 +11,6 @@
 //! `cub::DeviceReduce::Sum`, through `cub_shim.cu` (PLAN.md, Decision 47),
 //! and then `divide_by_count`.
 
-const std = @import("std");
 const impl = @import("../impl.zig");
 const common = @import("common.zig");
 const kernels = @import("kernels.zig");

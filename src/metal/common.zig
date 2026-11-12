@@ -40,11 +40,6 @@ const c = impl.c;
 const Tensor = c.ggml_tensor;
 const CGraph = impl.CGraph;
 
-/// The C `new`s and `delete`s this, and nothing hands it an allocator.
-/// libc's is what a C entry point can reach — the same reasoning as
-/// `backend_reg.zig`, `backend.zig` and `cpu_backend.zig`.
-const allocator = std.heap.c_allocator;
-
 /// Ports `enum ggml_mem_range_type` (ggml-metal-common.h:17 @cd959bae9).
 pub const RangeType = enum(c_int) {
     src = 0,
@@ -80,6 +75,10 @@ fn fwhtSupportedSize(n: i64, max_tg_mem: usize) bool {
     return false;
 }
 
+comptime {
+    @export(&ggmlMetalOpMulMatUseFwht, .{ .name = "ggml_metal_op_mul_mat_use_fwht" });
+}
+
 /// Ports `ggml_metal_op_mul_mat_use_fwht` (ggml-metal-common.cpp:28
 /// @cd959bae9).
 ///
@@ -89,7 +88,7 @@ fn fwhtSupportedSize(n: i64, max_tg_mem: usize) bool {
 /// fall through reaches the generic path, which has no F32-by-F16 kernel.
 /// Since v0.6.0 it takes the device's threadgroup memory, which decides
 /// the widths above 512.
-pub export fn ggml_metal_op_mul_mat_use_fwht(op: *const c.ggml_tensor, max_tg_mem: usize) callconv(.c) bool {
+pub fn ggmlMetalOpMulMatUseFwht(op: *const c.ggml_tensor, max_tg_mem: usize) callconv(.c) bool {
     const src1 = impl.one(c.ggml_tensor, op.src[1]);
     return impl.getOpParamsI32(op, 1) == c.GGML_HINT_SRC0_IS_HADAMARD and
         op.type == c.GGML_TYPE_F32 and
@@ -100,6 +99,10 @@ pub export fn ggml_metal_op_mul_mat_use_fwht(op: *const c.ggml_tensor, max_tg_me
         fwhtSupportedSize(src1.ne[0], max_tg_mem);
 }
 
+comptime {
+    @export(&ggmlMetalOpMulMatUseMm, .{ .name = "ggml_metal_op_mul_mat_use_mm" });
+}
+
 /// Ports `ggml_metal_op_mul_mat_use_mm` (ggml-metal-common.cpp:35 @cd959bae9).
 ///
 /// Whether `MUL_MAT` takes the matrix-matrix kernel rather than a
@@ -107,7 +110,7 @@ pub export fn ggml_metal_op_mul_mat_use_fwht(op: *const c.ggml_tensor, max_tg_me
 /// `supports_op` must agree on, which is why it lives here and not in the
 /// encoder. The matrix-matrix kernel needs simdgroup matrices (A14/M1 and
 /// later).
-pub export fn ggml_metal_op_mul_mat_use_mm(op: *const c.ggml_tensor, has_simdgroup_mm: bool) callconv(.c) bool {
+pub fn ggmlMetalOpMulMatUseMm(op: *const c.ggml_tensor, has_simdgroup_mm: bool) callconv(.c) bool {
     const src0 = impl.one(c.ggml_tensor, op.src[0]);
     const src1 = impl.one(c.ggml_tensor, op.src[1]);
     const ne00 = src0.ne[0];
@@ -118,13 +121,17 @@ pub export fn ggml_metal_op_mul_mat_use_mm(op: *const c.ggml_tensor, has_simdgro
         has_simdgroup_mm and ne00 >= 64 and ne11 > 8;
 }
 
+comptime {
+    @export(&ggmlMetalOpMulMatIdUseMm, .{ .name = "ggml_metal_op_mul_mat_id_use_mm" });
+}
+
 /// Ports `ggml_metal_op_mul_mat_id_use_mm` (ggml-metal-common.cpp:44 @cd959bae9).
 ///
 /// `MUL_MAT_ID`'s counterpart: the matrix-matrix kernel once the batch
 /// (`ne21`, rows of the expert ids) reaches 32 -- and, since v0.7.0, only
 /// for at most 1024 experts, the most the id-map kernel's one threadgroup
 /// (a thread per expert) and its function constant take.
-pub export fn ggml_metal_op_mul_mat_id_use_mm(op: *const c.ggml_tensor, has_simdgroup_mm: bool) callconv(.c) bool {
+pub fn ggmlMetalOpMulMatIdUseMm(op: *const c.ggml_tensor, has_simdgroup_mm: bool) callconv(.c) bool {
     const ne00 = impl.one(c.ggml_tensor, op.src[0]).ne[0];
     const ne02 = impl.one(c.ggml_tensor, op.src[0]).ne[2];
     const ne21 = impl.one(c.ggml_tensor, op.src[2]).ne[1];
@@ -153,18 +160,26 @@ pub const MmaKind = enum(c_int) {
     gen = 2,
 };
 
+comptime {
+    @export(&ggmlMetalMulMvMmaKind, .{ .name = "ggml_metal_mul_mv_mma_kind" });
+}
+
 /// Ports `ggml_metal_mul_mv_mma_kind` (ggml-metal-common.cpp:61 @cd959bae9).
-pub export fn ggml_metal_mul_mv_mma_kind(@"type": c.enum_ggml_type, rt: c_int) callconv(.c) MmaKind {
+pub fn ggmlMetalMulMvMmaKind(@"type": c.enum_ggml_type, rt: c_int) callconv(.c) MmaKind {
     if (@"type" == c.GGML_TYPE_Q4_0 or (@"type" == c.GGML_TYPE_Q8_0 and rt == 1)) {
         return .blk;
     }
     return if (@"type" == c.GGML_TYPE_Q5_K) .q5_k else .gen;
 }
 
+comptime {
+    @export(&ggmlMetalMulMvMmaRt, .{ .name = "ggml_metal_mul_mv_mma_rt" });
+}
+
 /// Ports `ggml_metal_mul_mv_mma_rt` (ggml-metal-common.cpp:68 @cd959bae9):
 /// the `src1` tiles of the few-row MMA kernels -- one 8-row tile, or two
 /// above 8 rows.
-pub export fn ggml_metal_mul_mv_mma_rt(op: *const c.ggml_tensor) callconv(.c) c_int {
+pub fn ggmlMetalMulMvMmaRt(op: *const c.ggml_tensor) callconv(.c) c_int {
     return if (impl.one(c.ggml_tensor, op.src[1]).ne[1] > mma_tile_rows) 2 else 1;
 }
 
@@ -205,22 +220,26 @@ fn mulMvMmaTypeSupported(@"type": c.enum_ggml_type) bool {
     };
 }
 
+comptime {
+    @export(&ggmlMetalMulMvMmaKStep, .{ .name = "ggml_metal_mul_mv_mma_k_step" });
+}
+
 /// Ports `ggml_metal_mul_mv_mma_k_step` (ggml-metal-common.cpp:106
 /// @cd959bae9): the weights of K per simdgroup step of the few-row MMA
 /// kernel for a `src0` type and `rt` `src1` tiles, 0 if none takes the
 /// type.
-pub export fn ggml_metal_mul_mv_mma_k_step(@"type": c.enum_ggml_type, rt: c_int) callconv(.c) i64 {
+pub fn ggmlMetalMulMvMmaKStep(@"type": c.enum_ggml_type, rt: c_int) callconv(.c) i64 {
     if (!mulMvMmaTypeSupported(@"type")) {
         return 0;
     }
-    return if (ggml_metal_mul_mv_mma_kind(@"type", rt) == .blk) c.ggml_blck_size(@"type") else mma_k_chunk;
+    return if (ggmlMetalMulMvMmaKind(@"type", rt) == .blk) c.ggml_blck_size(@"type") else mma_k_chunk;
 }
 
 /// Ports `ggml_metal_mul_mat_mma_type_ok` (ggml-metal-common.cpp:113
 /// @cd959bae9).
 fn mulMatMmaTypeOk(op: *const c.ggml_tensor) bool {
     const src0 = impl.one(c.ggml_tensor, op.src[0]);
-    const step = ggml_metal_mul_mv_mma_k_step(src0.type, ggml_metal_mul_mv_mma_rt(op));
+    const step = ggmlMetalMulMvMmaKStep(src0.type, ggmlMetalMulMvMmaRt(op));
 
     return step > 0 and @rem(src0.ne[0], step) == 0 and src0.nb[0] == c.ggml_type_size(src0.type);
 }
@@ -246,6 +265,10 @@ fn mulMvMmaRowsMin(@"type": c.enum_ggml_type) i64 {
     };
 }
 
+comptime {
+    @export(&ggmlMetalOpMulMatUseMma, .{ .name = "ggml_metal_op_mul_mat_use_mma" });
+}
+
 /// Ports `ggml_metal_op_mul_mat_use_mma` (ggml-metal-common.cpp:143
 /// @cd959bae9).
 ///
@@ -254,7 +277,7 @@ fn mulMvMmaRowsMin(@"type": c.enum_ggml_type) i64 {
 /// is a whole number of K steps. Asked by the encoder and by the fusion
 /// table's `MUL_MAT + ADD` check, so the two agree on when the residual
 /// can be added in the kernel's store.
-pub export fn ggml_metal_op_mul_mat_use_mma(op: *const c.ggml_tensor) callconv(.c) bool {
+pub fn ggmlMetalOpMulMatUseMma(op: *const c.ggml_tensor) callconv(.c) bool {
     const src0 = impl.one(c.ggml_tensor, op.src[0]);
     const src1 = impl.one(c.ggml_tensor, op.src[1]);
 
@@ -270,10 +293,14 @@ pub export fn ggml_metal_op_mul_mat_use_mma(op: *const c.ggml_tensor) callconv(.
         src1.nb[0] == @sizeOf(f32) and src1.nb[1] % 16 == 0 and src1.nb[2] % 16 == 0 and src1.nb[3] % 16 == 0;
 }
 
+comptime {
+    @export(&ggmlMetalOpMulMatMayUseMma, .{ .name = "ggml_metal_op_mul_mat_may_use_mma" });
+}
+
 /// Ports `ggml_metal_op_mul_mat_may_use_mma` (ggml-metal-common.cpp:156
 /// @cd959bae9): the graph-structure half of `use_mma`, which the graph
 /// optimizer can ask before the batch size is known.
-pub export fn ggml_metal_op_mul_mat_may_use_mma(op: *const c.ggml_tensor) callconv(.c) bool {
+pub fn ggmlMetalOpMulMatMayUseMma(op: *const c.ggml_tensor) callconv(.c) bool {
     return mulMvMmaTypeSupported(impl.one(c.ggml_tensor, op.src[0]).type) and
         impl.one(c.ggml_tensor, op.src[1]).type == c.GGML_TYPE_F32;
 }
@@ -287,33 +314,44 @@ pub const MemRanges = struct {
     debug: c_int = 0,
 };
 
+comptime {
+    @export(&ggmlMemRangesInit, .{ .name = "ggml_mem_ranges_init" });
+}
+
 /// Ports `ggml_mem_ranges_init` (ggml-metal-common.cpp:177 @cd959bae9).
 ///
-/// Parameters:
 /// - `debug`: the C's debug level; above 2, every range is logged.
 ///
-/// Return: a new range set, owned by the caller and released with
+/// - Returns: a new range set, owned by the caller and released with
 /// `ggml_mem_ranges_free`.
-pub export fn ggml_mem_ranges_init(debug: c_int) callconv(.c) ?*MemRanges {
+pub fn ggmlMemRangesInit(debug: c_int) callconv(.c) ?*MemRanges {
     // `new` in the C, so a failure terminates rather than returning null.
-    const res = allocator.create(MemRanges) catch impl.abort("out of memory allocating a memory-range set");
+    const res = std.heap.c_allocator.create(MemRanges) catch impl.abort("out of memory allocating a memory-range set");
     res.* = .{ .ranges = .empty, .debug = debug };
     // The C's `reserve(256)`. A failure here alone is not fatal -- the
     // list grows on demand -- so unlike the rest of this file it is
-    // allowed to pass.
-    res.ranges.ensureTotalCapacity(allocator, 256) catch {};
+    // allowed to pass, and only noted.
+    res.ranges.ensureTotalCapacity(std.heap.c_allocator, 256) catch |err| std.log.debug("reserve(256) failed: {}", .{err});
     return res;
 }
 
+comptime {
+    @export(&ggmlMemRangesFree, .{ .name = "ggml_mem_ranges_free" });
+}
+
 /// Ports `ggml_mem_ranges_free` (ggml-metal-common.cpp:186 @cd959bae9).
-pub export fn ggml_mem_ranges_free(mrs: ?*MemRanges) callconv(.c) void {
+pub fn ggmlMemRangesFree(mrs: ?*MemRanges) callconv(.c) void {
     const m = mrs orelse return;
-    m.ranges.deinit(allocator);
-    allocator.destroy(m);
+    m.ranges.deinit(std.heap.c_allocator);
+    std.heap.c_allocator.destroy(m);
+}
+
+comptime {
+    @export(&ggmlMemRangesReset, .{ .name = "ggml_mem_ranges_reset" });
 }
 
 /// Ports `ggml_mem_ranges_reset` (ggml-metal-common.cpp:190 @cd959bae9).
-pub export fn ggml_mem_ranges_reset(mrs: *MemRanges) callconv(.c) void {
+pub fn ggmlMemRangesReset(mrs: *MemRanges) callconv(.c) void {
     mrs.ranges.clearRetainingCapacity();
 }
 
@@ -329,7 +367,7 @@ pub export fn ggml_mem_ranges_reset(mrs: *MemRanges) callconv(.c) void {
 /// conflict found", which silently yields a *different graph order* and a
 /// gate that reports a porting bug.
 fn addRange(mrs: *MemRanges, mr: MemRange) bool {
-    mrs.ranges.append(allocator, mr) catch impl.abort("out of memory tracking a memory range");
+    mrs.ranges.append(std.heap.c_allocator, mr) catch impl.abort("out of memory tracking a memory range");
     return true;
 }
 
@@ -353,7 +391,7 @@ fn rangeFromTensor(tensor_in: *const Tensor, pt: RangeType) MemRange {
         return .{
             .pb = @intFromPtr(tensor.buffer),
             .p0 = base,
-            .p1 = base + backend.ggml_backend_buft_get_alloc_size(tensor.buffer.*.buft, tensor),
+            .p1 = base + backend.ggmlBackendBuftGetAllocSize(tensor.buffer.*.buft, tensor),
             .pt = pt,
         };
     }
@@ -402,17 +440,20 @@ fn addDst(mrs: *MemRanges, tensor: *const Tensor) bool {
     return addRange(mrs, mr);
 }
 
+comptime {
+    @export(&ggmlMemRangesAdd, .{ .name = "ggml_mem_ranges_add" });
+}
+
 /// Ports the tensor overload of `ggml_mem_ranges_add`
 /// (ggml-metal-common.cpp:266 @cd959bae9): every source, then the
 /// destination.
 ///
-/// Parameters:
 /// - `mrs`: the range set to extend.
 /// - `tensor`: the node whose sources and destination are tracked.
 ///
-/// Return: whether the destination range was added. The C ignores the
+/// - Returns: whether the destination range was added. The C ignores the
 /// sources' results here, and so does this.
-pub export fn ggml_mem_ranges_add(mrs: *MemRanges, tensor: *const Tensor) callconv(.c) bool {
+pub fn ggmlMemRangesAdd(mrs: *MemRanges, tensor: *const Tensor) callconv(.c) bool {
     for (0..c.GGML_MAX_SRC) |i| {
         if (tensor.src[i]) |src| _ = addSrc(mrs, src);
     }
@@ -465,16 +506,19 @@ fn checkDst(mrs: *MemRanges, tensor: *const Tensor) bool {
     return checkRange(mrs, rangeFromTensorDst(tensor));
 }
 
+comptime {
+    @export(&ggmlMemRangesCheck, .{ .name = "ggml_mem_ranges_check" });
+}
+
 /// Ports the tensor overload of `ggml_mem_ranges_check`
 /// (ggml-metal-common.cpp:327 @cd959bae9).
 ///
-/// Parameters:
 /// - `mrs`: the ranges already in the concurrent set.
 /// - `tensor`: the node being considered for it.
 ///
-/// Return: false when a new source range overlaps an existing destination
+/// - Returns: false when a new source range overlaps an existing destination
 /// range, or a new destination range overlaps any existing range.
-pub export fn ggml_mem_ranges_check(mrs: *MemRanges, tensor: *const Tensor) callconv(.c) bool {
+pub fn ggmlMemRangesCheck(mrs: *MemRanges, tensor: *const Tensor) callconv(.c) bool {
     for (0..c.GGML_MAX_SRC) |i| {
         if (tensor.src[i]) |src| {
             if (!checkSrc(mrs, src)) return false;
@@ -611,11 +655,10 @@ fn hSafe(op: c.enum_ggml_op) bool {
 /// Ports `ggml_metal_graph_optimize_reorder` (ggml-metal-common.cpp:373
 /// @cd959bae9).
 ///
-/// Parameters:
 /// - `arena`: owns the returned permutation and the scratch `used` set.
 /// - `nodes`: the fused nodes, in graph order.
 ///
-/// Return: the order to visit them in, as indices into `nodes`. Borrowed
+/// - Returns: the order to visit them in, as indices into `nodes`. Borrowed
 /// from `arena`.
 fn reorder(arena: std.mem.Allocator, nodes: []const NodeInfo) []const c_int {
     const n: c_int = @intCast(nodes.len);
@@ -627,13 +670,13 @@ fn reorder(arena: std.mem.Allocator, nodes: []const NodeInfo) []const c_int {
     @memset(used, false);
 
     // the memory ranges for the set of currently concurrent nodes
-    const mrs0 = ggml_mem_ranges_init(0).?;
-    defer ggml_mem_ranges_free(mrs0);
+    const mrs0 = ggmlMemRangesInit(0).?;
+    defer ggmlMemRangesFree(mrs0);
 
     // the memory ranges for the set of nodes that haven't been processed
     // yet, when looking forward for a node to reorder
-    const mrs1 = ggml_mem_ranges_init(0).?;
-    defer ggml_mem_ranges_free(mrs1);
+    const mrs1 = ggmlMemRangesInit(0).?;
+    defer ggmlMemRangesFree(mrs1);
 
     var j0: c_int = 0;
     while (j0 < n) : (j0 += 1) {
@@ -648,7 +691,7 @@ fn reorder(arena: std.mem.Allocator, nodes: []const NodeInfo) []const c_int {
         if (!node0.isEmpty() and !hCheck(mrs0, node0)) {
             // the ranges of the nodes not yet processed; a node that is
             // not concurrent with these cannot be moved across them
-            ggml_mem_ranges_reset(mrs1);
+            ggmlMemRangesReset(mrs1);
             _ = hAdd(mrs1, node0);
 
             // that many nodes forward to search for a concurrent node
@@ -678,7 +721,7 @@ fn reorder(arena: std.mem.Allocator, nodes: []const NodeInfo) []const c_int {
             }
 
             // finalize the concurrent set and begin a new one
-            ggml_mem_ranges_reset(mrs0);
+            ggmlMemRangesReset(mrs0);
         }
 
         // expand the concurrent set with the current node
@@ -689,6 +732,10 @@ fn reorder(arena: std.mem.Allocator, nodes: []const NodeInfo) []const c_int {
     return res.items;
 }
 
+comptime {
+    @export(&ggmlGraphOptimize, .{ .name = "ggml_graph_optimize" });
+}
+
 /// Ports `ggml_graph_optimize` (ggml-metal-common.cpp:562 @cd959bae9).
 ///
 /// Fuses what can be fused, reorders the fused nodes for concurrency, then
@@ -697,15 +744,14 @@ fn reorder(arena: std.mem.Allocator, nodes: []const NodeInfo) []const c_int {
 /// runs are packed is the fusion table's answer (`fusion.zig`), the same
 /// table the op encoders consult.
 ///
-/// Parameters:
 /// - `gf`: the graph, reordered in place. `n_nodes` does not change.
-pub export fn ggml_graph_optimize(gf: *CGraph) callconv(.c) void {
+pub fn ggmlGraphOptimize(gf: *CGraph) callconv(.c) void {
     const n = gf.n_nodes;
 
     // The C's `std::vector<node_info>` and its nested `fused` vectors, and
     // the permutation. All of it dies at the end of this call, so one
     // arena replaces four vectors' worth of individual frees.
-    var arena_state = std.heap.ArenaAllocator.init(allocator);
+    var arena_state = std.heap.ArenaAllocator.init(std.heap.c_allocator);
     defer arena_state.deinit();
     const arena = arena_state.allocator();
 
@@ -722,7 +768,7 @@ pub export fn ggml_graph_optimize(gf: *CGraph) callconv(.c) void {
     while (i < n) : (i += 1) {
         var node: NodeInfo = .{ .node = gf.nodes[@intCast(i)].? };
 
-        const f = fusion.ggml_metal_fusion_max(gf, i);
+        const f = fusion.ggmlMetalFusionMax(gf, i);
 
         // add the fused tensors into the node info so we can unfuse them later
         var k: c_int = 1;
@@ -760,21 +806,21 @@ test {
 }
 
 test "a range set starts empty and admits anything" {
-    const mrs = ggml_mem_ranges_init(0).?;
-    defer ggml_mem_ranges_free(mrs);
+    const mrs = ggmlMemRangesInit(0).?;
+    defer ggmlMemRangesFree(mrs);
     try std.testing.expectEqual(@as(usize, 0), mrs.ranges.items.len);
 
     // Two unallocated tensors get distinct ids, so they never conflict.
     var a = std.mem.zeroes(Tensor);
     var b = std.mem.zeroes(Tensor);
-    try std.testing.expect(ggml_mem_ranges_check(mrs, &a));
-    try std.testing.expect(ggml_mem_ranges_add(mrs, &a));
-    try std.testing.expect(ggml_mem_ranges_check(mrs, &b));
+    try std.testing.expect(ggmlMemRangesCheck(mrs, &a));
+    try std.testing.expect(ggmlMemRangesAdd(mrs, &a));
+    try std.testing.expect(ggmlMemRangesCheck(mrs, &b));
 }
 
 test "a destination conflicts with itself, two sources do not" {
-    const mrs = ggml_mem_ranges_init(0).?;
-    defer ggml_mem_ranges_free(mrs);
+    const mrs = ggmlMemRangesInit(0).?;
+    defer ggmlMemRangesFree(mrs);
 
     var t = std.mem.zeroes(Tensor);
     var user = std.mem.zeroes(Tensor);
@@ -785,20 +831,20 @@ test "a destination conflicts with itself, two sources do not" {
     try std.testing.expect(!checkSrc(mrs, &t));
 
     // The same two source ranges are allowed to intersect.
-    ggml_mem_ranges_reset(mrs);
+    ggmlMemRangesReset(mrs);
     try std.testing.expect(addSrc(mrs, &t));
     try std.testing.expect(checkSrc(mrs, &t));
 }
 
 test "reset keeps the capacity the C reserved" {
-    const mrs = ggml_mem_ranges_init(0).?;
-    defer ggml_mem_ranges_free(mrs);
+    const mrs = ggmlMemRangesInit(0).?;
+    defer ggmlMemRangesFree(mrs);
     const cap = mrs.ranges.capacity;
     try std.testing.expect(cap >= 256);
 
     var t = std.mem.zeroes(Tensor);
     _ = addDst(mrs, &t);
-    ggml_mem_ranges_reset(mrs);
+    ggmlMemRangesReset(mrs);
     try std.testing.expectEqual(@as(usize, 0), mrs.ranges.items.len);
     try std.testing.expectEqual(cap, mrs.ranges.capacity);
 }

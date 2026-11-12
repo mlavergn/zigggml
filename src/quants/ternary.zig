@@ -47,12 +47,16 @@ inline fn lround(v: f32) i32 {
     return impl.truncTo(i32, @round(v));
 }
 
+comptime {
+    @export(&quantizeRowTq10Ref, .{ .name = "quantize_row_tq1_0_ref" });
+}
+
 /// Ports `quantize_row_tq1_0_ref` (ggml-quants.c:2332 @cd959bae9).
 ///
 /// Three passes over the block because the trit count does not divide evenly:
 /// 32 bytes at a time while a full 5x32 span remains, then 16 at a time, then
 /// the four-trit tail in `qh`.
-pub export fn quantize_row_tq1_0_ref(x_in: [*c]const f32, y: [*c]blocks.TQ1_0, k: i64) void {
+pub fn quantizeRowTq10Ref(x_in: [*c]const f32, y: [*c]blocks.TQ1_0, k: i64) callconv(.c) void {
     std.debug.assert(@rem(k, QK_K) == 0);
     const nb: usize = @intCast(@divExact(k, QK_K));
     var x = x_in;
@@ -119,8 +123,12 @@ inline fn ceilDiv243(q: u8) u8 {
     return @intCast((@as(u16, q) * 256 + (243 - 1)) / 243);
 }
 
+comptime {
+    @export(&dequantizeRowTq10, .{ .name = "dequantize_row_tq1_0" });
+}
+
 /// Ports `dequantize_row_tq1_0` (ggml-quants.c:2444 @cd959bae9).
-pub export fn dequantize_row_tq1_0(x: [*c]const blocks.TQ1_0, y_in: [*c]f32, k: i64) void {
+pub fn dequantizeRowTq10(x: [*c]const blocks.TQ1_0, y_in: [*c]f32, k: i64) callconv(.c) void {
     std.debug.assert(@rem(k, QK_K) == 0);
     const nb: usize = @intCast(@divExact(k, QK_K));
     var y = y_in;
@@ -168,8 +176,12 @@ pub export fn dequantize_row_tq1_0(x: [*c]const blocks.TQ1_0, y_in: [*c]f32, k: 
     }
 }
 
+comptime {
+    @export(&quantizeRowTq20Ref, .{ .name = "quantize_row_tq2_0_ref" });
+}
+
 /// Ports `quantize_row_tq2_0_ref` (ggml-quants.c:2398 @cd959bae9).
-pub export fn quantize_row_tq2_0_ref(x_in: [*c]const f32, y: [*c]blocks.TQ2_0, k: i64) void {
+pub fn quantizeRowTq20Ref(x_in: [*c]const f32, y: [*c]blocks.TQ2_0, k: i64) callconv(.c) void {
     std.debug.assert(@rem(k, QK_K) == 0);
     const nb: usize = @intCast(@divExact(k, QK_K));
     var x = x_in;
@@ -200,8 +212,12 @@ pub export fn quantize_row_tq2_0_ref(x_in: [*c]const f32, y: [*c]blocks.TQ2_0, k
     }
 }
 
+comptime {
+    @export(&dequantizeRowTq20, .{ .name = "dequantize_row_tq2_0" });
+}
+
 /// Ports `dequantize_row_tq2_0` (ggml-quants.c:2483 @cd959bae9).
-pub export fn dequantize_row_tq2_0(x: [*c]const blocks.TQ2_0, y_in: [*c]f32, k: i64) void {
+pub fn dequantizeRowTq20(x: [*c]const blocks.TQ2_0, y_in: [*c]f32, k: i64) callconv(.c) void {
     std.debug.assert(@rem(k, QK_K) == 0);
     const nb: usize = @intCast(@divExact(k, QK_K));
     var y = y_in;
@@ -252,7 +268,7 @@ fn checkTernary(
 
         const used = g.row_size * t.n_rows;
         std.testing.expectEqual(g.ref.?, t.fnv(buf[0..used])) catch |e| {
-            std.debug.print("{s}: quantize differs on pattern '{s}'\n", .{ name, pattern.name() });
+            std.log.warn("{s}: quantize differs on pattern '{s}'", .{ name, pattern.name() });
             return e;
         };
 
@@ -260,18 +276,18 @@ fn checkTernary(
         @memset(&out, 0);
         dequant(@ptrCast(@alignCast(&buf)), &out, @intCast(t.n_elem));
         std.testing.expectEqual(g.deq.?, t.fnv(std.mem.sliceAsBytes(out[0..]))) catch |e| {
-            std.debug.print("{s}: dequantize differs on pattern '{s}'\n", .{ name, pattern.name() });
+            std.log.warn("{s}: dequantize differs on pattern '{s}'", .{ name, pattern.name() });
             return e;
         };
     }
 }
 
 test "tq1_0 matches the C on every pattern" {
-    try checkTernary("TQ1_0", blocks.TQ1_0, quantize_row_tq1_0_ref, dequantize_row_tq1_0);
+    try checkTernary("TQ1_0", blocks.TQ1_0, quantizeRowTq10Ref, dequantizeRowTq10);
 }
 
 test "tq2_0 matches the C on every pattern" {
-    try checkTernary("TQ2_0", blocks.TQ2_0, quantize_row_tq2_0_ref, dequantize_row_tq2_0);
+    try checkTernary("TQ2_0", blocks.TQ2_0, quantizeRowTq20Ref, dequantizeRowTq20);
 }
 
 test "a ternary round trip yields only -d, 0 and +d" {
@@ -286,10 +302,10 @@ test "a ternary round trip yields only -d, 0 and +d" {
 
     var b: blocks.TQ2_0 = undefined;
     @memset(std.mem.asBytes(&b), 0);
-    quantize_row_tq2_0_ref(&src, @ptrCast(&b), QK_K);
+    quantizeRowTq20Ref(&src, @ptrCast(&b), QK_K);
 
     var out: [QK_K]f32 = undefined;
-    dequantize_row_tq2_0(@ptrCast(&b), &out, QK_K);
+    dequantizeRowTq20(@ptrCast(&b), &out, QK_K);
 
     const d = unfp16(b.d);
     for (out) |v| {

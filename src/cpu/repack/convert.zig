@@ -63,7 +63,7 @@ inline fn copyXor(comptime W: type, dst: []u8, src: []const u8, mask: W) void {
 // The interleavers
 
 /// Ports `make_block_q8_0x4` (ggml-cpu/repack.cpp:3022 @cd959bae9).
-fn makeBlockQ8_0x4(in: *const [4]src_blocks.Q8_0, blck_size_interleave: u32) blocks.block_q8_0x4 {
+fn makeBlockQ80x4(in: *const [4]src_blocks.Q8_0, blck_size_interleave: u32) blocks.block_q8_0x4 {
     var out: blocks.block_q8_0x4 = undefined;
 
     for (0..4) |i| out.d[i] = in[i].d;
@@ -89,7 +89,7 @@ fn makeBlockQ8_0x4(in: *const [4]src_blocks.Q8_0, blck_size_interleave: u32) blo
 /// `packed_lo`, rows 2 and 3 into `packed_hi`, low nibble first -- in the
 /// order the `4x4` kernels' `bits_lo`/`bits_hi` read them. At 8 it copies
 /// each source byte whole, the four rows round-robin.
-fn makeBlockQ1_0x4(in: *const [4]src_blocks.Q1_0, blck_size_interleave: u32) blocks.block_q1_0x4 {
+fn makeBlockQ10x4(in: *const [4]src_blocks.Q1_0, blck_size_interleave: u32) blocks.block_q1_0x4 {
     var out: blocks.block_q1_0x4 = undefined;
 
     for (0..4) |i| out.d[i] = in[i].d;
@@ -133,7 +133,7 @@ fn makeBlockQ1_0x4(in: *const [4]src_blocks.Q1_0, blck_size_interleave: u32) blo
 }
 
 /// Ports `make_block_q4_0x4` (ggml-cpu/repack.cpp:3083 @cd959bae9).
-fn makeBlockQ4_0x4(in: *const [4]src_blocks.Q4_0, blck_size_interleave: u32) blocks.block_q4_0x4 {
+fn makeBlockQ40x4(in: *const [4]src_blocks.Q4_0, blck_size_interleave: u32) blocks.block_q4_0x4 {
     var out: blocks.block_q4_0x4 = undefined;
 
     for (0..4) |i| out.d[i] = in[i].d;
@@ -164,7 +164,7 @@ fn makeBlockQ4_0x4(in: *const [4]src_blocks.Q4_0, blck_size_interleave: u32) blo
 }
 
 /// Ports `make_block_q4_0x8` (ggml-cpu/repack.cpp:3128 @cd959bae9).
-fn makeBlockQ4_0x8(in: *const [8]src_blocks.Q4_0, blck_size_interleave: u32) blocks.block_q4_0x8 {
+fn makeBlockQ40x8(in: *const [8]src_blocks.Q4_0, blck_size_interleave: u32) blocks.block_q4_0x8 {
     var out: blocks.block_q4_0x8 = undefined;
 
     for (0..8) |i| out.d[i] = in[i].d;
@@ -227,7 +227,7 @@ inline fn packTwelve(dst: *[12]u8, s: *const [8]u8, m: *const [8]u8) void {
 }
 
 /// Ports `make_block_q4_Kx8` (ggml-cpu/repack.cpp:3177 @cd959bae9).
-fn makeBlockQ4_Kx8(in: *const [8]src_blocks.Q4_K, blck_size_interleave: u32) blocks.block_q4_Kx8 {
+fn makeBlockQ4Kx8(in: *const [8]src_blocks.Q4_K, blck_size_interleave: u32) blocks.block_q4_Kx8 {
     var out: blocks.block_q4_Kx8 = undefined;
 
     for (0..8) |i| out.d[i] = in[i].d;
@@ -250,7 +250,7 @@ fn makeBlockQ4_Kx8(in: *const [8]src_blocks.Q4_K, blck_size_interleave: u32) blo
 }
 
 /// Ports `make_block_q2_Kx8` (ggml-cpu/repack.cpp:3306 @cd959bae9).
-fn makeBlockQ2_Kx8(in: *const [8]src_blocks.Q2_K, blck_size_interleave: u32) blocks.block_q2_Kx8 {
+fn makeBlockQ2Kx8(in: *const [8]src_blocks.Q2_K, blck_size_interleave: u32) blocks.block_q2_Kx8 {
     var out: blocks.block_q2_Kx8 = undefined;
 
     for (0..8) |i| out.d[i] = in[i].d;
@@ -276,7 +276,7 @@ fn makeBlockQ2_Kx8(in: *const [8]src_blocks.Q2_K, blck_size_interleave: u32) blo
 }
 
 /// Ports `make_block_q5_Kx8` (ggml-cpu/repack.cpp:3348 @cd959bae9).
-fn makeBlockQ5_Kx8(in: *const [8]src_blocks.Q5_K, blck_size_interleave: u32) blocks.block_q5_Kx8 {
+fn makeBlockQ5Kx8(in: *const [8]src_blocks.Q5_K, blck_size_interleave: u32) blocks.block_q5_Kx8 {
     var out: blocks.block_q5_Kx8 = undefined;
 
     for (0..8) |i| out.d[i] = in[i].d;
@@ -308,7 +308,7 @@ fn makeBlockQ5_Kx8(in: *const [8]src_blocks.Q5_K, blck_size_interleave: u32) blo
 }
 
 /// Ports `make_block_q6_Kx8` (ggml-cpu/repack.cpp:3433 @cd959bae9).
-fn makeBlockQ6_Kx8(in: *const [8]src_blocks.Q6_K, blck_size_interleave: u32) blocks.block_q6_Kx8 {
+fn makeBlockQ6Kx8(in: *const [8]src_blocks.Q6_K, blck_size_interleave: u32) blocks.block_q6_Kx8 {
     var out: blocks.block_q6_Kx8 = undefined;
     const n_blocks = 8;
 
@@ -437,7 +437,6 @@ fn makeBlockMxfp4x8(in: *const [8]src_blocks.MXFP4, blck_size_interleave: u32) b
 
 /// The shape all twelve `repack_*_to_*_bl` functions share.
 ///
-/// Parameters:
 /// - `Src`: the stored block type.
 /// - `Dst`: the interleaved block type.
 /// - `rows`: `nrows_interleaved` — how many rows one `Dst` holds.
@@ -449,7 +448,7 @@ fn makeBlockMxfp4x8(in: *const [8]src_blocks.MXFP4, blck_size_interleave: u32) b
 ///   it; the other nine have it.
 /// - `make`: the interleaver.
 ///
-/// Return: 0, or -1 when the tensor's shape cannot be interleaved — which
+/// - Returns: 0, or -1 when the tensor's shape cannot be interleaved — which
 /// is how `ggml_repack_get_optimal_repack_type` learns a weight is not a
 /// candidate, so it is a value and not an error.
 fn Repacker(
@@ -493,28 +492,28 @@ fn Repacker(
 
 /// Ports `repack_q1_0_to_q1_0_4_bl` (ggml-cpu/repack.cpp:3853 @cd959bae9),
 /// one of the three without the `t->ne[0] % 8` guard.
-pub const repackQ1_0toQ1_0_4 = Repacker(src_blocks.Q1_0, blocks.block_q1_0x4, 4, QK1_0, false, makeBlockQ1_0x4).run;
+pub const repackQ1_0toQ1_0_4 = Repacker(src_blocks.Q1_0, blocks.block_q1_0x4, 4, QK1_0, false, makeBlockQ10x4).run;
 
 /// Ports `repack_q4_0_to_q4_0_4_bl` (ggml-cpu/repack.cpp:3541 @cd959bae9).
-pub const repackQ4_0toQ4_0_4 = Repacker(src_blocks.Q4_0, blocks.block_q4_0x4, 4, QK4_0, true, makeBlockQ4_0x4).run;
+pub const repackQ4_0toQ4_0_4 = Repacker(src_blocks.Q4_0, blocks.block_q4_0x4, 4, QK4_0, true, makeBlockQ40x4).run;
 
 /// Ports `repack_q4_0_to_q4_0_8_bl` (ggml-cpu/repack.cpp:3790 @cd959bae9).
-pub const repackQ4_0toQ4_0_8 = Repacker(src_blocks.Q4_0, blocks.block_q4_0x8, 8, QK4_0, true, makeBlockQ4_0x8).run;
+pub const repackQ4_0toQ4_0_8 = Repacker(src_blocks.Q4_0, blocks.block_q4_0x8, 8, QK4_0, true, makeBlockQ40x8).run;
 
 /// Ports `repack_q4_K_to_q4_K_8_bl` (ggml-cpu/repack.cpp:3572 @cd959bae9).
-pub const repackQ4_KtoQ4_K_8 = Repacker(src_blocks.Q4_K, blocks.block_q4_Kx8, 8, QK_K, true, makeBlockQ4_Kx8).run;
+pub const repackQ4_KtoQ4_K_8 = Repacker(src_blocks.Q4_K, blocks.block_q4_Kx8, 8, QK_K, true, makeBlockQ4Kx8).run;
 
 /// Ports `repack_q2_K_to_q2_K_8_bl` (ggml-cpu/repack.cpp:3633 @cd959bae9).
-pub const repackQ2_KtoQ2_K_8 = Repacker(src_blocks.Q2_K, blocks.block_q2_Kx8, 8, QK_K, true, makeBlockQ2_Kx8).run;
+pub const repackQ2_KtoQ2_K_8 = Repacker(src_blocks.Q2_K, blocks.block_q2_Kx8, 8, QK_K, true, makeBlockQ2Kx8).run;
 
 /// Ports `repack_q5_K_to_q5_K_8_bl` (ggml-cpu/repack.cpp:3729 @cd959bae9).
-pub const repackQ5_KtoQ5_K_8 = Repacker(src_blocks.Q5_K, blocks.block_q5_Kx8, 8, QK_K, true, makeBlockQ5_Kx8).run;
+pub const repackQ5_KtoQ5_K_8 = Repacker(src_blocks.Q5_K, blocks.block_q5_Kx8, 8, QK_K, true, makeBlockQ5Kx8).run;
 
 /// Ports `repack_q6_K_to_q6_K_8_bl` (ggml-cpu/repack.cpp:3761 @cd959bae9).
-pub const repackQ6_KtoQ6_K_8 = Repacker(src_blocks.Q6_K, blocks.block_q6_Kx8, 8, QK_K, true, makeBlockQ6_Kx8).run;
+pub const repackQ6_KtoQ6_K_8 = Repacker(src_blocks.Q6_K, blocks.block_q6_Kx8, 8, QK_K, true, makeBlockQ6Kx8).run;
 
 /// Ports `repack_q8_0_to_q8_0_4_bl` (ggml-cpu/repack.cpp:3821 @cd959bae9).
-pub const repackQ8_0toQ8_0_4 = Repacker(src_blocks.Q8_0, blocks.block_q8_0x4, 4, QK8_0, true, makeBlockQ8_0x4).run;
+pub const repackQ8_0toQ8_0_4 = Repacker(src_blocks.Q8_0, blocks.block_q8_0x4, 4, QK8_0, true, makeBlockQ80x4).run;
 
 /// Ports `repack_iq4_nl_to_iq4_nl_4_bl` (ggml-cpu/repack.cpp:3974 @cd959bae9).
 pub const repackIq4NltoIq4Nl_4 = Repacker(src_blocks.IQ4_NL, blocks.block_iq4_nlx4, 4, QK4_NL, true, makeBlockIq4NlX4).run;
@@ -558,7 +557,7 @@ test "the q4_0 interleave flips every nibble's sign bias" {
         b.d = @intCast(i);
         @memset(&b.qs, 0x00);
     }
-    const out = makeBlockQ4_0x4(&in, 8);
+    const out = makeBlockQ40x4(&in, 8);
     // 0x00 ^ 0x88 == 0x88: both nibbles move from -8 to 0.
     for (out.qs) |v| try std.testing.expectEqual(@as(i8, @bitCast(@as(u8, 0x88))), v);
 }

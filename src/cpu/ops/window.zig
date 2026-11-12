@@ -80,8 +80,12 @@ fn winPartF32(params: *const ComputeParams, dst: *Tensor) void {
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardWinPart, .{ .name = "ggml_compute_forward_win_part" });
+}
+
 /// Ports `ggml_compute_forward_win_part` (ops.cpp:10296 @cd959bae9).
-pub export fn ggml_compute_forward_win_part(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardWinPart(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
 
     switch (src0.type) {
@@ -135,8 +139,12 @@ fn winUnpartF32(params: *const ComputeParams, dst: *Tensor) void {
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardWinUnpart, .{ .name = "ggml_compute_forward_win_unpart" });
+}
+
 /// Ports `ggml_compute_forward_win_unpart` (ops.cpp:10357 @cd959bae9).
-pub export fn ggml_compute_forward_win_unpart(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardWinUnpart(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
 
     switch (src0.type) {
@@ -176,8 +184,12 @@ fn getRelPosF16(params: *const ComputeParams, dst: *Tensor) void {
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardGetRelPos, .{ .name = "ggml_compute_forward_get_rel_pos" });
+}
+
 /// Ports `ggml_compute_forward_get_rel_pos` (ops.cpp:10551 @cd959bae9).
-pub export fn ggml_compute_forward_get_rel_pos(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardGetRelPos(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
 
     switch (src0.type) {
@@ -200,7 +212,7 @@ fn addRelPosF32(params: *const ComputeParams, dst: *Tensor) void {
             const ss: [*]const u8 = @ptrCast(src0.data.?);
             @memcpy(dd[0..n], ss[0..n]);
         }
-        threading.ggml_barrier(@ptrCast(@alignCast(params.threadpool.?)));
+        threading.ggmlBarrier(@ptrCast(@alignCast(params.threadpool.?)));
     }
     // ref: https://github.com/facebookresearch/segment-anything/blob/main/segment_anything/modeling/image_encoder.py#L357-L359
 
@@ -253,8 +265,12 @@ fn addRelPosF32(params: *const ComputeParams, dst: *Tensor) void {
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardAddRelPos, .{ .name = "ggml_compute_forward_add_rel_pos" });
+}
+
 /// Ports `ggml_compute_forward_add_rel_pos` (ops.cpp:10633 @cd959bae9).
-pub export fn ggml_compute_forward_add_rel_pos(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardAddRelPos(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
 
     switch (src0.type) {

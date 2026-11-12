@@ -51,19 +51,19 @@ inline fn colScaleGemv(comptime B: type, b: *const B) m256 {
     if (B == blocks.block_mxfp4x8) {
         // Load 8 E8M0 exponents and convert to float via LUT, rearranged to
         // match the fp16 path's order.
-        return avx.mm256_set_ps(.{
+        return avx.mm256SetPs(.{
             e8m0(b.e[7]), e8m0(b.e[3]), e8m0(b.e[6]), e8m0(b.e[2]),
             e8m0(b.e[5]), e8m0(b.e[1]), e8m0(b.e[4]), e8m0(b.e[0]),
         });
     }
-    const changemask = avx.mm_set_epi8(.{ 15, 14, 7, 6, 13, 12, 5, 4, 11, 10, 3, 2, 9, 8, 1, 0 });
+    const changemask = avx.mmSetEpi8(.{ 15, 14, 7, 6, 13, 12, 5, 4, 11, 10, 3, 2, 9, 8, 1, 0 });
     return common.f32cx8RearrangeLoad(&b.d, changemask);
 }
 
 /// The column scales in plain order, as the gemm wants them.
 inline fn colScaleGemm(comptime B: type, b: *const B) m256 {
     if (B == blocks.block_mxfp4x8) {
-        return avx.mm256_set_ps(.{
+        return avx.mm256SetPs(.{
             e8m0(b.e[7]), e8m0(b.e[6]), e8m0(b.e[5]), e8m0(b.e[4]),
             e8m0(b.e[3]), e8m0(b.e[2]), e8m0(b.e[1]), e8m0(b.e[0]),
         });
@@ -78,9 +78,9 @@ inline fn e8m0(x: u8) f32 {
 
 /// The nibbles of `raw` through the table: low nibbles, or high with `hi`.
 inline fn lut(signextendlut: m256i, raw: m256i, comptime hi: bool) m256i {
-    const m4b = avx.mm256_set1_epi8(0x0F);
-    const v = if (hi) avx.mm256_srli_epi16(raw, 4) else raw;
-    return avx.mm256_shuffle_epi8(signextendlut, avx.mm256_and_si256(v, m4b));
+    const m4b = avx.mm256Set1Epi8(0x0F);
+    const v = if (hi) avx.mm256SrliEpi16(raw, 4) else raw;
+    return avx.mm256ShuffleEpi8(signextendlut, avx.mm256AndSi256(v, m4b));
 }
 
 /// Ports `gemv_q4_b32_8x8_q8_0_lut_avx` (arch/x86/repack.cpp:522 @cd959bae9).
@@ -90,7 +90,7 @@ fn gemvLut(comptime B: type, n: c_int, s: [*]f32, bs: usize, vx: *const anyopaqu
 
     _ = bs;
 
-    const finalpermutemask = avx.mm256_set_epi32(.{ 7, 5, 3, 1, 6, 4, 2, 0 });
+    const finalpermutemask = avx.mm256SetEpi32(.{ 7, 5, 3, 1, 6, 4, 2, 0 });
 
     const b_nb: usize = @intCast(@divTrunc(n, 32));
 
@@ -108,15 +108,15 @@ fn gemvLut(comptime B: type, n: c_int, s: [*]f32, bs: usize, vx: *const anyopaqu
             const b_ptr = b_ptr_start + x * b_nb;
 
             // Master FP accumulator
-            var acc_row = avx.mm256_setzero_ps();
+            var acc_row = avx.mm256SetzeroPs();
 
             for (0..nb) |b| {
                 const qs: [*]const u8 = @ptrCast(&b_ptr[b].qs);
                 // Load 8 blocks of 32 interleaved as 8 bytes (B0 - B7)
-                const rhs_raw_vec_0123_0 = avx.mm256_loadu_si256(qs);
-                const rhs_raw_vec_4567_0 = avx.mm256_loadu_si256(qs + 32);
-                const rhs_raw_vec_0123_1 = avx.mm256_loadu_si256(qs + 64);
-                const rhs_raw_vec_4567_1 = avx.mm256_loadu_si256(qs + 96);
+                const rhs_raw_vec_0123_0 = avx.mm256LoaduSi256(qs);
+                const rhs_raw_vec_4567_0 = avx.mm256LoaduSi256(qs + 32);
+                const rhs_raw_vec_0123_1 = avx.mm256LoaduSi256(qs + 64);
+                const rhs_raw_vec_4567_1 = avx.mm256LoaduSi256(qs + 96);
 
                 // 4-bit -> 8-bit - Sign is maintained
                 const rhs_vec_0123_0 = lut(signextendlut, rhs_raw_vec_0123_0, false);
@@ -133,35 +133,35 @@ fn gemvLut(comptime B: type, n: c_int, s: [*]f32, bs: usize, vx: *const anyopaqu
                 const col_scale_f32 = colScaleGemv(B, &b_ptr[b]);
 
                 // Load and convert to FP32 scale from block_q8_0
-                const row_scale_f32 = avx.mm256_set1_ps(common.f(a_ptr[b].d));
+                const row_scale_f32 = avx.mm256Set1Ps(common.f(a_ptr[b].d));
 
                 // The block's values 16 bytes at a time, repeated across the
                 // 256-bit vector
-                const lhs_vec_0 = common.repeat128(avx.mm_loadu_si128(&a_ptr[b].qs));
-                const lhs_vec_1 = common.repeat128(avx.mm_loadu_si128(a_ptr[b].qs[16..].ptr));
+                const lhs_vec_0 = common.repeat128(avx.mmLoaduSi128(&a_ptr[b].qs));
+                const lhs_vec_1 = common.repeat128(avx.mmLoaduSi128(a_ptr[b].qs[16..].ptr));
 
-                var iacc = avx.mm256_setzero_si256();
+                var iacc = avx.mm256SetzeroSi256();
 
                 // Dot product within 32-bit lanes, accumulated in one vector
-                iacc = common.mul_sum_i8_pairs_acc_int32x8(iacc, avx.mm256_blend_epi32(rhs_vec_0123_0, avx.mm256_shuffle_epi32(rhs_vec_4567_0, 177), 170), avx.mm256_shuffle_epi32(lhs_vec_0, 0));
-                iacc = common.mul_sum_i8_pairs_acc_int32x8(iacc, avx.mm256_blend_epi32(avx.mm256_shuffle_epi32(rhs_vec_0123_0, 177), rhs_vec_4567_0, 170), avx.mm256_shuffle_epi32(lhs_vec_0, 85));
+                iacc = common.mulSumI8PairsAccInt32x8(iacc, avx.mm256BlendEpi32(rhs_vec_0123_0, avx.mm256ShuffleEpi32(rhs_vec_4567_0, 177), 170), avx.mm256ShuffleEpi32(lhs_vec_0, 0));
+                iacc = common.mulSumI8PairsAccInt32x8(iacc, avx.mm256BlendEpi32(avx.mm256ShuffleEpi32(rhs_vec_0123_0, 177), rhs_vec_4567_0, 170), avx.mm256ShuffleEpi32(lhs_vec_0, 85));
 
-                iacc = common.mul_sum_i8_pairs_acc_int32x8(iacc, avx.mm256_blend_epi32(rhs_vec_0123_1, avx.mm256_shuffle_epi32(rhs_vec_4567_1, 177), 170), avx.mm256_shuffle_epi32(lhs_vec_0, 170));
-                iacc = common.mul_sum_i8_pairs_acc_int32x8(iacc, avx.mm256_blend_epi32(avx.mm256_shuffle_epi32(rhs_vec_0123_1, 177), rhs_vec_4567_1, 170), avx.mm256_shuffle_epi32(lhs_vec_0, 255));
+                iacc = common.mulSumI8PairsAccInt32x8(iacc, avx.mm256BlendEpi32(rhs_vec_0123_1, avx.mm256ShuffleEpi32(rhs_vec_4567_1, 177), 170), avx.mm256ShuffleEpi32(lhs_vec_0, 170));
+                iacc = common.mulSumI8PairsAccInt32x8(iacc, avx.mm256BlendEpi32(avx.mm256ShuffleEpi32(rhs_vec_0123_1, 177), rhs_vec_4567_1, 170), avx.mm256ShuffleEpi32(lhs_vec_0, 255));
 
-                iacc = common.mul_sum_i8_pairs_acc_int32x8(iacc, avx.mm256_blend_epi32(rhs_vec_0123_2, avx.mm256_shuffle_epi32(rhs_vec_4567_2, 177), 170), avx.mm256_shuffle_epi32(lhs_vec_1, 0));
-                iacc = common.mul_sum_i8_pairs_acc_int32x8(iacc, avx.mm256_blend_epi32(avx.mm256_shuffle_epi32(rhs_vec_0123_2, 177), rhs_vec_4567_2, 170), avx.mm256_shuffle_epi32(lhs_vec_1, 85));
+                iacc = common.mulSumI8PairsAccInt32x8(iacc, avx.mm256BlendEpi32(rhs_vec_0123_2, avx.mm256ShuffleEpi32(rhs_vec_4567_2, 177), 170), avx.mm256ShuffleEpi32(lhs_vec_1, 0));
+                iacc = common.mulSumI8PairsAccInt32x8(iacc, avx.mm256BlendEpi32(avx.mm256ShuffleEpi32(rhs_vec_0123_2, 177), rhs_vec_4567_2, 170), avx.mm256ShuffleEpi32(lhs_vec_1, 85));
 
-                iacc = common.mul_sum_i8_pairs_acc_int32x8(iacc, avx.mm256_blend_epi32(rhs_vec_0123_3, avx.mm256_shuffle_epi32(rhs_vec_4567_3, 177), 170), avx.mm256_shuffle_epi32(lhs_vec_1, 170));
-                iacc = common.mul_sum_i8_pairs_acc_int32x8(iacc, avx.mm256_blend_epi32(avx.mm256_shuffle_epi32(rhs_vec_0123_3, 177), rhs_vec_4567_3, 170), avx.mm256_shuffle_epi32(lhs_vec_1, 255));
+                iacc = common.mulSumI8PairsAccInt32x8(iacc, avx.mm256BlendEpi32(rhs_vec_0123_3, avx.mm256ShuffleEpi32(rhs_vec_4567_3, 177), 170), avx.mm256ShuffleEpi32(lhs_vec_1, 170));
+                iacc = common.mulSumI8PairsAccInt32x8(iacc, avx.mm256BlendEpi32(avx.mm256ShuffleEpi32(rhs_vec_0123_3, 177), rhs_vec_4567_3, 170), avx.mm256ShuffleEpi32(lhs_vec_1, 255));
 
                 // Accumulated values multiplied with appropriate scales
-                acc_row = avx.mm256_fmadd_ps(avx.mm256_cvtepi32_ps(iacc), avx.mm256_mul_ps(col_scale_f32, row_scale_f32), acc_row);
+                acc_row = avx.mm256FmaddPs(avx.mm256Cvtepi32Ps(iacc), avx.mm256MulPs(col_scale_f32, row_scale_f32), acc_row);
             }
 
             // Accumulated output values permuted into storage order
-            acc_row = avx.mm256_permutevar8x32_ps(acc_row, finalpermutemask);
-            avx.mm256_storeu_ps(s + (y * @as(usize, @intCast(nr)) + x * 8), acc_row);
+            acc_row = avx.mm256Permutevar8x32Ps(acc_row, finalpermutemask);
+            avx.mm256StoreuPs(s + (y * @as(usize, @intCast(nr)) + x * 8), acc_row);
         }
     }
 }
@@ -184,23 +184,23 @@ fn Rhs(comptime L: type) type {
 /// 8-15 and 24-31.
 fn rawRhs(comptime B: type, b: *const B) struct { m0145: [2]m256i, m2367: [2]m256i } {
     // Permute mask used for easier vector processing at later stages
-    const requiredOrder = avx.mm256_set_epi32(.{ 3, 2, 1, 0, 7, 6, 5, 4 });
+    const requiredOrder = avx.mm256SetEpi32(.{ 3, 2, 1, 0, 7, 6, 5, 4 });
 
     const qs: [*]const u8 = @ptrCast(&b.qs);
     // The eight blocks of quantized values interleaved in chunks of eight
-    const rhs_raw_mat_0123_0 = avx.mm256_loadu_si256(qs);
-    const rhs_raw_mat_4567_0 = avx.mm256_loadu_si256(qs + 32);
-    const rhs_raw_mat_0123_1 = avx.mm256_loadu_si256(qs + 64);
-    const rhs_raw_mat_4567_1 = avx.mm256_loadu_si256(qs + 96);
+    const rhs_raw_mat_0123_0 = avx.mm256LoaduSi256(qs);
+    const rhs_raw_mat_4567_0 = avx.mm256LoaduSi256(qs + 32);
+    const rhs_raw_mat_0123_1 = avx.mm256LoaduSi256(qs + 64);
+    const rhs_raw_mat_4567_1 = avx.mm256LoaduSi256(qs + 96);
 
     return .{
         .m0145 = .{
-            avx.mm256_blend_epi32(rhs_raw_mat_0123_0, avx.mm256_permutevar8x32_epi32(rhs_raw_mat_4567_0, requiredOrder), 240),
-            avx.mm256_blend_epi32(rhs_raw_mat_0123_1, avx.mm256_permutevar8x32_epi32(rhs_raw_mat_4567_1, requiredOrder), 240),
+            avx.mm256BlendEpi32(rhs_raw_mat_0123_0, avx.mm256Permutevar8x32Epi32(rhs_raw_mat_4567_0, requiredOrder), 240),
+            avx.mm256BlendEpi32(rhs_raw_mat_0123_1, avx.mm256Permutevar8x32Epi32(rhs_raw_mat_4567_1, requiredOrder), 240),
         },
         .m2367 = .{
-            avx.mm256_blend_epi32(avx.mm256_permutevar8x32_epi32(rhs_raw_mat_0123_0, requiredOrder), rhs_raw_mat_4567_0, 240),
-            avx.mm256_blend_epi32(avx.mm256_permutevar8x32_epi32(rhs_raw_mat_0123_1, requiredOrder), rhs_raw_mat_4567_1, 240),
+            avx.mm256BlendEpi32(avx.mm256Permutevar8x32Epi32(rhs_raw_mat_0123_0, requiredOrder), rhs_raw_mat_4567_0, 240),
+            avx.mm256BlendEpi32(avx.mm256Permutevar8x32Epi32(rhs_raw_mat_0123_1, requiredOrder), rhs_raw_mat_4567_1, 240),
         },
     };
 }
@@ -208,9 +208,9 @@ fn rawRhs(comptime B: type, b: *const B) struct { m0145: [2]m256i, m2367: [2]m25
 /// The nibbles of `raw` through the table at `L`'s width: low nibbles, or
 /// high with `hi`.
 inline fn lutWide(comptime L: type, signextendlut: m256i, raw: L.I, comptime hi: bool) L.I {
-    const m4b = L.set1_epi8(0x0F);
-    const v = if (hi) L.srli_epi16(raw, 4) else raw;
-    return L.shuffle_epi8(L.rep(signextendlut), L.and_si(v, m4b));
+    const m4b = L.set1Epi8(0x0F);
+    const v = if (hi) L.srliEpi16(raw, 4) else raw;
+    return L.shuffleEpi8(L.rep(signextendlut), L.andSi(v, m4b));
 }
 
 /// The columns of `b0` -- and of `b1` in the high half at 512 bits -- for one
@@ -238,11 +238,11 @@ fn prepareRhs(comptime L: type, comptime B: type, b0: *const B, b1: *const B, si
     var r: Rhs(L) = undefined;
     inline for (0..4) |k| {
         // Shuffle pattern one - right side input
-        r.m0145_sp1[k] = L.shuffle_epi32(m0145[k], 136);
-        r.m2367_sp1[k] = L.shuffle_epi32(m2367[k], 136);
+        r.m0145_sp1[k] = L.shuffleEpi32(m0145[k], 136);
+        r.m2367_sp1[k] = L.shuffleEpi32(m2367[k], 136);
         // Shuffle pattern two - right side input
-        r.m0145_sp2[k] = L.shuffle_epi32(m0145[k], 221);
-        r.m2367_sp2[k] = L.shuffle_epi32(m2367[k], 221);
+        r.m0145_sp2[k] = L.shuffleEpi32(m0145[k], 221);
+        r.m2367_sp2[k] = L.shuffleEpi32(m2367[k], 221);
     }
     return r;
 }
@@ -258,10 +258,10 @@ inline fn colScaleWide(comptime L: type, comptime B: type, b0: *const B, b1: *co
 /// groups, innermost first from group 3 as the C nests it.
 fn dot4(comptime L: type, lhs: [4]L.I, rhs: [4]L.I) L.I {
     var acc = L.setzero();
-    acc = L.mul_sum_i8_pairs_acc(acc, lhs[3], rhs[3]);
-    acc = L.mul_sum_i8_pairs_acc(acc, lhs[2], rhs[2]);
-    acc = L.mul_sum_i8_pairs_acc(acc, lhs[1], rhs[1]);
-    return L.mul_sum_i8_pairs_acc(acc, lhs[0], rhs[0]);
+    acc = L.mulSumI8PairsAcc(acc, lhs[3], rhs[3]);
+    acc = L.mulSumI8PairsAcc(acc, lhs[2], rhs[2]);
+    acc = L.mulSumI8PairsAcc(acc, lhs[1], rhs[1]);
+    return L.mulSumI8PairsAcc(acc, lhs[0], rhs[0]);
 }
 
 /// The per-block body of `gemm_q4_b32_8x8_q8_0_lut_avx` (arch/x86/repack.cpp:641
@@ -276,30 +276,30 @@ fn accumulate4(comptime L: type, acc: *[4]L.F, rhs: *const Rhs(L), col_scale_f32
     inline for (0..4) |k| {
         // Four rows' values interleaved in chunks of eight, as 128-bit
         // halves repeated across the vector
-        const lhs_mat_0123 = avx.mm256_loadu_si256(qs + 32 * k);
-        const lhs_mat_01 = L.rep(avx.mm256_permute2f128_si256(lhs_mat_0123, lhs_mat_0123, 0));
-        const lhs_mat_23 = L.rep(avx.mm256_permute2f128_si256(lhs_mat_0123, lhs_mat_0123, 17));
+        const lhs_mat_0123 = avx.mm256LoaduSi256(qs + 32 * k);
+        const lhs_mat_01 = L.rep(avx.mm256Permute2f128Si256(lhs_mat_0123, lhs_mat_0123, 0));
+        const lhs_mat_23 = L.rep(avx.mm256Permute2f128Si256(lhs_mat_0123, lhs_mat_0123, 17));
         // Shuffle pattern one - left side input
-        lhs_01_sp1[k] = L.shuffle_epi32(lhs_mat_01, 160);
-        lhs_23_sp1[k] = L.shuffle_epi32(lhs_mat_23, 160);
+        lhs_01_sp1[k] = L.shuffleEpi32(lhs_mat_01, 160);
+        lhs_23_sp1[k] = L.shuffleEpi32(lhs_mat_23, 160);
         // Shuffle pattern two - left side input
-        lhs_01_sp2[k] = L.shuffle_epi32(lhs_mat_01, 245);
-        lhs_23_sp2[k] = L.shuffle_epi32(lhs_mat_23, 245);
+        lhs_01_sp2[k] = L.shuffleEpi32(lhs_mat_01, 245);
+        lhs_23_sp2[k] = L.shuffleEpi32(lhs_mat_23, 245);
     }
 
     // Dot products within 32-bit lanes, resembling MMLAs into 2x2
     // matrices in the ARM version; both shuffle patterns summed.
-    const iacc_mat_00 = L.add_epi32(dot4(L, lhs_01_sp1, rhs.m0145_sp1), dot4(L, lhs_01_sp2, rhs.m0145_sp2));
-    const iacc_mat_01 = L.add_epi32(dot4(L, lhs_01_sp1, rhs.m2367_sp1), dot4(L, lhs_01_sp2, rhs.m2367_sp2));
-    const iacc_mat_10 = L.add_epi32(dot4(L, lhs_23_sp1, rhs.m0145_sp1), dot4(L, lhs_23_sp2, rhs.m0145_sp2));
-    const iacc_mat_11 = L.add_epi32(dot4(L, lhs_23_sp1, rhs.m2367_sp1), dot4(L, lhs_23_sp2, rhs.m2367_sp2));
+    const iacc_mat_00 = L.addEpi32(dot4(L, lhs_01_sp1, rhs.m0145_sp1), dot4(L, lhs_01_sp2, rhs.m0145_sp2));
+    const iacc_mat_01 = L.addEpi32(dot4(L, lhs_01_sp1, rhs.m2367_sp1), dot4(L, lhs_01_sp2, rhs.m2367_sp2));
+    const iacc_mat_10 = L.addEpi32(dot4(L, lhs_23_sp1, rhs.m0145_sp1), dot4(L, lhs_23_sp2, rhs.m0145_sp2));
+    const iacc_mat_11 = L.addEpi32(dot4(L, lhs_23_sp1, rhs.m2367_sp1), dot4(L, lhs_23_sp2, rhs.m2367_sp2));
 
     // Straighten out to make 4 row vectors
     const iacc_row = [4]L.I{
-        L.blend_epi32(iacc_mat_00, L.shuffle_epi32(iacc_mat_01, 78), 204),
-        L.blend_epi32(L.shuffle_epi32(iacc_mat_00, 78), iacc_mat_01, 204),
-        L.blend_epi32(iacc_mat_10, L.shuffle_epi32(iacc_mat_11, 78), 204),
-        L.blend_epi32(L.shuffle_epi32(iacc_mat_10, 78), iacc_mat_11, 204),
+        L.blendEpi32(iacc_mat_00, L.shuffleEpi32(iacc_mat_01, 78), 204),
+        L.blendEpi32(L.shuffleEpi32(iacc_mat_00, 78), iacc_mat_01, 204),
+        L.blendEpi32(iacc_mat_10, L.shuffleEpi32(iacc_mat_11, 78), 204),
+        L.blendEpi32(L.shuffleEpi32(iacc_mat_10, 78), iacc_mat_11, 204),
     };
 
     // The four rows' scales, repeated across lanes: `GGML_F32Cx8_REPEAT_LOAD`
@@ -309,7 +309,7 @@ fn accumulate4(comptime L: type, acc: *[4]L.F, rhs: *const Rhs(L), col_scale_f32
     // Multiply with appropriate scales and accumulate
     const lanes = [4]u8{ 0, 85, 170, 255 };
     inline for (0..4) |i| {
-        acc[i] = L.fmadd_ps(L.cvtepi32_ps(iacc_row[i]), L.mul_ps(col_scale_f32, L.shuffle_ps(row_scale_f32, lanes[i])), acc[i]);
+        acc[i] = L.fmaddPs(L.cvtepi32Ps(iacc_row[i]), L.mulPs(col_scale_f32, L.shufflePs(row_scale_f32, lanes[i])), acc[i]);
     }
 }
 
@@ -334,7 +334,7 @@ fn rowLoops(comptime L: type, comptime B: type, y: *usize, x_begin: usize, x_end
             const b_ptr_1 = b_ptr_start + ((x + xstep - 1) * b_nb);
 
             // Master FP accumulators
-            var acc_rows: [16]L.F = @splat(L.setzero_ps());
+            var acc_rows: [16]L.F = @splat(L.setzeroPs());
 
             for (0..nb) |b| {
                 const rhs = prepareRhs(L, B, &b_ptr_0[b], &b_ptr_1[b], signextendlut);
@@ -345,7 +345,7 @@ fn rowLoops(comptime L: type, comptime B: type, y: *usize, x_begin: usize, x_end
             }
 
             // Store the accumulated values
-            for (0..16) |i| L.storeu_ps(s + ((y.* * 4 + i) * bs + x * 8), acc_rows[i]);
+            for (0..16) |i| L.storeuPs(s + ((y.* * 4 + i) * bs + x * 8), acc_rows[i]);
         }
     }
 
@@ -359,7 +359,7 @@ fn rowLoops(comptime L: type, comptime B: type, y: *usize, x_begin: usize, x_end
             const b_ptr_1 = b_ptr_start + ((x + xstep - 1) * b_nb);
 
             // Master FP accumulators
-            var acc_rows: [4]L.F = @splat(L.setzero_ps());
+            var acc_rows: [4]L.F = @splat(L.setzeroPs());
 
             for (0..nb) |b| {
                 const rhs = prepareRhs(L, B, &b_ptr_0[b], &b_ptr_1[b], signextendlut);
@@ -368,7 +368,7 @@ fn rowLoops(comptime L: type, comptime B: type, y: *usize, x_begin: usize, x_end
             }
 
             // Store the accumulated values
-            for (0..4) |i| L.storeu_ps(s + ((y.* * 4 + i) * bs + x * 8), acc_rows[i]);
+            for (0..4) |i| L.storeuPs(s + ((y.* * 4 + i) * bs + x * 8), acc_rows[i]);
         }
     }
 }
@@ -406,42 +406,66 @@ fn gemmLut(comptime B: type, n: c_int, s: [*]f32, bs: usize, vx: *const anyopaqu
 
 /// The table `ggml_gemv_q4_0_8x8_q8_0` builds (arch/x86/repack.cpp:1448
 /// @cd959bae9): signed nibbles to signed bytes, 0..7 then -8..-1.
-inline fn q4_0Lut() m256i {
-    return common.repeat128(avx.mm_set_epi8(.{ -1, -2, -3, -4, -5, -6, -7, -8, 7, 6, 5, 4, 3, 2, 1, 0 }));
+inline fn q40Lut() m256i {
+    return common.repeat128(avx.mmSetEpi8(.{ -1, -2, -3, -4, -5, -6, -7, -8, 7, 6, 5, 4, 3, 2, 1, 0 }));
 }
 
 /// A 16-byte value table repeated into both halves.
 inline fn tableLut(table: *const [16]i8) m256i {
-    return common.repeat128(avx.mm_loadu_si128(table));
+    return common.repeat128(avx.mmLoaduSi128(table));
+}
+
+comptime {
+    @export(&ggmlGemvQ408x8Q80, .{ .name = "ggml_gemv_q4_0_8x8_q8_0" });
 }
 
 /// Ports `ggml_gemv_q4_0_8x8_q8_0` (arch/x86/repack.cpp:1448 @cd959bae9).
-pub export fn ggml_gemv_q4_0_8x8_q8_0(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
-    gemvLut(blocks.block_q4_0x8, n, s, bs, vx, vy, nr, nc, q4_0Lut());
+pub fn ggmlGemvQ408x8Q80(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+    gemvLut(blocks.block_q4_0x8, n, s, bs, vx, vy, nr, nc, q40Lut());
+}
+
+comptime {
+    @export(&ggmlGemvIq4Nl8x8Q80, .{ .name = "ggml_gemv_iq4_nl_8x8_q8_0" });
 }
 
 /// Ports `ggml_gemv_iq4_nl_8x8_q8_0` (arch/x86/repack.cpp:1687 @cd959bae9).
-pub export fn ggml_gemv_iq4_nl_8x8_q8_0(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+pub fn ggmlGemvIq4Nl8x8Q80(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
     gemvLut(blocks.block_iq4_nlx8, n, s, bs, vx, vy, nr, nc, tableLut(&c.kvalues_iq4nl));
 }
 
+comptime {
+    @export(&ggmlGemvMxfp48x8Q80, .{ .name = "ggml_gemv_mxfp4_8x8_q8_0" });
+}
+
 /// Ports `ggml_gemv_mxfp4_8x8_q8_0` (arch/x86/repack.cpp:1700 @cd959bae9).
-pub export fn ggml_gemv_mxfp4_8x8_q8_0(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+pub fn ggmlGemvMxfp48x8Q80(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
     gemvLut(blocks.block_mxfp4x8, n, s, bs, vx, vy, nr, nc, tableLut(&c.kvalues_mxfp4));
 }
 
+comptime {
+    @export(&ggmlGemmQ408x8Q80, .{ .name = "ggml_gemm_q4_0_8x8_q8_0" });
+}
+
 /// Ports `ggml_gemm_q4_0_8x8_q8_0` (arch/x86/repack.cpp:2026 @cd959bae9).
-pub export fn ggml_gemm_q4_0_8x8_q8_0(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
-    gemmLut(blocks.block_q4_0x8, n, s, bs, vx, vy, nr, nc, q4_0Lut());
+pub fn ggmlGemmQ408x8Q80(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+    gemmLut(blocks.block_q4_0x8, n, s, bs, vx, vy, nr, nc, q40Lut());
+}
+
+comptime {
+    @export(&ggmlGemmIq4Nl8x8Q80, .{ .name = "ggml_gemm_iq4_nl_8x8_q8_0" });
 }
 
 /// Ports `ggml_gemm_iq4_nl_8x8_q8_0` (arch/x86/repack.cpp:3496 @cd959bae9).
-pub export fn ggml_gemm_iq4_nl_8x8_q8_0(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+pub fn ggmlGemmIq4Nl8x8Q80(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
     gemmLut(blocks.block_iq4_nlx8, n, s, bs, vx, vy, nr, nc, tableLut(&c.kvalues_iq4nl));
 }
 
+comptime {
+    @export(&ggmlGemmMxfp48x8Q80, .{ .name = "ggml_gemm_mxfp4_8x8_q8_0" });
+}
+
 /// Ports `ggml_gemm_mxfp4_8x8_q8_0` (arch/x86/repack.cpp:3511 @cd959bae9).
-pub export fn ggml_gemm_mxfp4_8x8_q8_0(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+pub fn ggmlGemmMxfp48x8Q80(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
     gemmLut(blocks.block_mxfp4x8, n, s, bs, vx, vy, nr, nc, tableLut(&c.kvalues_mxfp4));
 }
 

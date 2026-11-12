@@ -14,7 +14,7 @@ const m = @import("module.zig");
 const c = impl.c;
 const common = m.common;
 const vk = common.vk;
-const allocator = common.allocator;
+const allocator = std.heap.c_allocator;
 const BackendCtx = m.context.BackendCtx;
 const Pipeline = m.pipeline.Pipeline;
 const Tensor = c.ggml_tensor;
@@ -120,7 +120,7 @@ pub fn convSelectShape(ctx: *const BackendCtx, K: u32, NPQ: u32) ConvShape {
     const nTiles = struct {
         fn f(k: u32, npq: u32, s: ConvShape) u32 {
             const bs = m.backend.conv_block_sizes[@backingInt(s)];
-            return (std.math.divCeil(u32, k, bs.K) catch unreachable) * (std.math.divCeil(u32, npq, bs.NPQ) catch unreachable);
+            return (std.math.divCeil(u32, k, bs.K) catch @panic("division by zero")) * (std.math.divCeil(u32, npq, bs.NPQ) catch @panic("division by zero"));
         }
     }.f;
     // We can't query number of shader cores on Intel, use 32 as a placeholder.
@@ -151,7 +151,7 @@ pub fn conv3dSelectShape(ctx: *const BackendCtx, K: u32, NPQ: u32) ConvShape {
     const driver_supported = dev.driver_id != vk.VK_DRIVER_ID_NVIDIA_PROPRIETARY or
         (dev.properties.driverVersion >> 22) >= 615;
     if (dev.coopmat2 and shader_core_count > 0 and K % block.K == 0 and driver_supported) {
-        const n_tiles = @as(u64, K / block.K) * (std.math.divCeil(u64, NPQ, block.NPQ) catch unreachable);
+        const n_tiles = @as(u64, K / block.K) * (std.math.divCeil(u64, NPQ, block.NPQ) catch @panic("division by zero"));
         // Use the largest cm2 padding and include the dummy Csh[8].
         const pad: u32 = 8;
         const csh_elems: u32 = 8;
@@ -166,7 +166,7 @@ pub fn conv3dSelectShape(ctx: *const BackendCtx, K: u32, NPQ: u32) ConvShape {
 /// Ports `ggml_vk_rms_norm_pipeline` (ggml-vulkan.cpp:8780 @cd959bae9): the
 /// 128, 256 or 512 block size, by row length.
 ///
-/// Return: the pipeline, borrowed from the device.
+/// - Returns: the pipeline, borrowed from the device.
 pub fn rmsNormPipeline(pipelines: *const [3]?*Pipeline, ncols: i64) ?*Pipeline {
     if (pipelines[0] != null and ncols <= 128) return pipelines[0];
     if (pipelines[1] != null and ncols <= 256) return pipelines[1];
@@ -190,7 +190,7 @@ fn opI32(t: *const Tensor, i: usize) u32 {
 
 /// Ports `ggml_vk_op_get_pipeline` (ggml-vulkan.cpp:8790 @cd959bae9).
 ///
-/// Return: the pipeline, or null where the op has none for these types.
+/// - Returns: the pipeline, or null where the op has none for these types.
 pub fn getPipeline(ctx: *BackendCtx, src0_: ?*const Tensor, src1_: ?*const Tensor, src2_: ?*const Tensor, dst: *const Tensor, op: c.enum_ggml_op) ?*Pipeline {
     const dev = ctx.device;
     const F32 = c.GGML_TYPE_F32;

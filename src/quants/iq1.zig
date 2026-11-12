@@ -313,8 +313,12 @@ fn iq1SImpl(x: [*]const f32, vy: ?*anyopaque, n: i64, quant_weights: [*]const f3
     }
 }
 
+comptime {
+    @export(&quantizeIq1S, .{ .name = "quantize_iq1_s" });
+}
+
 /// Ports `quantize_iq1_s` (ggml-quants.c:4688 @cd959bae9).
-pub export fn quantize_iq1_s(src: [*c]const f32, dst: ?*anyopaque, nrow: i64, n_per_row: i64, quant_weights: [*c]const f32) usize {
+pub fn quantizeIq1S(src: [*c]const f32, dst: ?*anyopaque, nrow: i64, n_per_row: i64, quant_weights: [*c]const f32) callconv(.c) usize {
     impl.assert(@rem(n_per_row, QK_K) == 0, "n_per_row%QK_K == 0");
     impl.assert(quant_weights != null, "missing quantization weights");
     const nblock: usize = @intCast(@divExact(n_per_row, QK_K));
@@ -597,8 +601,12 @@ inline fn shiftFor(best_k: i32, k: usize, x_p: *const [3]f32, x_m: *const [3]f32
     return if (@rem(best_k, 2) == 0) x_p else x_m;
 }
 
+comptime {
+    @export(&quantizeIq1M, .{ .name = "quantize_iq1_m" });
+}
+
 /// Ports `quantize_iq1_m` (ggml-quants.c:4933 @cd959bae9).
-pub export fn quantize_iq1_m(src: [*c]const f32, dst: ?*anyopaque, nrow: i64, n_per_row: i64, quant_weights: [*c]const f32) usize {
+pub fn quantizeIq1M(src: [*c]const f32, dst: ?*anyopaque, nrow: i64, n_per_row: i64, quant_weights: [*c]const f32) callconv(.c) usize {
     impl.assert(@rem(n_per_row, QK_K) == 0, "n_per_row%QK_K == 0");
     const nblock: usize = @intCast(@divExact(n_per_row, QK_K));
     var qrow: [*]u8 = @ptrCast(dst.?);

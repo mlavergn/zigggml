@@ -10,13 +10,8 @@
 # include, which only defaults them.
 ZIG_DIRS := src cli build
 
-# Lint covers what zigggml owns: build.zig, build/ and cli/. src/ is a
-# verbatim copy of llama.zig's src/ggml/, which llama.zig does not lint either
-# (its exported C names alone are ~1,800 case-convention hits), and
-# `make sync` overwrites it. The build-time tools below are verbatim copies
-# from llama.zig and are excluded for the same reason.
-LINT_EXCLUDE := build/vulkan_shaders.zig build/cuda_kernels.zig
-LINT_FILES := $(filter-out $(LINT_EXCLUDE),build.zig $(shell find build cli -name '*.zig' | sort))
+# Lint covers every Zig source zigggml owns: build.zig, build/, cli/ and src/.
+LINT_FILES := build.zig $(shell find build cli src -name '*.zig' | sort)
 
 # Optional include to extend the makefile targets
 -include ../styleguide/Makefile.in
@@ -90,7 +85,7 @@ test:
 # Upstream
 # ---------------------------------------------
 
-# Re-copy ggml, the build helpers and vendor/ from llama.zig (see UPSTREAM.md).
+# Re-copy vendor/ from llama.zig and list the source changes to port (see UPSTREAM.md).
 # Pass another checkout with `make sync LLAMA_ZIG=../path`.
 LLAMA_ZIG ?= ../llama.zig
 sync:

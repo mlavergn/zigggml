@@ -16,7 +16,6 @@
 //! `ops.cpp` port, whose files share it through `module.zig`.
 
 const std = @import("std");
-const builtin = @import("builtin");
 const impl = @import("../../impl.zig");
 const convert = @import("../convert.zig");
 const defs = @import("../defs.zig");
@@ -86,19 +85,18 @@ pub inline fn stdMax(a: f32, b: f32) f32 {
 
 /// `ggml_barrier(params->threadpool)`, which the C writes directly.
 pub inline fn barrier(params: *const ComputeParams) void {
-    threading.ggml_barrier(@ptrCast(@alignCast(params.threadpool.?)));
+    threading.ggmlBarrier(@ptrCast(@alignCast(params.threadpool.?)));
 }
 
 /// Ports the `to_f32` half of `type_conversion_table`
 /// (ggml-cpu/common.h:56 @cd959bae9), with `f8_e4m3_to_f32`
 /// (ggml-cpu/common.h:46 @cd959bae9) for `ggml_fp8_e4m3_t`.
 ///
-/// Parameters:
 /// - `T`: the element type, one of `f32`, `ggml_fp16_t`, `ggml_bf16_t`,
 ///   `ggml_fp8_e4m3_t`, `i32`.
 /// - `v`: the value to widen.
 ///
-/// Return: `v` as an `f32`.
+/// - Returns: `v` as an `f32`.
 pub inline fn toF32(comptime T: type, v: T) f32 {
     return switch (T) {
         f32 => v,
@@ -114,11 +112,10 @@ pub inline fn toF32(comptime T: type, v: T) f32 {
 /// (ggml-cpu/common.h:56 @cd959bae9), with `f32_to_f8_e4m3`
 /// (ggml-cpu/common.h:50 @cd959bae9) for `ggml_fp8_e4m3_t`.
 ///
-/// Parameters:
 /// - `T`: the element type to produce.
 /// - `v`: the `f32` to narrow.
 ///
-/// Return: `v` as a `T`.
+/// - Returns: `v` as a `T`.
 pub inline fn fromF32(comptime T: type, v: f32) T {
     return switch (T) {
         f32 => v,
@@ -135,11 +132,10 @@ pub inline fn fromF32(comptime T: type, v: f32) T {
 
 /// Ports `get_thread_range` (ggml-cpu/common.h:88 @cd959bae9).
 ///
-/// Parameters:
 /// - `params`: the thread index and count.
 /// - `src0`: the tensor whose rows are being split.
 ///
-/// Return: the half-open row range `[ir0, ir1)` this thread owns.
+/// - Returns: the half-open row range `[ir0, ir1)` this thread owns.
 pub fn getThreadRange(params: *const ComputeParams, src0: *const Tensor) struct { i64, i64 } {
     const ith: i64 = params.ith;
     const nth: i64 = params.nth;
@@ -195,10 +191,9 @@ extern fn cosf(x: f32) f32;
 /// An earlier version of this function assumed `sincosf` off Darwin, which
 /// matched nothing the reference calls.
 ///
-/// Parameters:
 /// - `x`: the argument.
 ///
-/// Return: both values, by value.
+/// - Returns: both values, by value.
 pub inline fn sinCos(x: f32) SinCos {
     if (comptime !simd.math_errno) {
         const r = __sincosf_stret(x);

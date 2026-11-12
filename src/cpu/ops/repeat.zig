@@ -79,7 +79,7 @@ fn repeatT(comptime T: type, params: *const ComputeParams, dst: *Tensor) void {
                                 const y: [*]T = @ptrCast(@alignCast(dd + at(j3 * l.ne03 + k3, l.nb3) + at(j2 * l.ne02 + k2, l.nb2) + at(j1 * l.ne01 + k1, l.nb1) + at(j0 * l.ne00, l.nb0)));
                                 const x: [*]const T = @ptrCast(@alignCast(s0 + at(k3, l.nb03) + at(k2, l.nb02) + at(k1, l.nb01)));
                                 if (T == f32) {
-                                    vec.cpy_f32(l.ne00, y, x);
+                                    vec.cpyF32(l.ne00, y, x);
                                 } else {
                                     // ggml_vec_cpy_f16(ne00, y, x)
                                     var i: usize = 0;
@@ -94,8 +94,12 @@ fn repeatT(comptime T: type, params: *const ComputeParams, dst: *Tensor) void {
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardRepeat, .{ .name = "ggml_compute_forward_repeat" });
+}
+
 /// Ports `ggml_compute_forward_repeat` (ops.cpp:1819 @cd959bae9).
-pub export fn ggml_compute_forward_repeat(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardRepeat(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
 
     switch (src0.type) {
@@ -129,7 +133,7 @@ fn repeatBackF32(params: *const ComputeParams, dst: *Tensor) void {
     const dd: [*]u8 = @ptrCast(dst.data.?);
 
     if (c.ggml_is_contiguous(dst)) {
-        vec.set_f32(l.ne0 * l.ne1 * l.ne2 * l.ne3, @ptrCast(@alignCast(dd)), 0);
+        vec.setF32(l.ne0 * l.ne1 * l.ne2 * l.ne3, @ptrCast(@alignCast(dd)), 0);
     } else {
         var k3: i64 = 0;
         while (k3 < l.ne3) : (k3 += 1) {
@@ -137,7 +141,7 @@ fn repeatBackF32(params: *const ComputeParams, dst: *Tensor) void {
             while (k2 < l.ne2) : (k2 += 1) {
                 var k1: i64 = 0;
                 while (k1 < l.ne1) : (k1 += 1) {
-                    vec.set_f32(l.ne0, @ptrCast(@alignCast(dd + at(k1, l.nb1) + at(k2, l.nb2) + at(k3, l.nb3))), 0);
+                    vec.setF32(l.ne0, @ptrCast(@alignCast(dd + at(k1, l.nb1) + at(k2, l.nb2) + at(k3, l.nb3))), 0);
                 }
             }
         }
@@ -158,7 +162,7 @@ fn repeatBackF32(params: *const ComputeParams, dst: *Tensor) void {
                         while (k1 < l.ne1) : (k1 += 1) {
                             var j0: i64 = 0;
                             while (j0 < nr0) : (j0 += 1) {
-                                vec.acc_f32(
+                                vec.accF32(
                                     l.ne0,
                                     @ptrCast(@alignCast(dd + at(k3, l.nb3) + at(k2, l.nb2) + at(k1, l.nb1))),
                                     @ptrCast(@alignCast(s0 + at(j3 * l.ne3 + k3, l.nb03) + at(j2 * l.ne2 + k2, l.nb02) + at(j1 * l.ne1 + k1, l.nb01) + at(j0 * l.ne0, l.nb00))),
@@ -172,8 +176,12 @@ fn repeatBackF32(params: *const ComputeParams, dst: *Tensor) void {
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardRepeatBack, .{ .name = "ggml_compute_forward_repeat_back" });
+}
+
 /// Ports `ggml_compute_forward_repeat_back` (ops.cpp:1910 @cd959bae9).
-pub export fn ggml_compute_forward_repeat_back(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardRepeatBack(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
 
     switch (src0.type) {
@@ -227,13 +235,17 @@ fn concatCopyRows(y: [*]u8, nby: usize, src: *const Tensor, x: [*]const u8, nbx:
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardConcat, .{ .name = "ggml_compute_forward_concat" });
+}
+
 /// Ports `ggml_compute_forward_concat` (ops.cpp:1965 @cd959bae9).
 ///
 /// Each `dst` row comes from `src0` or `src1`, or for dim 0 from the row of
 /// `src0` followed by the row of `src1`. The rows of `dst` are split evenly
 /// across threads and walked in tiles of consecutive rows that share `i2`,
 /// `i3` and their source.
-pub export fn ggml_compute_forward_concat(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardConcat(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
     const src1 = impl.one(Tensor, dst.src[1]);
 

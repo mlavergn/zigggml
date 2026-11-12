@@ -63,7 +63,7 @@ inline fn q8At(y: *const blocks.Q8_K, off: usize) [*]const u8 {
 /// dot product these kernels take a hundred times over.
 inline fn dotv(a: i8x16, b: i8x16) i32 {
     const zero: i32x4 = @splat(0);
-    return neon.addvq_s32(neon.ggml_vdotq_s32(zero, a, b));
+    return neon.addvqS32(neon.ggmlVdotqS32(zero, a, b));
 }
 
 /// The widening product of eight `i16` pairs, summed into four `i32` lanes,
@@ -73,9 +73,13 @@ inline fn dotv(a: i8x16, b: i8x16) i32 {
 /// keeps a `mins * bsums` product from overflowing sixteen bits.
 inline fn mullSum(a: i16x8, b: i16x8) i32x4 {
     return neon.add(
-        neon.mull_s16(neon.low(a), neon.low(b)),
-        neon.mull_s16(neon.high(a), neon.high(b)),
+        neon.mullS16(neon.low(a), neon.low(b)),
+        neon.mullS16(neon.high(a), neon.high(b)),
     );
+}
+
+comptime {
+    @export(&ggmlVecDotQ2KQ8K, .{ .name = "ggml_vec_dot_q2_K_q8_K" });
 }
 
 /// Ports `ggml_vec_dot_q2_K_q8_K` (arch/arm/quants.c:1688 @cd959bae9).
@@ -83,7 +87,7 @@ inline fn mullSum(a: i16x8, b: i16x8) i32x4 {
 /// Two-bit weights with a four-bit scale and four-bit minimum per group of
 /// sixteen, both packed into the same byte -- `scales & 0xF` and
 /// `scales >> 4`.
-pub export fn ggml_vec_dot_q2_K_q8_K(
+pub fn ggmlVecDotQ2KQ8K(
     n: c_int,
     s: [*c]f32,
     bs: usize,
@@ -92,7 +96,7 @@ pub export fn ggml_vec_dot_q2_K_q8_K(
     vy: ?*const anyopaque,
     by: usize,
     nrc: c_int,
-) void {
+) callconv(.c) void {
     std.debug.assert(nrc == 1);
     _ = .{ bs, bx, by };
 
@@ -125,7 +129,7 @@ pub export fn ggml_vec_dot_q2_K_q8_K(
 
         const s0 = mullSum(mins16_0, q8sums0);
         const s1 = mullSum(mins16_1, q8sums1);
-        sum = @mulAdd(f32, dmin, @as(f32, @floatFromInt(neon.addvq_s32(neon.add(s0, s1)))), sum);
+        sum = @mulAdd(f32, dmin, @as(f32, @floatFromInt(neon.addvqS32(neon.add(s0, s1)))), sum);
 
         var isum: i32 = 0;
         var is: usize = 0;
@@ -162,13 +166,17 @@ pub export fn ggml_vec_dot_q2_K_q8_K(
     s[0] = sum;
 }
 
+comptime {
+    @export(&ggmlVecDotQ3KQ8K, .{ .name = "ggml_vec_dot_q3_K_q8_K" });
+}
+
 /// Ports `ggml_vec_dot_q3_K_q8_K` (arch/arm/quants.c:2021 @cd959bae9).
 ///
 /// Three-bit weights: two bits in `qs` and an **inverted** high bit in
 /// `hmask`. The inversion is why the kernel uses `vbicq_u8(mask, qhbits)` --
 /// `mask AND NOT qhbits` -- and then *subtracts*: a clear mask bit contributes
 /// 4, and a set one contributes nothing.
-pub export fn ggml_vec_dot_q3_K_q8_K(
+pub fn ggmlVecDotQ3KQ8K(
     n: c_int,
     s: [*c]f32,
     bs: usize,
@@ -177,7 +185,7 @@ pub export fn ggml_vec_dot_q3_K_q8_K(
     vy: ?*const anyopaque,
     by: usize,
     nrc: c_int,
-) void {
+) callconv(.c) void {
     std.debug.assert(@rem(n, c.QK_K) == 0);
     std.debug.assert(nrc == 1);
     _ = .{ bs, bx, by };
@@ -314,12 +322,16 @@ inline fn unpackQ5K(packed_scales: *const [12]u8) [4]u32 {
     return utmp;
 }
 
+comptime {
+    @export(&ggmlVecDotQ4KQ8K, .{ .name = "ggml_vec_dot_q4_K_q8_K" });
+}
+
 /// Ports `ggml_vec_dot_q4_K_q8_K` (arch/arm/quants.c:2337 @cd959bae9), the `__ARM_NEON`
 /// arm.
 ///
 /// Note `sumf -= dmin * mins` **before** the weight loop and `sumf += d * ...`
 /// after: two separate float statements per super-block, in that order.
-pub export fn ggml_vec_dot_q4_K_q8_K(
+pub fn ggmlVecDotQ4KQ8K(
     n: c_int,
     s: [*c]f32,
     bs: usize,
@@ -328,7 +340,7 @@ pub export fn ggml_vec_dot_q4_K_q8_K(
     vy: ?*const anyopaque,
     by: usize,
     nrc: c_int,
-) void {
+) callconv(.c) void {
     std.debug.assert(@rem(n, c.QK_K) == 0);
     // With i8mm, `mul_mat` asks for two rows per call; see `mmla.zig`.
     if (comptime mmla.enabled) {
@@ -355,7 +367,7 @@ pub export fn ggml_vec_dot_q4_K_q8_K(
 
         // The sixteen group sums folded to eight, pairwise, to line up with
         // the eight mins.
-        const q8sums = neon.paddq_s16(
+        const q8sums = neon.paddqS16(
             neon.loadFrom(i16x8, &y[i].bsums),
             neon.loadFrom(i16x8, y[i].bsums[8..]),
         );
@@ -366,8 +378,8 @@ pub export fn ggml_vec_dot_q4_K_q8_K(
         // Eight mins built in a `u32x2` rather than shuffled through `utmp`,
         // which is what makes this different from `q5_K`'s unpacking.
         var mins8: neon.u32x2 = @splat(0);
-        mins8 = neon.setLane_u32(utmp[1] & kmask1, mins8, 0);
-        mins8 = neon.setLane_u32(
+        mins8 = neon.setLaneU32(utmp[1] & kmask1, mins8, 0);
+        mins8 = neon.setLaneU32(
             ((utmp[2] >> 4) & kmask2) | (((utmp[1] >> 6) & kmask3) << 4),
             mins8,
             1,
@@ -375,9 +387,9 @@ pub export fn ggml_vec_dot_q4_K_q8_K(
         utmp[1] = (utmp[2] & kmask2) | (((utmp[0] >> 6) & kmask3) << 4);
         utmp[0] &= kmask1;
 
-        const mins: i16x8 = @bitCast(@as(u16x8, neon.movl_u8(@bitCast(mins8))));
+        const mins: i16x8 = @bitCast(@as(u16x8, neon.movlU8(@bitCast(mins8))));
         const prod = mullSum(q8sums, mins);
-        sumf = @mulAdd(f32, -dmin, @as(f32, @floatFromInt(neon.addvq_s32(prod))), sumf);
+        sumf = @mulAdd(f32, -dmin, @as(f32, @floatFromInt(neon.addvqS32(prod))), sumf);
 
         const scales: [16]u8 = @bitCast(utmp);
 
@@ -399,8 +411,8 @@ pub export fn ggml_vec_dot_q4_K_q8_K(
                 const w0: i8x16 = @bitCast(neon.@"and"(q4bits0, m4b));
                 const w1: i8x16 = @bitCast(neon.@"and"(q4bits1, m4b));
                 const zero: i32x4 = @splat(0);
-                const p1 = neon.ggml_vdotq_s32(neon.ggml_vdotq_s32(zero, w0, b0), w1, b1);
-                sumi1 += neon.addvq_s32(p1) * scales[2 * j + 0];
+                const p1 = neon.ggmlVdotqS32(neon.ggmlVdotqS32(zero, w0, b0), w1, b1);
+                sumi1 += neon.addvqS32(p1) * scales[2 * j + 0];
             }
 
             // High nibbles against the next 32.
@@ -411,8 +423,8 @@ pub export fn ggml_vec_dot_q4_K_q8_K(
                 const w0: i8x16 = @bitCast(neon.shrN(q4bits0, 4));
                 const w1: i8x16 = @bitCast(neon.shrN(q4bits1, 4));
                 const zero: i32x4 = @splat(0);
-                const p2 = neon.ggml_vdotq_s32(neon.ggml_vdotq_s32(zero, w0, b0), w1, b1);
-                sumi2 += neon.addvq_s32(p2) * scales[2 * j + 1];
+                const p2 = neon.ggmlVdotqS32(neon.ggmlVdotqS32(zero, w0, b0), w1, b1);
+                sumi2 += neon.addvqS32(p2) * scales[2 * j + 1];
             }
         }
 
@@ -420,6 +432,10 @@ pub export fn ggml_vec_dot_q4_K_q8_K(
     }
 
     s[0] = sumf;
+}
+
+comptime {
+    @export(&ggmlVecDotQ5KQ8K, .{ .name = "ggml_vec_dot_q5_K_q8_K" });
 }
 
 /// Ports `ggml_vec_dot_q5_K_q8_K` (arch/arm/quants.c:2869 @cd959bae9).
@@ -430,7 +446,7 @@ pub export fn ggml_vec_dot_q4_K_q8_K(
 /// The epilogue is one statement -- `sumf += d * sumi - dmin * sumi_mins` --
 /// where `q4_K` uses two, and it contracts differently from the two-statement
 /// form: see the note at the site.
-pub export fn ggml_vec_dot_q5_K_q8_K(
+pub fn ggmlVecDotQ5KQ8K(
     n: c_int,
     s: [*c]f32,
     bs: usize,
@@ -439,7 +455,7 @@ pub export fn ggml_vec_dot_q5_K_q8_K(
     vy: ?*const anyopaque,
     by: usize,
     nrc: c_int,
-) void {
+) callconv(.c) void {
     std.debug.assert(@rem(n, c.QK_K) == 0);
     std.debug.assert(nrc == 1);
     _ = .{ bs, bx, by };
@@ -459,7 +475,7 @@ pub export fn ggml_vec_dot_q5_K_q8_K(
         const d = y[i].d * f(x[i].d);
         const dmin = y[i].d * f(x[i].dmin);
 
-        const q8sums = neon.paddq_s16(
+        const q8sums = neon.paddqS16(
             neon.loadFrom(i16x8, &y[i].bsums),
             neon.loadFrom(i16x8, y[i].bsums[8..]),
         );
@@ -468,9 +484,9 @@ pub export fn ggml_vec_dot_q5_K_q8_K(
 
         // The mins are the *second* half of the shuffled words here.
         const mins8 = neon.load(neon.u8x8, @as([*]const u8, @ptrCast(&utmp)) + 8);
-        const mins: i16x8 = @bitCast(@as(u16x8, neon.movl_u8(mins8)));
+        const mins: i16x8 = @bitCast(@as(u16x8, neon.movlU8(mins8)));
         const prod = mullSum(q8sums, mins);
-        const sumi_mins = neon.addvq_s32(prod);
+        const sumi_mins = neon.addvqS32(prod);
 
         const scales: [16]u8 = @bitCast(utmp);
 
@@ -505,9 +521,9 @@ pub export fn ggml_vec_dot_q5_K_q8_K(
             const w3: i8x16 = @bitCast(neon.orr(neon.shrN(q5bits1, 4), h3));
 
             const zero: i32x4 = @splat(0);
-            sumi += neon.addvq_s32(neon.ggml_vdotq_s32(neon.ggml_vdotq_s32(zero, w0, b[0]), w1, b[1])) * scales[sc];
+            sumi += neon.addvqS32(neon.ggmlVdotqS32(neon.ggmlVdotqS32(zero, w0, b[0]), w1, b[1])) * scales[sc];
             sc += 1;
-            sumi += neon.addvq_s32(neon.ggml_vdotq_s32(neon.ggml_vdotq_s32(zero, w2, b[2]), w3, b[3])) * scales[sc];
+            sumi += neon.addvqS32(neon.ggmlVdotqS32(neon.ggmlVdotqS32(zero, w2, b[2]), w3, b[3])) * scales[sc];
             sc += 1;
         }
 
@@ -522,13 +538,17 @@ pub export fn ggml_vec_dot_q5_K_q8_K(
     s[0] = sumf;
 }
 
+comptime {
+    @export(&ggmlVecDotQ6KQ8K, .{ .name = "ggml_vec_dot_q6_K_q8_K" });
+}
+
 /// Ports `ggml_vec_dot_q6_K_q8_K` (arch/arm/quants.c:2969 @cd959bae9), the `__ARM_NEON`
 /// arm.
 ///
 /// Six-bit weights, four in `ql` and two in `qh`, with signed scales that need
 /// no unpacking. The bias of 32 is applied once per super-block as
 /// `isum - 32 * isum_mins` rather than per weight.
-pub export fn ggml_vec_dot_q6_K_q8_K(
+pub fn ggmlVecDotQ6KQ8K(
     n: c_int,
     s: [*c]f32,
     bs: usize,
@@ -537,7 +557,7 @@ pub export fn ggml_vec_dot_q6_K_q8_K(
     vy: ?*const anyopaque,
     by: usize,
     nrc: c_int,
-) void {
+) callconv(.c) void {
     std.debug.assert(@rem(n, c.QK_K) == 0);
     // With i8mm, `mul_mat` asks for two rows per call; see `mmla.zig`.
     if (comptime mmla.enabled) {
@@ -564,14 +584,14 @@ pub export fn ggml_vec_dot_q6_K_q8_K(
         const q8sums1 = neon.loadFrom(i16x8, y[i].bsums[8..]);
 
         const scales_v = neon.loadFrom(i8x16, &x[i].scales);
-        const q6scales0 = neon.movl_s8(neon.low(scales_v));
-        const q6scales1 = neon.movl_s8(neon.high(scales_v));
+        const q6scales0 = neon.movlS8(neon.low(scales_v));
+        const q6scales1 = neon.movlS8(neon.high(scales_v));
 
         const prod = neon.add(
             mullSum(q8sums0, q6scales0),
             mullSum(q8sums1, q6scales1),
         );
-        const isum_mins = neon.addvq_s32(prod);
+        const isum_mins = neon.addvqS32(prod);
 
         var isum: i32 = 0;
         var q6: usize = 0;
@@ -648,23 +668,23 @@ const testing = @import("../testing.zig");
 const golden = if (@import("../../features.zig").golden_generic) @import("golden_generic.zig") else @import("golden.zig");
 
 test "q2_K dot matches the C" {
-    try testing.check(ggml_vec_dot_q2_K_q8_K, c.GGML_TYPE_Q2_K, c.GGML_TYPE_Q8_K, golden.q2_K);
+    try testing.check(ggmlVecDotQ2KQ8K, c.GGML_TYPE_Q2_K, c.GGML_TYPE_Q8_K, golden.q2_K);
 }
 
 test "q3_K dot matches the C" {
-    try testing.check(ggml_vec_dot_q3_K_q8_K, c.GGML_TYPE_Q3_K, c.GGML_TYPE_Q8_K, golden.q3_K);
+    try testing.check(ggmlVecDotQ3KQ8K, c.GGML_TYPE_Q3_K, c.GGML_TYPE_Q8_K, golden.q3_K);
 }
 
 test "q4_K dot matches the C" {
-    try testing.check(ggml_vec_dot_q4_K_q8_K, c.GGML_TYPE_Q4_K, c.GGML_TYPE_Q8_K, golden.q4_K);
+    try testing.check(ggmlVecDotQ4KQ8K, c.GGML_TYPE_Q4_K, c.GGML_TYPE_Q8_K, golden.q4_K);
 }
 
 test "q5_K dot matches the C" {
-    try testing.check(ggml_vec_dot_q5_K_q8_K, c.GGML_TYPE_Q5_K, c.GGML_TYPE_Q8_K, golden.q5_K);
+    try testing.check(ggmlVecDotQ5KQ8K, c.GGML_TYPE_Q5_K, c.GGML_TYPE_Q8_K, golden.q5_K);
 }
 
 test "q6_K dot matches the C" {
-    try testing.check(ggml_vec_dot_q6_K_q8_K, c.GGML_TYPE_Q6_K, c.GGML_TYPE_Q8_K, golden.q6_K);
+    try testing.check(ggmlVecDotQ6KQ8K, c.GGML_TYPE_Q6_K, c.GGML_TYPE_Q8_K, golden.q6_K);
 }
 
 test "the widening product does not truncate" {

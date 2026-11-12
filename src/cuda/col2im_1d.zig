@@ -7,7 +7,6 @@
 //! `llama.cpp/ggml/src/ggml-cuda/col2im-1d.cuh` at v0.9.0 (`cd959bae9`).
 //! The kernel, `col2im_1d_kernel`, stays CUDA.
 
-const std = @import("std");
 const impl = @import("../impl.zig");
 const common = @import("common.zig");
 const kernels = @import("kernels.zig");

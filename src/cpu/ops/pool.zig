@@ -45,7 +45,6 @@ inline fn loadF32(is_f32: bool, row: [*]const u8, j: i64) f32 {
 
 /// Ports `ggml_compute_forward_pool_1d_ksp` (ops.cpp:7896 @cd959bae9).
 ///
-/// Parameters:
 /// - `op`: `GGML_OP_POOL_AVG` or `GGML_OP_POOL_MAX`.
 /// - `k`, `s`, `p`: kernel size, stride and padding.
 fn pool1dKsp(params: *const ComputeParams, op: c.enum_ggml_op_pool, k: i32, s: i32, p: i32, dst: *Tensor) void {
@@ -111,8 +110,12 @@ fn pool1dKsp(params: *const ComputeParams, op: c.enum_ggml_op_pool, k: i32, s: i
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardPool1d, .{ .name = "ggml_compute_forward_pool_1d" });
+}
+
 /// Ports `ggml_compute_forward_pool_1d` (ops.cpp:7967 @cd959bae9).
-pub export fn ggml_compute_forward_pool_1d(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardPool1d(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const opts = dst.op_params;
     const op: c.enum_ggml_op_pool = @bitCast(opts[0]);
     const k0 = opts[1];
@@ -122,11 +125,15 @@ pub export fn ggml_compute_forward_pool_1d(params: *const ComputeParams, dst: *T
     pool1dKsp(params, op, k0, s0, p0, dst);
 }
 
+comptime {
+    @export(&ggmlComputeForwardPool2d, .{ .name = "ggml_compute_forward_pool_2d" });
+}
+
 /// Ports `ggml_compute_forward_pool_2d` (ops.cpp:7982 @cd959bae9).
 ///
 /// Walks `src` one `nb[2]` plane at a time until its bytes run out, so the
 /// third and fourth dimensions are flattened together.
-pub export fn ggml_compute_forward_pool_2d(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardPool2d(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src = impl.one(Tensor, dst.src[0]);
 
     std.debug.assert(src.type == c.GGML_TYPE_F32 or src.type == c.GGML_TYPE_F16);
@@ -211,12 +218,16 @@ pub export fn ggml_compute_forward_pool_2d(params: *const ComputeParams, dst: *T
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardPool2dBack, .{ .name = "ggml_compute_forward_pool_2d_back" });
+}
+
 /// Ports `ggml_compute_forward_pool_2d_back` (ops.cpp:8069 @cd959bae9).
 ///
 /// `src` is the gradient of the pooled output and `src[1]` the forward input.
 /// Note the forward tensor is read through `dst`'s type and row stride, as in
 /// the C — the two are the same shape and type by construction.
-pub export fn ggml_compute_forward_pool_2d_back(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardPool2dBack(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src = impl.one(Tensor, dst.src[0]);
     const dstf = impl.one(Tensor, dst.src[1]); // forward tensor of dst
 

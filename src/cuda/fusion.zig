@@ -856,7 +856,7 @@ pub fn matchSharedExpert(graph: *const CGraph, routed_idx: c_int, shared_idx: c_
     const nodes = [_]c_int{ routed_idx, routed_idx + 1, routed_idx + 2, shared_idx, shared_idx + 1, shared_idx + 2 };
     const ops = [_]Op{ c.GGML_OP_MUL_MAT_ID, c.GGML_OP_MUL_MAT_ID, c.GGML_OP_GLU, c.GGML_OP_MUL_MAT, c.GGML_OP_MUL_MAT, c.GGML_OP_GLU };
     const outputs = [_]c_int{ routed_idx + 2, shared_idx + 2 };
-    if (!ggml_graph.ggml_can_fuse_subgraph_ext(graph, &nodes, 6, &ops, &outputs, 2)) {
+    if (!ggml_graph.ggmlCanFuseSubgraphExt(graph, &nodes, 6, &ops, &outputs, 2)) {
         return false;
     }
 

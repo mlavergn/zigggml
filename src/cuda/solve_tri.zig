@@ -10,7 +10,6 @@
 //! `ggml_cuda_op_solve_tri` calls `ggml_is_contiguous` on both sources and
 //! discards the answers; the port keeps the calls and asserts nothing.
 
-const std = @import("std");
 const impl = @import("../impl.zig");
 const common = @import("common.zig");
 const kernels = @import("kernels.zig");

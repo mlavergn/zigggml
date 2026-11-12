@@ -26,8 +26,6 @@ const convert = @import("convert.zig");
 const c = impl.c;
 
 const Traits = c.ggml_type_traits_cpu;
-const FromFloat = c.ggml_from_float_t;
-const VecDot = c.ggml_vec_dot_t;
 
 /// Ports the `__ARM_FEATURE_MATMUL_INT8` predicate the table branches on.
 ///
@@ -123,13 +121,12 @@ const vec = struct {
 /// `q8_1` and `q8_K` genuinely differ there. So every field is spelled out
 /// here and the defaults are the C's zeros, not a guess.
 ///
-/// Parameters:
 /// - `from_float`: quantiser for a row of `f32`, or null if the type has none.
 /// - `vec_dot`: dot product against a row of this type, or null.
 /// - `vec_dot_type`: the type `vec_dot` expects its second operand in.
 /// - `nrows`: rows consumed per `vec_dot` call.
 ///
-/// Return: the entry, by value.
+/// - Returns: the entry, by value.
 fn entry(
     from_float: ?*const anyopaque,
     vec_dot: ?*const anyopaque,
@@ -153,8 +150,8 @@ fn entry(
 pub const table: [c.GGML_TYPE_COUNT]Traits = blk: {
     var t: [c.GGML_TYPE_COUNT]Traits = @splat(entry(null, null, c.GGML_TYPE_F32, 0));
 
-    t[c.GGML_TYPE_F32] = entry(&convert.ggml_cpu_fp32_to_fp32, &vec.ggml_vec_dot_f32, c.GGML_TYPE_F32, 1);
-    t[c.GGML_TYPE_F16] = entry(&convert.ggml_cpu_fp32_to_fp16, &vec.ggml_vec_dot_f16, c.GGML_TYPE_F16, 1);
+    t[c.GGML_TYPE_F32] = entry(&convert.ggmlCpuFp32ToFp32, &vec.ggml_vec_dot_f32, c.GGML_TYPE_F32, 1);
+    t[c.GGML_TYPE_F16] = entry(&convert.ggmlCpuFp32ToFp16, &vec.ggml_vec_dot_f16, c.GGML_TYPE_F16, 1);
 
     t[c.GGML_TYPE_Q1_0] = entry(&quants.quantize_row_q1_0, &quants.ggml_vec_dot_q1_0_q8_0, c.GGML_TYPE_Q8_0, 1);
     t[c.GGML_TYPE_Q2_0] = entry(&quants.quantize_row_q2_0, &quants.ggml_vec_dot_q2_0_q8_0, c.GGML_TYPE_Q8_0, 1);
@@ -196,23 +193,26 @@ pub const table: [c.GGML_TYPE_COUNT]Traits = blk: {
     // here rather than the 1 every other entry carries. Kept as written.
     t[c.GGML_TYPE_Q8_K] = entry(&quants.quantize_row_q8_K, null, c.GGML_TYPE_F32, 0);
 
-    t[c.GGML_TYPE_BF16] = entry(&convert.ggml_cpu_fp32_to_bf16, &vec.ggml_vec_dot_bf16, c.GGML_TYPE_BF16, 1);
+    t[c.GGML_TYPE_BF16] = entry(&convert.ggmlCpuFp32ToBf16, &vec.ggml_vec_dot_bf16, c.GGML_TYPE_BF16, 1);
 
     t[c.GGML_TYPE_TQ1_0] = entry(&quants.quantize_row_tq1_0, &quants.ggml_vec_dot_tq1_0_q8_K, c.GGML_TYPE_Q8_K, 1);
     t[c.GGML_TYPE_TQ2_0] = entry(&quants.quantize_row_tq2_0, &quants.ggml_vec_dot_tq2_0_q8_K, c.GGML_TYPE_Q8_K, 1);
 
-    t[c.GGML_TYPE_I32] = entry(&convert.ggml_cpu_fp32_to_i32, null, c.GGML_TYPE_F32, 0);
+    t[c.GGML_TYPE_I32] = entry(&convert.ggmlCpuFp32ToI32, null, c.GGML_TYPE_F32, 0);
 
     break :blk t;
 };
 
+comptime {
+    @export(&ggmlGetTypeTraitsCpu, .{ .name = "ggml_get_type_traits_cpu" });
+}
+
 /// Ports `ggml_get_type_traits_cpu` (ggml-cpu.c:427 @cd959bae9).
 ///
-/// Parameters:
 /// - `@"type"`: the tensor type to look up.
 ///
-/// Return: a borrowed pointer into `table`, valid for the life of the process.
-pub export fn ggml_get_type_traits_cpu(@"type": c.enum_ggml_type) *const Traits {
+/// - Returns: a borrowed pointer into `table`, valid for the life of the process.
+pub fn ggmlGetTypeTraitsCpu(@"type": c.enum_ggml_type) callconv(.c) *const Traits {
     return &table[@intCast(@"type")];
 }
 

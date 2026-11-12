@@ -52,7 +52,7 @@ inline fn as(comptime Block: type, p: ?*const anyopaque) [*]const Block {
 /// `(halving_add(q, q >> 1)) >> 6`, which equals `(q * 3) >> 8`. See the note
 /// at the top of this file for why it is written this way.
 inline fn digit(q: u8x16) i8x16 {
-    return @bitCast(neon.shrN(neon.hadd_u8(q, neon.shrN(q, 1)), 6));
+    return @bitCast(neon.shrN(neon.haddU8(q, neon.shrN(q, 1)), 6));
 }
 
 /// The per-super-block epilogue both kernels share (arch/arm/quants.c:1487 and
@@ -68,21 +68,20 @@ inline fn digit(q: u8x16) i8x16 {
 /// not tell the two apart; a CPU-only Qwen3.5 decode against the reference
 /// could, and `make ops-diff` now has the cases that do.
 ///
-/// Parameters:
 /// - `sumi0`, `sumi1`: the two accumulators.
 /// - `y`: the `q8_K` block, for its `bsums`.
 /// - `d`: the product of the two blocks' deltas.
 /// - `sumf`: the running sum.
 ///
-/// Return: `sumf` with this super-block's contribution added, fused.
+/// - Returns: `sumf` with this super-block's contribution added, fused.
 inline fn epilogue(sumi0_in: i32x4, sumi1: i32x4, y: *const blocks.Q8_K, d: f32, sumf: f32) f32 {
     const ysum0 = neon.loadFrom(i16x8, &y.bsums);
     const ysum1 = neon.loadFrom(i16x8, y.bsums[8..]);
 
     var sumi0 = neon.add(sumi0_in, sumi1);
-    sumi0 = neon.sub(sumi0, neon.paddlq_s16(neon.add(ysum0, ysum1)));
+    sumi0 = neon.sub(sumi0, neon.paddlqS16(neon.add(ysum0, ysum1)));
 
-    return @mulAdd(f32, d, @as(f32, @floatFromInt(neon.addvq_s32(sumi0))), sumf);
+    return @mulAdd(f32, d, @as(f32, @floatFromInt(neon.addvqS32(sumi0))), sumf);
 }
 
 /// Ports `k_shift` (arch/arm/quants.c:3955 @cd959bae9).
@@ -92,12 +91,16 @@ inline fn epilogue(sumi0_in: i32x4, sumi1: i32x4, y: *const blocks.Q8_K, d: f32,
 /// each lane's high bits.
 const k_shift: u8x16 = .{ 1, 1, 1, 1, 3, 3, 3, 3, 9, 9, 9, 9, 27, 27, 27, 27 };
 
+comptime {
+    @export(&ggmlVecDotTq10Q8K, .{ .name = "ggml_vec_dot_tq1_0_q8_K" });
+}
+
 /// Ports `ggml_vec_dot_tq1_0_q8_K` (arch/arm/quants.c:1400 @cd959bae9).
 ///
 /// Five digits per byte across `qs`, then four per byte in the `qh` tail. The
 /// two blocks in the C are two braced scopes; they are two loops' worth of
 /// straight-line code here for the same reason -- the strides differ.
-pub export fn ggml_vec_dot_tq1_0_q8_K(
+pub fn ggmlVecDotTq10Q8K(
     n: c_int,
     s: [*c]f32,
     bs: usize,
@@ -106,7 +109,7 @@ pub export fn ggml_vec_dot_tq1_0_q8_K(
     vy: ?*const anyopaque,
     by: usize,
     nrc: c_int,
-) void {
+) callconv(.c) void {
     std.debug.assert(nrc == 1);
     _ = .{ bs, bx, by };
 
@@ -132,10 +135,10 @@ pub export fn ggml_vec_dot_tq1_0_q8_K(
                 const three: u8x16 = @splat(p);
                 const a = digit(neon.mul(qx0, three));
                 const b = digit(neon.mul(qx1, three));
-                const qy_a = neon.load(i8x16, x_qy(y, i, 2 * l * 16));
-                const qy_b = neon.load(i8x16, x_qy(y, i, (2 * l + 1) * 16));
-                sumi0 = neon.dotq_s32(sumi0, a, qy_a);
-                sumi1 = neon.dotq_s32(sumi1, b, qy_b);
+                const qy_a = neon.load(i8x16, xQy(y, i, 2 * l * 16));
+                const qy_b = neon.load(i8x16, xQy(y, i, (2 * l + 1) * 16));
+                sumi0 = neon.dotqS32(sumi0, a, qy_a);
+                sumi1 = neon.dotqS32(sumi1, b, qy_b);
             }
         }
 
@@ -157,11 +160,11 @@ pub export fn ggml_vec_dot_tq1_0_q8_K(
             sq[5] = digit(neon.mul(broadcast, k_shift));
 
             inline for (0..6) |l| {
-                const qy = neon.load(i8x16, x_qy(y, i, 160 + l * 16));
+                const qy = neon.load(i8x16, xQy(y, i, 160 + l * 16));
                 if (l % 2 == 0) {
-                    sumi0 = neon.dotq_s32(sumi0, sq[l], qy);
+                    sumi0 = neon.dotqS32(sumi0, sq[l], qy);
                 } else {
-                    sumi1 = neon.dotq_s32(sumi1, sq[l], qy);
+                    sumi1 = neon.dotqS32(sumi1, sq[l], qy);
                 }
             }
         }
@@ -173,15 +176,19 @@ pub export fn ggml_vec_dot_tq1_0_q8_K(
 }
 
 /// The `q8_K` operand's bytes at an offset, as a pointer the loader accepts.
-inline fn x_qy(y: [*]const blocks.Q8_K, i: usize, off: usize) [*]const u8 {
+inline fn xQy(y: [*]const blocks.Q8_K, i: usize, off: usize) [*]const u8 {
     return @as([*]const u8, @ptrCast(&y[i].qs)) + off;
+}
+
+comptime {
+    @export(&ggmlVecDotTq20Q8K, .{ .name = "ggml_vec_dot_tq2_0_q8_K" });
 }
 
 /// Ports `ggml_vec_dot_tq2_0_q8_K` (arch/arm/quants.c:1577 @cd959bae9).
 ///
 /// Four two-bit digits per byte, extracted with a shift and a mask rather than
 /// the base-three trick `tq1_0` needs.
-pub export fn ggml_vec_dot_tq2_0_q8_K(
+pub fn ggmlVecDotTq20Q8K(
     n: c_int,
     s: [*c]f32,
     bs: usize,
@@ -190,7 +197,7 @@ pub export fn ggml_vec_dot_tq2_0_q8_K(
     vy: ?*const anyopaque,
     by: usize,
     nrc: c_int,
-) void {
+) callconv(.c) void {
     std.debug.assert(nrc == 1);
     _ = .{ bs, bx, by };
 
@@ -219,10 +226,10 @@ pub export fn ggml_vec_dot_tq2_0_q8_K(
                 const sh = 2 * l;
                 const a: i8x16 = @bitCast(neon.@"and"(neon.shrN(qx0, sh), m3));
                 const b: i8x16 = @bitCast(neon.@"and"(neon.shrN(qx1, sh), m3));
-                const qy_a = neon.load(i8x16, x_qy(y, i, j * 4 + (2 * l) * 16));
-                const qy_b = neon.load(i8x16, x_qy(y, i, j * 4 + (2 * l + 1) * 16));
-                sumi0 = neon.dotq_s32(sumi0, a, qy_a);
-                sumi1 = neon.dotq_s32(sumi1, b, qy_b);
+                const qy_a = neon.load(i8x16, xQy(y, i, j * 4 + (2 * l) * 16));
+                const qy_b = neon.load(i8x16, xQy(y, i, j * 4 + (2 * l + 1) * 16));
+                sumi0 = neon.dotqS32(sumi0, a, qy_a);
+                sumi1 = neon.dotqS32(sumi1, b, qy_b);
             }
         }
 
@@ -243,11 +250,11 @@ const testing = @import("../testing.zig");
 const golden = if (@import("../../features.zig").golden_generic) @import("golden_generic.zig") else @import("golden.zig");
 
 test "tq1_0 dot matches the C" {
-    try testing.check(ggml_vec_dot_tq1_0_q8_K, c.GGML_TYPE_TQ1_0, c.GGML_TYPE_Q8_K, golden.tq1_0);
+    try testing.check(ggmlVecDotTq10Q8K, c.GGML_TYPE_TQ1_0, c.GGML_TYPE_Q8_K, golden.tq1_0);
 }
 
 test "tq2_0 dot matches the C" {
-    try testing.check(ggml_vec_dot_tq2_0_q8_K, c.GGML_TYPE_TQ2_0, c.GGML_TYPE_Q8_K, golden.tq2_0);
+    try testing.check(ggmlVecDotTq20Q8K, c.GGML_TYPE_TQ2_0, c.GGML_TYPE_Q8_K, golden.tq2_0);
 }
 
 test "the vector digit extraction agrees with the scalar form" {

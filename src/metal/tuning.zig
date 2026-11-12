@@ -63,10 +63,9 @@ const fa_vec_domain_batch: i8 = 1;
 
 /// Ports `fa_vec_ne11_bucket` (ggml-metal-tuning.cpp:9 @cd959bae9).
 ///
-/// Parameters:
 /// - `ne11`: the KV length.
 ///
-/// Return: the bucket index, or the bucket count when past the last edge.
+/// - Returns: the bucket index, or the bucket count when past the last edge.
 pub fn ne11Bucket(ne11: i64) c_int {
     for (fa_vec_ne11_buckets, 0..) |edge, i| {
         if (ne11 < edge) return @intCast(i);
@@ -76,10 +75,9 @@ pub fn ne11Bucket(ne11: i64) c_int {
 
 /// Ports `fa_vec_ne01_bucket` (ggml-metal-tuning.cpp:18 @cd959bae9).
 ///
-/// Parameters:
 /// - `ne01`: the query-row count.
 ///
-/// Return: the bucket index, or the bucket count when past the last edge.
+/// - Returns: the bucket index, or the bucket count when past the last edge.
 pub fn ne01Bucket(ne01: i64) c_int {
     for (fa_vec_ne01_buckets, 0..) |edge, i| {
         if (ne01 < edge) return @intCast(i);
@@ -96,11 +94,10 @@ pub fn ne01Bucket(ne01: i64) c_int {
 /// value, so its arm changes no answer; it is written out to match. Hand-maintained there and here — it mirrors the
 /// Metal source, which is never ported.
 ///
-/// Parameters:
 /// - `dk`: key head size.
 /// - `dv`: value head size.
 ///
-/// Return: the baseline `NE`, 4 when the pair has no instantiation.
+/// - Returns: the baseline `NE`, 4 when the pair has no instantiation.
 pub fn baselineNe(dk: c_int, dv: c_int) c_int {
     return switch (dk) {
         32 => if (dv == 32) 4 else 4,
@@ -131,7 +128,6 @@ var g_override_cfg: Cfg = .{ .Q = 1, .NE = 4 };
 /// configurations. That path reaches it directly rather than through the
 /// mangled C++ name.
 ///
-/// Parameters:
 /// - `cfg`: the `(Q, NE)` every `pick` will return until cleared.
 pub fn setOverride(cfg: Cfg) void {
     g_override_cfg = cfg;
@@ -164,13 +160,12 @@ fn findCfg(k: Key) ?Cfg {
 /// key with a cast, which truncates; so does this, rather than asserting a
 /// range the C never checks.
 ///
-/// Parameters:
 /// - `gpu_family`: the Metal GPU family, `N` in `MTLGPUFamilyAppleN`, 0
 ///   when unknown.
 /// - `dtype`, `dk`, `dv`: the KV type and head sizes.
 /// - `ne11`: KV length. - `ne01`: query rows.
 ///
-/// Return: the `(Q, NE)` the FA vector kernel should be instantiated at.
+/// - Returns: the `(Q, NE)` the FA vector kernel should be instantiated at.
 pub fn pick(
     gpu_family: c_int,
     dtype: c_int,

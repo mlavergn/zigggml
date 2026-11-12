@@ -203,7 +203,7 @@ fn dim(x: i64) u32 {
 /// Ports `ggml_cuda_gdn_mma_launch` (gated-delta-net-mma.cu:422
 /// @cd959bae9), which launches with `<<<>>>`.
 ///
-/// Return: whether the chunked kernel ran; false leaves the op to the
+/// - Returns: whether the chunked kernel ran; false leaves the op to the
 /// recurrent kernel, with nothing launched.
 pub fn launch(device: c_int, a: *const Args, stream: cu.cudaStream_t) bool {
     if (a.state_out == null) return false;

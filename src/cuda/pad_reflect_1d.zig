@@ -10,7 +10,6 @@
 //! kernel splits it back with `fast_div_modulo` over `ne01`'s fastdiv
 //! values.
 
-const std = @import("std");
 const impl = @import("../impl.zig");
 const common = @import("common.zig");
 const kernels = @import("kernels.zig");

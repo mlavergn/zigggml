@@ -1,8 +1,10 @@
 # UPSTREAM
 
 zigggml's ggml comes from **llama.zig**, which ports it from **llama.cpp**.
-llama.zig drives every sync with upstream; zigggml re-copies from llama.zig.
-Nothing here is edited in place.
+llama.zig drives every sync with upstream. zigggml's Zig sources started as
+copies of llama.zig's and have since been restyled to `ZIGSTYLE.md` (camelCase
+functions, house doc format, lint-clean), so upstream changes are ported into
+them by hand. Only `vendor/` is re-copied.
 
 ## Pin
 
@@ -18,10 +20,10 @@ The copy is fresh (no git history carried over). Lineage lives in each ported fi
 
 | zigggml | source | notes |
 | --- | --- | --- |
-| `src/**` | `llama.zig/src/ggml/**` | verbatim, minus `ported.zig` and `.mc.zig`; `src/root.zig` is zigggml's |
-| `build/metal_embed.zig`, `build/cuda_kernels.zig`, `build/vulkan_shaders.zig` | `llama.zig/build/` | verbatim |
+| `src/**` | `llama.zig/src/ggml/**` | restyled; minus `ported.zig` and `.mc.zig`; `src/root.zig` is zigggml's |
+| `build/metal_embed.zig`, `build/cuda_kernels.zig`, `build/vulkan_shaders.zig` | `llama.zig/build/` | restyled |
 | `build/ggml.zig` | `llama.zig/build/llamacpp.zig`, `build.zig` | ported by hand: `addGgml`, the CUDA/Vulkan/Metal helpers, the option resolution |
-| `cli/cpu.zig` | `llama.zig/tools/common/cpu.zig` | verbatim |
+| `cli/cpu.zig` | `llama.zig/tools/common/cpu.zig` | restyled |
 | `scripts/vk-toolchain` | `llama.zig/scripts/vk-toolchain` | header comment adapted |
 | `vendor/ggml/LICENSE` | `llama.cpp/LICENSE` | MIT |
 | `vendor/ggml/include/` | `llama.cpp/ggml/include/` | `ggml.h` is regenerated at build time with `config.zon`'s `GGML_DEFAULT_N_THREADS` |
@@ -33,8 +35,8 @@ The copy is fresh (no git history carried over). Lineage lives in each ported fi
 ## Sync procedure
 
 1. Sync llama.zig with upstream first (its `SYNC.md`), and let its gates pass.
-2. `make sync` (or `scripts/sync <path-to-llama.zig>`).
-3. If `build/llamacpp.zig` changed in llama.zig, port the ggml-relevant parts into `build/ggml.zig` by hand.
+2. `make sync` (or `scripts/sync <path-to-llama.zig>`). This re-copies `vendor/`, updates the pin, and lists the llama.zig files changed since the previous pin.
+3. Port those changes into the restyled sources by hand. Keep each file's provenance header, and keep the export of every C symbol the change touches. If `build/llamacpp.zig` changed, port the ggml-relevant parts into `build/ggml.zig`.
 4. `make validate`.
 5. Symbol parity: build llama.zig's `reference` step with the same backends into a scratch prefix, and compare.
 

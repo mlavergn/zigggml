@@ -59,13 +59,17 @@ var is_first_call = true;
 // -----------------------------------------------------------------------------
 // Context lifecycle
 
+comptime {
+    @export(&ggmlInit, .{ .name = "ggml_init" });
+}
+
 /// Ports `ggml_init` (ggml.c:1629 @cd959bae9).
 ///
 /// A caller may supply its own buffer, in which case the context does not own
 /// it and will not free it. Passing `mem_size` of 0 is allowed and rounds up to
 /// one alignment unit, so a context always has somewhere to put its first
 /// object header.
-pub export fn ggml_init(params: c.struct_ggml_init_params) ?*Context {
+pub fn ggmlInit(params: c.struct_ggml_init_params) callconv(.c) ?*Context {
     // The C guards this with a critical section because the time system needs
     // initialising exactly once, on Windows.
     c.ggml_critical_section_start();
@@ -102,56 +106,88 @@ pub export fn ggml_init(params: c.struct_ggml_init_params) ?*Context {
     return ctx;
 }
 
+comptime {
+    @export(&ggmlReset, .{ .name = "ggml_reset" });
+}
+
 /// Ports `ggml_reset` (ggml.c:1671 @cd959bae9).
 ///
 /// Drops every object without freeing memory, so the context can be refilled.
 /// Any tensor pointer handed out before this is invalid afterwards.
-export fn ggml_reset(ctx_opt: ?*Context) void {
+fn ggmlReset(ctx_opt: ?*Context) callconv(.c) void {
     const ctx = ctx_opt orelse return;
     ctx.n_objects = 0;
     ctx.objects_begin = null;
     ctx.objects_end = null;
 }
 
+comptime {
+    @export(&ggmlFree, .{ .name = "ggml_free" });
+}
+
 /// Ports `ggml_free` (ggml.c:1681 @cd959bae9).
-pub export fn ggml_free(ctx_opt: ?*Context) void {
+pub fn ggmlFree(ctx_opt: ?*Context) callconv(.c) void {
     const ctx = ctx_opt orelse return;
     if (ctx.mem_buffer_owned) ggml_aligned_free(ctx.mem_buffer, ctx.mem_size);
     std.c.free(ctx);
 }
 
+comptime {
+    @export(&ggmlUsedMem, .{ .name = "ggml_used_mem" });
+}
+
 /// Ports `ggml_used_mem` (ggml.c:1693 @cd959bae9).
-pub export fn ggml_used_mem(ctx: *const Context) usize {
+pub fn ggmlUsedMem(ctx: *const Context) callconv(.c) usize {
     const end = ctx.objects_end orelse return 0;
     return end.offs + end.size;
 }
 
+comptime {
+    @export(&ggmlGetNoAlloc, .{ .name = "ggml_get_no_alloc" });
+}
+
 /// Ports `ggml_get_no_alloc` (ggml.c:1697 @cd959bae9).
-pub export fn ggml_get_no_alloc(ctx: *Context) bool {
+pub fn ggmlGetNoAlloc(ctx: *Context) callconv(.c) bool {
     return ctx.no_alloc;
 }
 
+comptime {
+    @export(&ggmlSetNoAlloc, .{ .name = "ggml_set_no_alloc" });
+}
+
 /// Ports `ggml_set_no_alloc` (ggml.c:1701 @cd959bae9).
-pub export fn ggml_set_no_alloc(ctx: *Context, no_alloc: bool) void {
+pub fn ggmlSetNoAlloc(ctx: *Context, no_alloc: bool) callconv(.c) void {
     ctx.no_alloc = no_alloc;
 }
 
+comptime {
+    @export(&ggmlGetMemBuffer, .{ .name = "ggml_get_mem_buffer" });
+}
+
 /// Ports `ggml_get_mem_buffer` (ggml.c:1705 @cd959bae9).
-export fn ggml_get_mem_buffer(ctx: *const Context) ?*anyopaque {
+fn ggmlGetMemBuffer(ctx: *const Context) callconv(.c) ?*anyopaque {
     return ctx.mem_buffer;
 }
 
+comptime {
+    @export(&ggmlGetMemSize, .{ .name = "ggml_get_mem_size" });
+}
+
 /// Ports `ggml_get_mem_size` (ggml.c:1709 @cd959bae9).
-export fn ggml_get_mem_size(ctx: *const Context) usize {
+fn ggmlGetMemSize(ctx: *const Context) callconv(.c) usize {
     return ctx.mem_size;
 }
 
+comptime {
+    @export(&ggmlGetMaxTensorSize, .{ .name = "ggml_get_max_tensor_size" });
+}
+
 /// Ports `ggml_get_max_tensor_size` (ggml.c:1713 @cd959bae9).
-export fn ggml_get_max_tensor_size(ctx: *const Context) usize {
+fn ggmlGetMaxTensorSize(ctx: *const Context) callconv(.c) usize {
     var max_size: usize = 0;
-    var tensor = ggml_get_first_tensor(ctx);
-    while (tensor) |t| : (tensor = ggml_get_next_tensor(ctx, t)) {
-        max_size = @max(max_size, types.ggml_nbytes(t));
+    var tensor = ggmlGetFirstTensor(ctx);
+    while (tensor) |t| : (tensor = ggmlGetNextTensor(ctx, t)) {
+        max_size = @max(max_size, types.ggmlNbytes(t));
     }
     return max_size;
 }
@@ -165,7 +201,7 @@ export fn ggml_get_max_tensor_size(ctx: *const Context) usize {
 /// not theoretical: `size` comes from tensor dimensions, which callers compute
 /// from untrusted model metadata.
 ///
-/// Return: the new header, or null when the pool is exhausted or the
+/// - Returns: the new header, or null when the pool is exhausted or the
 /// arithmetic would overflow. In a debug build the exhausted case aborts
 /// instead, matching the C.
 pub fn newObject(ctx: *Context, obj_type: c.enum_ggml_object_type, size: usize) ?*impl.Object {
@@ -216,8 +252,12 @@ pub fn newObject(ctx: *Context, obj_type: c.enum_ggml_object_type, size: usize) 
     return obj_new;
 }
 
+comptime {
+    @export(&ggmlNewBuffer, .{ .name = "ggml_new_buffer" });
+}
+
 /// Ports `ggml_new_buffer` (ggml.c:1926 @cd959bae9).
-pub export fn ggml_new_buffer(ctx: *Context, nbytes: usize) ?*anyopaque {
+pub fn ggmlNewBuffer(ctx: *Context, nbytes: usize) callconv(.c) ?*anyopaque {
     const obj = newObject(ctx, c.GGML_OBJECT_TYPE_WORK_BUFFER, nbytes) orelse return null;
     const mem_buffer: [*]u8 = @ptrCast(ctx.mem_buffer.?);
     return mem_buffer + obj.offs;
@@ -232,7 +272,6 @@ pub export fn ggml_new_buffer(ctx: *Context, nbytes: usize) ?*anyopaque {
 /// rather than allocating; views of views are collapsed onto the ultimate base
 /// so `view_src` is never itself a view.
 ///
-/// Parameters:
 /// - `ctx`: context to allocate in.
 /// - `t`: element type.
 /// - `n_dims`: 1 to `GGML_MAX_DIMS`; trailing dimensions default to 1.
@@ -242,7 +281,7 @@ pub export fn ggml_new_buffer(ctx: *Context, nbytes: usize) ?*anyopaque {
 /// - `view_src`: tensor whose data to share, or null to allocate.
 /// - `view_offs`: byte offset into `view_src`'s data.
 ///
-/// Return: the tensor, owned by the context.
+/// - Returns: the tensor, owned by the context.
 pub fn newTensorImpl(
     ctx: *Context,
     t: c.enum_ggml_type,
@@ -275,7 +314,7 @@ pub fn newTensorImpl(
         }
     }
 
-    var data_size = types.ggml_row_size(t, ne[0]);
+    var data_size = types.ggmlRowSize(t, ne[0]);
     for (1..@intCast(n_dims)) |i| {
         data_size *= @intCast(ne[i]);
     }
@@ -323,17 +362,17 @@ pub fn newTensorImpl(
             result.nb[i] = strides[i];
         }
     } else {
-        result.nb[0] = types.ggml_type_size(t);
-        result.nb[1] = result.nb[0] * @as(usize, @intCast(@divTrunc(result.ne[0], types.ggml_blck_size(t))));
+        result.nb[0] = types.ggmlTypeSize(t);
+        result.nb[1] = result.nb[0] * @as(usize, @intCast(@divTrunc(result.ne[0], types.ggmlBlckSize(t))));
         for (2..c.GGML_MAX_DIMS) |i| {
             result.nb[i] = result.nb[i - 1] * @as(usize, @intCast(result.ne[i - 1]));
         }
     }
 
     // a view stays inside its source, over the bytes its strides actually reach
-    const view_size = types.ggml_nbytes(result);
+    const view_size = types.ggmlNbytes(result);
     impl.assert(
-        view_src == null or view_size == 0 or view_size + view_offs <= types.ggml_nbytes(view_src.?),
+        view_src == null or view_size == 0 or view_size + view_offs <= types.ggmlNbytes(view_src.?),
         "view_src == NULL || view_size == 0 || view_size + view_offs <= ggml_nbytes(view_src)",
     );
 
@@ -342,47 +381,75 @@ pub fn newTensorImpl(
     return result;
 }
 
+comptime {
+    @export(&ggmlNewTensor, .{ .name = "ggml_new_tensor" });
+}
+
 /// Ports `ggml_new_tensor` (ggml.c:1881 @cd959bae9).
-pub export fn ggml_new_tensor(ctx: *Context, t: c.enum_ggml_type, n_dims: c_int, ne: [*]const i64) *c.ggml_tensor {
+pub fn ggmlNewTensor(ctx: *Context, t: c.enum_ggml_type, n_dims: c_int, ne: [*]const i64) callconv(.c) *c.ggml_tensor {
     return newTensorImpl(ctx, t, n_dims, ne, null, null, 0);
 }
 
+comptime {
+    @export(&ggmlNewTensor1d, .{ .name = "ggml_new_tensor_1d" });
+}
+
 /// Ports `ggml_new_tensor_1d` (ggml.c:1889 @cd959bae9).
-pub export fn ggml_new_tensor_1d(ctx: *Context, t: c.enum_ggml_type, ne0: i64) *c.ggml_tensor {
+pub fn ggmlNewTensor1d(ctx: *Context, t: c.enum_ggml_type, ne0: i64) callconv(.c) *c.ggml_tensor {
     var ne = [_]i64{ne0};
-    return ggml_new_tensor(ctx, t, 1, &ne);
+    return ggmlNewTensor(ctx, t, 1, &ne);
+}
+
+comptime {
+    @export(&ggmlNewTensor2d, .{ .name = "ggml_new_tensor_2d" });
 }
 
 /// Ports `ggml_new_tensor_2d` (ggml.c:1896 @cd959bae9).
-pub export fn ggml_new_tensor_2d(ctx: *Context, t: c.enum_ggml_type, ne0: i64, ne1: i64) *c.ggml_tensor {
+pub fn ggmlNewTensor2d(ctx: *Context, t: c.enum_ggml_type, ne0: i64, ne1: i64) callconv(.c) *c.ggml_tensor {
     const ne = [_]i64{ ne0, ne1 };
-    return ggml_new_tensor(ctx, t, 2, &ne);
+    return ggmlNewTensor(ctx, t, 2, &ne);
+}
+
+comptime {
+    @export(&ggmlNewTensor3d, .{ .name = "ggml_new_tensor_3d" });
 }
 
 /// Ports `ggml_new_tensor_3d` (ggml.c:1905 @cd959bae9).
-pub export fn ggml_new_tensor_3d(ctx: *Context, t: c.enum_ggml_type, ne0: i64, ne1: i64, ne2: i64) *c.ggml_tensor {
+pub fn ggmlNewTensor3d(ctx: *Context, t: c.enum_ggml_type, ne0: i64, ne1: i64, ne2: i64) callconv(.c) *c.ggml_tensor {
     const ne = [_]i64{ ne0, ne1, ne2 };
-    return ggml_new_tensor(ctx, t, 3, &ne);
+    return ggmlNewTensor(ctx, t, 3, &ne);
+}
+
+comptime {
+    @export(&ggmlNewTensor4d, .{ .name = "ggml_new_tensor_4d" });
 }
 
 /// Ports `ggml_new_tensor_4d` (ggml.c:1915 @cd959bae9).
-pub export fn ggml_new_tensor_4d(ctx: *Context, t: c.enum_ggml_type, ne0: i64, ne1: i64, ne2: i64, ne3: i64) *c.ggml_tensor {
+pub fn ggmlNewTensor4d(ctx: *Context, t: c.enum_ggml_type, ne0: i64, ne1: i64, ne2: i64, ne3: i64) callconv(.c) *c.ggml_tensor {
     const ne = [_]i64{ ne0, ne1, ne2, ne3 };
-    return ggml_new_tensor(ctx, t, 4, &ne);
+    return ggmlNewTensor(ctx, t, 4, &ne);
+}
+
+comptime {
+    @export(&ggmlDupTensor, .{ .name = "ggml_dup_tensor" });
 }
 
 /// Ports `ggml_dup_tensor` (ggml.c:1932 @cd959bae9).
 ///
 /// Same type and shape, fresh storage. Not a copy: the data is uninitialised.
-pub export fn ggml_dup_tensor(ctx: *Context, src: *const c.ggml_tensor) *c.ggml_tensor {
-    return ggml_new_tensor(ctx, src.type, c.GGML_MAX_DIMS, &src.ne);
+pub fn ggmlDupTensor(ctx: *Context, src: *const c.ggml_tensor) callconv(.c) *c.ggml_tensor {
+    return ggmlNewTensor(ctx, src.type, c.GGML_MAX_DIMS, &src.ne);
+}
+
+comptime {
+    @export(&ggmlViewTensor, .{ .name = "ggml_view_tensor" });
 }
 
 /// Ports `ggml_view_tensor` (ggml.c:2000 @cd959bae9).
 ///
 /// Shares `src`'s data and copies its strides, so the view sees the same
 /// layout rather than a contiguous reinterpretation.
-pub export fn ggml_view_tensor(ctx: *Context, src: *c.ggml_tensor) *c.ggml_tensor {
+pub fn ggmlViewTensor(ctx: *Context, src: *c.ggml_tensor) callconv(.c) *c.ggml_tensor {
     const result = newTensorImpl(ctx, src.type, c.GGML_MAX_DIMS, &src.ne, &src.nb, src, 0);
     _ = ggml_format_name(result, "%s (view)", &src.name);
     return result;
@@ -391,8 +458,12 @@ pub export fn ggml_view_tensor(ctx: *Context, src: *c.ggml_tensor) *c.ggml_tenso
 // -----------------------------------------------------------------------------
 // Walking a context
 
+comptime {
+    @export(&ggmlGetFirstTensor, .{ .name = "ggml_get_first_tensor" });
+}
+
 /// Ports `ggml_get_first_tensor` (ggml.c:2009 @cd959bae9).
-pub export fn ggml_get_first_tensor(ctx: *const Context) ?*c.ggml_tensor {
+pub fn ggmlGetFirstTensor(ctx: *const Context) callconv(.c) ?*c.ggml_tensor {
     const mem_buffer: [*]u8 = @ptrCast(ctx.mem_buffer.?);
     var obj = ctx.objects_begin;
     while (obj) |o| : (obj = o.next) {
@@ -403,12 +474,16 @@ pub export fn ggml_get_first_tensor(ctx: *const Context) ?*c.ggml_tensor {
     return null;
 }
 
+comptime {
+    @export(&ggmlGetNextTensor, .{ .name = "ggml_get_next_tensor" });
+}
+
 /// Ports `ggml_get_next_tensor` (ggml.c:2025 @cd959bae9).
 ///
 /// Steps back from the tensor to its object header, which sits immediately
 /// before it, then follows the list. Only valid for a tensor this context
 /// allocated.
-pub export fn ggml_get_next_tensor(ctx: *const Context, tensor: *c.ggml_tensor) ?*c.ggml_tensor {
+pub fn ggmlGetNextTensor(ctx: *const Context, tensor: *c.ggml_tensor) callconv(.c) ?*c.ggml_tensor {
     const header: *impl.Object = @ptrCast(@alignCast(@as([*]u8, @ptrCast(tensor)) - types.object_size));
     const mem_buffer: [*]u8 = @ptrCast(ctx.mem_buffer.?);
     var obj = header.next;
@@ -420,8 +495,12 @@ pub export fn ggml_get_next_tensor(ctx: *const Context, tensor: *c.ggml_tensor) 
     return null;
 }
 
+comptime {
+    @export(&ggmlGetTensor, .{ .name = "ggml_get_tensor" });
+}
+
 /// Ports `ggml_get_tensor` (ggml.c:2042 @cd959bae9).
-pub export fn ggml_get_tensor(ctx: *Context, name: [*:0]const u8) ?*c.ggml_tensor {
+pub fn ggmlGetTensor(ctx: *Context, name: [*:0]const u8) callconv(.c) ?*c.ggml_tensor {
     const mem_buffer: [*]u8 = @ptrCast(ctx.mem_buffer.?);
     var obj = ctx.objects_begin;
     while (obj) |o| : (obj = o.next) {
@@ -435,18 +514,22 @@ pub export fn ggml_get_tensor(ctx: *Context, name: [*:0]const u8) ?*c.ggml_tenso
 // -----------------------------------------------------------------------------
 // Tensor accessors
 
+comptime {
+    @export(&ggmlUnravelIndex, .{ .name = "ggml_unravel_index" });
+}
+
 /// Ports `ggml_unravel_index` (ggml.c:1936 @cd959bae9).
 ///
 /// Turns a flat element index into per-dimension indices. Any output pointer
 /// may be null, which callers use to ask for only the dimensions they need.
-pub export fn ggml_unravel_index(
+pub fn ggmlUnravelIndex(
     tensor: *const c.ggml_tensor,
     i: i64,
     out0: ?*i64,
     out1: ?*i64,
     out2: ?*i64,
     out3: ?*i64,
-) void {
+) callconv(.c) void {
     const ne0 = tensor.ne[0];
     const ne1 = tensor.ne[1];
     const ne2 = tensor.ne[2];
@@ -462,20 +545,36 @@ pub export fn ggml_unravel_index(
     if (out3) |p| p.* = idx3;
 }
 
+comptime {
+    @export(&ggmlGetData, .{ .name = "ggml_get_data" });
+}
+
 /// Ports `ggml_get_data` (ggml.c:1960 @cd959bae9).
-pub export fn ggml_get_data(tensor: *const c.ggml_tensor) ?*anyopaque {
+pub fn ggmlGetData(tensor: *const c.ggml_tensor) callconv(.c) ?*anyopaque {
     return tensor.data;
 }
 
+comptime {
+    @export(&ggmlGetDataF32, .{ .name = "ggml_get_data_f32" });
+}
+
 /// Ports `ggml_get_data_f32` (ggml.c:1964 @cd959bae9).
-pub export fn ggml_get_data_f32(tensor: *const c.ggml_tensor) ?[*]f32 {
+pub fn ggmlGetDataF32(tensor: *const c.ggml_tensor) callconv(.c) ?[*]f32 {
     std.debug.assert(tensor.type == c.GGML_TYPE_F32);
     return @ptrCast(@alignCast(tensor.data));
 }
 
+comptime {
+    @export(&ggmlGetName, .{ .name = "ggml_get_name" });
+}
+
 /// Ports `ggml_get_name` (ggml.c:1979 @cd959bae9).
-pub export fn ggml_get_name(tensor: *const c.ggml_tensor) [*:0]const u8 {
+pub fn ggmlGetName(tensor: *const c.ggml_tensor) callconv(.c) [*:0]const u8 {
     return @ptrCast(&tensor.name);
+}
+
+comptime {
+    @export(&ggmlSetName, .{ .name = "ggml_set_name" });
 }
 
 /// Ports `ggml_set_name` (ggml.c:1983 @cd959bae9).
@@ -483,8 +582,8 @@ pub export fn ggml_get_name(tensor: *const c.ggml_tensor) [*:0]const u8 {
 /// Truncates rather than failing when the name does not fit, and always
 /// terminates.
 ///
-/// Return: `tensor`, so calls can be chained onto a constructor.
-pub export fn ggml_set_name(tensor: *c.ggml_tensor, name: [*:0]const u8) *c.ggml_tensor {
+/// - Returns: `tensor`, so calls can be chained onto a constructor.
+pub fn ggmlSetName(tensor: *c.ggml_tensor, name: [*:0]const u8) callconv(.c) *c.ggml_tensor {
     var i: usize = 0;
     while (i < tensor.name.len - 1 and name[i] != 0) : (i += 1) {
         tensor.name[i] = @bitCast(name[i]);
@@ -513,8 +612,12 @@ comptime {
 // -----------------------------------------------------------------------------
 // Debug printing
 
+comptime {
+    @export(&ggmlPrintObject, .{ .name = "ggml_print_object" });
+}
+
 /// Ports `ggml_print_object` (ggml.c:1285 @cd959bae9).
-export fn ggml_print_object(obj: *const impl.Object) void {
+fn ggmlPrintObject(obj: *const impl.Object) callconv(.c) void {
     _ = printf(
         "%s: type = %d, offset = %zu, size = %zu, next = %p\n",
         "ggml_print_object",
@@ -525,12 +628,16 @@ export fn ggml_print_object(obj: *const impl.Object) void {
     );
 }
 
+comptime {
+    @export(&ggmlPrintObjects, .{ .name = "ggml_print_objects" });
+}
+
 /// Ports `ggml_print_objects` (ggml.c:1290 @cd959bae9).
-export fn ggml_print_objects(ctx: *const Context) void {
+fn ggmlPrintObjects(ctx: *const Context) callconv(.c) void {
     _ = printf("%s: objects in context %p:\n", "ggml_print_objects", ctx);
     var obj = ctx.objects_begin;
     while (obj) |o| : (obj = o.next) {
-        ggml_print_object(o);
+        ggmlPrintObject(o);
     }
     _ = printf("%s: --- end ---\n", "ggml_print_objects");
 }
@@ -572,26 +679,26 @@ fn testContext(buf: []u8) Context {
 test "a fresh context has no objects and no used memory" {
     var buf: [4096]u8 align(16) = undefined;
     var ctx = testContext(&buf);
-    try std.testing.expectEqual(@as(usize, 0), ggml_used_mem(&ctx));
-    try std.testing.expect(ggml_get_first_tensor(&ctx) == null);
+    try std.testing.expectEqual(@as(usize, 0), ggmlUsedMem(&ctx));
+    try std.testing.expect(ggmlGetFirstTensor(&ctx) == null);
 }
 
 test "tensors are laid out contiguously with block-aware strides" {
     var buf: [1 << 16]u8 align(16) = undefined;
     var ctx = testContext(&buf);
 
-    const t = ggml_new_tensor_2d(&ctx, c.GGML_TYPE_F32, 8, 4);
+    const t = ggmlNewTensor2d(&ctx, c.GGML_TYPE_F32, 8, 4);
     try std.testing.expectEqual(@as(i64, 8), t.ne[0]);
     try std.testing.expectEqual(@as(i64, 4), t.ne[1]);
     try std.testing.expectEqual(@as(i64, 1), t.ne[2]);
     try std.testing.expectEqual(@as(usize, 4), t.nb[0]);
     try std.testing.expectEqual(@as(usize, 32), t.nb[1]);
-    try std.testing.expect(types.ggml_is_contiguous(t));
-    try std.testing.expectEqual(@as(i64, 32), types.ggml_nelements(t));
+    try std.testing.expect(types.ggmlIsContiguous(t));
+    try std.testing.expectEqual(@as(i64, 32), types.ggmlNelements(t));
 
     // A quantized row measures nb[1] in blocks, not elements: 256 Q4_K
     // elements are one 144-byte block.
-    const q = ggml_new_tensor_2d(&ctx, c.GGML_TYPE_Q4_K, 256, 2);
+    const q = ggmlNewTensor2d(&ctx, c.GGML_TYPE_Q4_K, 256, 2);
     try std.testing.expectEqual(@as(usize, 144), q.nb[1]);
 }
 
@@ -599,16 +706,16 @@ test "walking a context finds every tensor in order" {
     var buf: [1 << 16]u8 align(16) = undefined;
     var ctx = testContext(&buf);
 
-    const a = ggml_new_tensor_1d(&ctx, c.GGML_TYPE_F32, 4);
-    _ = ggml_set_name(a, "a");
-    const b = ggml_new_tensor_1d(&ctx, c.GGML_TYPE_F32, 4);
-    _ = ggml_set_name(b, "b");
+    const a = ggmlNewTensor1d(&ctx, c.GGML_TYPE_F32, 4);
+    _ = ggmlSetName(a, "a");
+    const b = ggmlNewTensor1d(&ctx, c.GGML_TYPE_F32, 4);
+    _ = ggmlSetName(b, "b");
 
-    try std.testing.expectEqual(a, ggml_get_first_tensor(&ctx).?);
-    try std.testing.expectEqual(b, ggml_get_next_tensor(&ctx, a).?);
-    try std.testing.expect(ggml_get_next_tensor(&ctx, b) == null);
-    try std.testing.expectEqual(b, ggml_get_tensor(&ctx, "b").?);
-    try std.testing.expect(ggml_get_tensor(&ctx, "nope") == null);
+    try std.testing.expectEqual(a, ggmlGetFirstTensor(&ctx).?);
+    try std.testing.expectEqual(b, ggmlGetNextTensor(&ctx, a).?);
+    try std.testing.expect(ggmlGetNextTensor(&ctx, b) == null);
+    try std.testing.expectEqual(b, ggmlGetTensor(&ctx, "b").?);
+    try std.testing.expect(ggmlGetTensor(&ctx, "nope") == null);
     try std.testing.expectEqual(@as(c_int, 2), ctx.n_objects);
 }
 
@@ -616,22 +723,22 @@ test "a view shares data and strides with its source" {
     var buf: [1 << 16]u8 align(16) = undefined;
     var ctx = testContext(&buf);
 
-    const src = ggml_new_tensor_2d(&ctx, c.GGML_TYPE_F32, 8, 4);
-    const view = ggml_view_tensor(&ctx, src);
+    const src = ggmlNewTensor2d(&ctx, c.GGML_TYPE_F32, 8, 4);
+    const view = ggmlViewTensor(&ctx, src);
 
     try std.testing.expectEqual(src.data, view.data);
     try std.testing.expectEqual(@as(?*c.ggml_tensor, src), view.view_src);
     for (0..c.GGML_MAX_DIMS) |i| {
         try std.testing.expectEqual(src.nb[i], view.nb[i]);
     }
-    try std.testing.expect(types.ggml_is_view(view));
+    try std.testing.expect(types.ggmlIsView(view));
 }
 
 test "a view of a view collapses onto the base tensor" {
     var buf: [1 << 16]u8 align(16) = undefined;
     var ctx = testContext(&buf);
 
-    const base = ggml_new_tensor_1d(&ctx, c.GGML_TYPE_F32, 64);
+    const base = ggmlNewTensor1d(&ctx, c.GGML_TYPE_F32, 64);
     const first = newTensorImpl(&ctx, c.GGML_TYPE_F32, 1, &[_]i64{16}, null, base, 16);
     const second = newTensorImpl(&ctx, c.GGML_TYPE_F32, 1, &[_]i64{8}, null, first, 8);
 
@@ -643,10 +750,10 @@ test "a view of a view collapses onto the base tensor" {
 test "names truncate rather than overflow" {
     var buf: [1 << 16]u8 align(16) = undefined;
     var ctx = testContext(&buf);
-    const t = ggml_new_tensor_1d(&ctx, c.GGML_TYPE_F32, 1);
+    const t = ggmlNewTensor1d(&ctx, c.GGML_TYPE_F32, 1);
 
     const long: [128:0]u8 = @splat('x');
-    _ = ggml_set_name(t, &long);
+    _ = ggmlSetName(t, &long);
     try std.testing.expectEqual(@as(u8, 0), @as(u8, @bitCast(t.name[t.name.len - 1])));
     try std.testing.expectEqual(t.name.len - 1, std.mem.len(@as([*:0]const u8, @ptrCast(&t.name))));
 }
@@ -654,21 +761,21 @@ test "names truncate rather than overflow" {
 test "unravel index inverts the flat layout" {
     var buf: [1 << 16]u8 align(16) = undefined;
     var ctx = testContext(&buf);
-    const t = ggml_new_tensor_4d(&ctx, c.GGML_TYPE_F32, 2, 3, 4, 5);
+    const t = ggmlNewTensor4d(&ctx, c.GGML_TYPE_F32, 2, 3, 4, 5);
 
     var d0: i64 = 0;
     var d1: i64 = 0;
     var d2: i64 = 0;
     var d3: i64 = 0;
     // Element 1 + 2*2 + 3*6 + 4*24 = 119.
-    ggml_unravel_index(t, 119, &d0, &d1, &d2, &d3);
+    ggmlUnravelIndex(t, 119, &d0, &d1, &d2, &d3);
     try std.testing.expectEqual(@as(i64, 1), d0);
     try std.testing.expectEqual(@as(i64, 2), d1);
     try std.testing.expectEqual(@as(i64, 3), d2);
     try std.testing.expectEqual(@as(i64, 4), d3);
 
     // Null outputs are allowed and must not be written.
-    ggml_unravel_index(t, 0, null, null, null, null);
+    ggmlUnravelIndex(t, 0, null, null, null, null);
 }
 
 test "an exhausted pool returns null rather than corrupting the context" {
@@ -689,13 +796,13 @@ test "an exhausted pool returns null rather than corrupting the context" {
     // allocation and test nothing.
     var buf: [1024]u8 align(16) = undefined;
     var ctx = testContext(&buf);
-    const first = ggml_new_tensor_1d(&ctx, c.GGML_TYPE_F32, 1);
+    const first = ggmlNewTensor1d(&ctx, c.GGML_TYPE_F32, 1);
     try std.testing.expectEqual(@as(c_int, 1), ctx.n_objects);
 
     try std.testing.expect(newObject(&ctx, c.GGML_OBJECT_TYPE_TENSOR, 4096) == null);
 
     // A failed allocation must leave the list intact, not half-linked.
     try std.testing.expectEqual(@as(c_int, 1), ctx.n_objects);
-    try std.testing.expectEqual(first, ggml_get_first_tensor(&ctx).?);
-    try std.testing.expect(ggml_get_next_tensor(&ctx, first) == null);
+    try std.testing.expectEqual(first, ggmlGetFirstTensor(&ctx).?);
+    try std.testing.expect(ggmlGetNextTensor(&ctx, first) == null);
 }

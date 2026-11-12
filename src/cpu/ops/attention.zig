@@ -207,7 +207,6 @@ fn simdGemm(C: [*]f32, A: [*]const f32, B: [*]const f32, M: usize, K: usize, N: 
 /// over the mask columns, and column `ic` of slice `iq3` reads K/V row
 /// `kv_rows[ic, iq3]`; a negative row is padding and is skipped outright.
 ///
-/// Parameters:
 /// - `ir0`, `ir1`: the query rows to compute.
 /// - `ic_start`, `ic_end`: the keys to attend over.
 /// - `partials`, `partial_stride`: when non-null, write `[M, S, VKQ]` per row
@@ -357,14 +356,14 @@ fn oneChunk(
                     ms = expf(Mold - M);
 
                     // V = V*expf(Mold - M)
-                    vec.scale_f16(DV, VKQ16, ms);
+                    vec.scaleF16(DV, VKQ16, ms);
                 } else {
                     // no new maximum, ms == 1.0f, vs != 1.0f
                     vs = expf(s - M);
                 }
 
                 // V += v*expf(s - M)
-                vec.mad_f16(DV, VKQ16, @ptrCast(@alignCast(v_data)), vs);
+                vec.madF16(DV, VKQ16, @ptrCast(@alignCast(v_data)), vs);
             } else {
                 if (s > M) {
                     // s is new maximum, ms < 1.0f, vs == expf(s - s) == 1.0f
@@ -372,7 +371,7 @@ fn oneChunk(
                     ms = expf(Mold - M);
 
                     // V = V*expf(Mold - M)
-                    vec.scale_f32(DV, VKQ32, ms);
+                    vec.scaleF32(DV, VKQ32, ms);
                 } else {
                     // no new maximum, ms == 1.0f, vs != 1.0f
                     vs = expf(s - M);
@@ -381,10 +380,10 @@ fn oneChunk(
                 // V += v*expf(s - M)
                 if (v_to_float) |to_float| {
                     to_float(v_data, V32, DV);
-                    vec.mad_f32(DV, VKQ32, V32, vs);
+                    vec.madF32(DV, VKQ32, V32, vs);
                 } else {
                     // V is F32
-                    vec.mad_f32(DV, VKQ32, @ptrCast(@alignCast(v_data)), vs);
+                    vec.madF32(DV, VKQ32, @ptrCast(@alignCast(v_data)), vs);
                 }
             }
 
@@ -408,7 +407,7 @@ fn oneChunk(
             if (s > M) {
                 ms = expf(M - s);
                 M = s;
-                vec.scale_f32(DV, VKQ32, ms);
+                vec.scaleF32(DV, VKQ32, ms);
             } else {
                 vs = expf(s - M);
             }
@@ -426,7 +425,7 @@ fn oneChunk(
         } else {
             // V /= S
             const S_inv: f32 = if (S == 0.0) 0.0 else 1.0 / S;
-            vec.scale_f32(DV, VKQ32, S_inv);
+            vec.scaleF32(DV, VKQ32, S_inv);
 
             // dst indices
             const j1 = iq1;
@@ -625,14 +624,14 @@ fn tiled(params: *const ComputeParams, dst: *Tensor, ir0: i64, ir1: i64) void {
             }
             @memset(KQ[0 .. Q_TILE_SZ * KV_TILE_SZ], 0);
             simdGemm(KQ, Q_q, K_f32, Q_TILE_SZ, dk, KV_TILE_SZ);
-            vec.scale_f32(Q_TILE_SZ * KV_TILE_SZ, KQ, ap.scale);
+            vec.scaleF32(Q_TILE_SZ * KV_TILE_SZ, KQ, ap.scale);
 
             // Since v0.6.0 the softcap runs before the padding: after it,
             // `tanh(-inf)` turned every padded entry into `-softcap`, a finite
             // logit softmax then weighted.
             if (ap.logit_softcap != 0.0) {
-                vec.tanh_f32(Q_TILE_SZ * KV_TILE_SZ, KQ, KQ);
-                vec.scale_f32(Q_TILE_SZ * KV_TILE_SZ, KQ, ap.logit_softcap);
+                vec.tanhF32(Q_TILE_SZ * KV_TILE_SZ, KQ, KQ);
+                vec.scaleF32(Q_TILE_SZ * KV_TILE_SZ, KQ, ap.logit_softcap);
             }
 
             // Set padded KQ entries to -inf so softmax gives them zero weight
@@ -645,7 +644,7 @@ fn tiled(params: *const ComputeParams, dst: *Tensor, ir0: i64, ir1: i64) void {
             }
 
             if (mask != null) {
-                vec.add_f32(@intCast(tile_rows * KV_TILE_SZ), KQ, KQ, mask32);
+                vec.addF32(@intCast(tile_rows * KV_TILE_SZ), KQ, KQ, mask32);
             }
 
             var skip: [Q_TILE_SZ]bool = @splat(false);
@@ -654,7 +653,7 @@ fn tiled(params: *const ComputeParams, dst: *Tensor, ir0: i64, ir1: i64) void {
                 const kq_row = KQ + tq * KV_TILE_SZ;
 
                 var tile_max: f32 = undefined;
-                vec.max_f32(KV_TILE_SZ, &tile_max, kq_row);
+                vec.maxF32(KV_TILE_SZ, &tile_max, kq_row);
 
                 if (tile_max == -inf) {
                     skip[tq] = true;
@@ -666,7 +665,7 @@ fn tiled(params: *const ComputeParams, dst: *Tensor, ir0: i64, ir1: i64) void {
 
                 if (Mnew > Mold) {
                     const ms = expf(Mold - Mnew);
-                    vec.scale_f32(DV, VKQ32 + tq * dv, ms);
+                    vec.scaleF32(DV, VKQ32 + tq * dv, ms);
                     S[tq] *= ms;
                 }
                 M[tq] = Mnew;
@@ -681,7 +680,7 @@ fn tiled(params: *const ComputeParams, dst: *Tensor, ir0: i64, ir1: i64) void {
             for (0..kv_tile) |tk| {
                 const v_off = off(kv_row.at(ic + @as(i64, @intCast(tk))), nbv1) + off(iv2, nbv2) + off(iv3, nbv3);
                 if (kv_type == c.GGML_TYPE_F16) {
-                    convert.ggml_cpu_fp16_to_fp32(at(c.ggml_fp16_t, v.data, v_off), V32 + tk * dv, DV);
+                    convert.ggmlCpuFp16ToFp32(at(c.ggml_fp16_t, v.data, v_off), V32 + tk * dv, DV);
                 } else {
                     @memcpy((V32 + tk * dv)[0..dv], at(f32, v.data, v_off)[0..dv]);
                 }
@@ -704,7 +703,7 @@ fn tiled(params: *const ComputeParams, dst: *Tensor, ir0: i64, ir1: i64) void {
 
                 if (s > M[tq]) {
                     ms = expf(M[tq] - s);
-                    vec.scale_f32(DV, VKQ32 + tq * dv, ms);
+                    vec.scaleF32(DV, VKQ32 + tq * dv, ms);
                 } else {
                     vs = expf(s - M[tq]);
                 }
@@ -717,7 +716,7 @@ fn tiled(params: *const ComputeParams, dst: *Tensor, ir0: i64, ir1: i64) void {
         for (0..tile_rows) |tq| {
             // V /= S
             const S_inv: f32 = if (S[tq] == 0.0) 0.0 else 1.0 / S[tq];
-            vec.scale_f32(DV, VKQ32 + tq * dv, S_inv);
+            vec.scaleF32(DV, VKQ32 + tq * dv, S_inv);
 
             // dst indices
             const j1 = iq1 + @as(i64, @intCast(tq));
@@ -802,7 +801,7 @@ fn reducePartials(params: *const ComputeParams, dst: *Tensor, n_chunks: i64, chu
         // Normalize and write to output
         if (S_final != 0.0) {
             const S_inv = 1.0 / S_final;
-            vec.scale_f32(DV, VKQ_final, S_inv);
+            vec.scaleF32(DV, VKQ_final, S_inv);
         }
         // iq1=0, iq3=0 for decode
         const out = at(u8, dst.data, off(0 * ne2 * ne1 + q_head + 0 * ne1, nb1));
@@ -871,14 +870,14 @@ fn flashAttnExtF16(params: *const ComputeParams, dst: *Tensor) void {
             }
         }
 
-        threading.ggml_barrier(tp);
+        threading.ggmlBarrier(tp);
         reducePartials(params, dst, nth, chunk_size);
     } else {
         // total rows in q
         const nr = neq1 * neq2 * neq3;
 
         // disable for NUMA
-        const disable_chunking = threading.ggml_is_numa();
+        const disable_chunking = threading.ggmlIsNuma();
 
         // 4x chunks per thread
         const nth_scaled = nth * 4;
@@ -890,10 +889,10 @@ fn flashAttnExtF16(params: *const ComputeParams, dst: *Tensor) void {
         }
 
         if (ith == 0) {
-            threading.ggml_threadpool_chunk_set(tp, @intCast(nth));
+            threading.ggmlThreadpoolChunkSet(tp, @intCast(nth));
         }
 
-        threading.ggml_barrier(tp);
+        threading.ggmlBarrier(tp);
 
         const dr = @divTrunc(nr + nchunk - 1, nchunk);
 
@@ -921,13 +920,17 @@ fn flashAttnExtF16(params: *const ComputeParams, dst: *Tensor) void {
                 oneChunk(params, dst, ir0, ir1, 0, n_kv_cols, null, 0);
             }
 
-            current_chunk = threading.ggml_threadpool_chunk_add(tp, 1);
+            current_chunk = threading.ggmlThreadpoolChunkAdd(tp, 1);
         }
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardFlashAttnExt, .{ .name = "ggml_compute_forward_flash_attn_ext" });
+}
+
 /// Ports `ggml_compute_forward_flash_attn_ext` (ops.cpp:9588 @cd959bae9).
-pub export fn ggml_compute_forward_flash_attn_ext(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardFlashAttnExt(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     switch (impl.getOpParamsI32(dst, 3)) {
         c.GGML_PREC_DEFAULT, c.GGML_PREC_F32 => {
             // uses F32 accumulators
@@ -1012,7 +1015,7 @@ fn flashAttnBackF32(params: *const ComputeParams, masked: bool, dst: *Tensor) vo
         const n = nb0 * @as(usize, @intCast(dst.ne[0] * dst.ne[1] * dst.ne[2] * dst.ne[3]));
         @memset(at(u8, dst.data, 0)[0..n], 0);
     }
-    threading.ggml_barrier(params.threadpool.?);
+    threading.ggmlBarrier(params.threadpool.?);
 
     const elem_q: usize = @intCast(c.ggml_nelements(q));
     const elem_k: usize = @intCast(c.ggml_nelements(k));
@@ -1122,7 +1125,7 @@ fn flashAttnBackF32(params: *const ComputeParams, masked: bool, dst: *Tensor) vo
                 }
 
                 // scale
-                vec.scale_f32(masked_begin, S, scale);
+                vec.scaleF32(masked_begin, S, scale);
 
                 i = masked_begin;
                 while (i < M) : (i += 1) {
@@ -1134,20 +1137,20 @@ fn flashAttnBackF32(params: *const ComputeParams, masked: bool, dst: *Tensor) vo
                 // dont forget to set their SM values to zero
                 {
                     var max: f32 = -inf;
-                    vec.max_f32(masked_begin, &max, S);
+                    vec.maxF32(masked_begin, &max, S);
 
                     var sum: f64 = vec.soft_max_f32(@intCast(Mup), SM, S, max);
 
                     sum = 1.0 / sum;
-                    vec.scale_f32(masked_begin, SM, @floatCast(sum));
+                    vec.scaleF32(masked_begin, SM, @floatCast(sum));
                 }
 
                 // S = gradSM = d[:D,id1,id2,id3] @ vcur[:,:,iv2,iv3]
                 // exclude known future zero S[..] values from operation
-                vec.set_f32(masked_begin, S, 0);
+                vec.setF32(masked_begin, S, 0);
                 ic = 0;
                 while (ic < D) : (ic += 1) {
-                    vec.mad_f32(
+                    vec.madF32(
                         masked_begin,
                         S,
                         at(f32, v.data, off(ic, nbv1) + off(iv2, nbv2) + off(iv3, nbv3)),
@@ -1158,20 +1161,20 @@ fn flashAttnBackF32(params: *const ComputeParams, masked: bool, dst: *Tensor) vo
                 // S = SM * (S - dot(SM, S))
                 var dot_SM_gradSM: f32 = 0;
                 vec.dot_f32(@intCast(masked_begin), &dot_SM_gradSM, 0, SM, 0, S, 0, 1);
-                vec.acc1_f32(M, S, -dot_SM_gradSM);
-                vec.mul_f32(masked_begin, S, S, SM);
+                vec.acc1F32(M, S, -dot_SM_gradSM);
+                vec.mulF32(masked_begin, S, S, SM);
 
                 // S = diag_mask_zero(S, P) * scale
                 // already done by above ggml_vec_set_f32
 
                 // exclude known zero S[..] values from operation
-                vec.scale_f32(masked_begin, S, scale);
+                vec.scaleF32(masked_begin, S, scale);
 
                 // grad[q][:D,iq1,iq2,iq3] += S @ kcur
                 // exclude known zero S[..] values from loop
                 ic = 0;
                 while (ic < masked_begin) : (ic += 1) {
-                    vec.mad_f32(
+                    vec.madF32(
                         D,
                         @ptrCast(@alignCast(grad_q + off(iq1, nbgq1) + off(iq2, nbgq2) + off(iq3, nbgq3))),
                         at(f32, k.data, off(ic, nbk1) + off(ik2, nbk2) + off(ik3, nbk3)),
@@ -1183,7 +1186,7 @@ fn flashAttnBackF32(params: *const ComputeParams, masked: bool, dst: *Tensor) vo
                 // exclude known zero S[..] values from loop
                 ic = 0;
                 while (ic < masked_begin) : (ic += 1) {
-                    vec.mad_f32(
+                    vec.madF32(
                         D,
                         @ptrCast(@alignCast(grad_k + off(ic, nbgk1) + off(ik2, nbgk2) + off(ik3, nbgk3))),
                         at(f32, q.data, off(iq1, nbq1) + off(iq2, nbq2) + off(iq3, nbq3)),
@@ -1195,7 +1198,7 @@ fn flashAttnBackF32(params: *const ComputeParams, masked: bool, dst: *Tensor) vo
                 // exclude known zero SM[..] values from mad
                 ic = 0;
                 while (ic < D) : (ic += 1) {
-                    vec.mad_f32(
+                    vec.madF32(
                         masked_begin,
                         @ptrCast(@alignCast(grad_v + off(ic, nbgv1) + off(iv2, nbgv2) + off(iv3, nbgv3))),
                         SM,
@@ -1207,8 +1210,12 @@ fn flashAttnBackF32(params: *const ComputeParams, masked: bool, dst: *Tensor) vo
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardFlashAttnBack, .{ .name = "ggml_compute_forward_flash_attn_back" });
+}
+
 /// Ports `ggml_compute_forward_flash_attn_back` (ops.cpp:9922 @cd959bae9).
-pub export fn ggml_compute_forward_flash_attn_back(params: *const ComputeParams, masked: bool, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardFlashAttnBack(params: *const ComputeParams, masked: bool, dst: *Tensor) callconv(.c) void {
     const q = impl.one(Tensor, dst.src[0]);
 
     switch (q.type) {
@@ -1220,12 +1227,16 @@ pub export fn ggml_compute_forward_flash_attn_back(params: *const ComputeParams,
 // -----------------------------------------------------------------------------
 // lightning_indexer
 
+comptime {
+    @export(&ggmlComputeForwardLightningIndexer, .{ .name = "ggml_compute_forward_lightning_indexer" });
+}
+
 /// Ports `ggml_compute_forward_lightning_indexer` (ops.cpp:12452 @cd959bae9).
 ///
 /// `score += MAX(qk, 0.0f) * w_row[h]` is one expression — the ternary the
 /// macro expands to is the product's left operand, not a barrier — so each
 /// head's contribution is fused.
-pub export fn ggml_compute_forward_lightning_indexer(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardLightningIndexer(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const q = impl.one(Tensor, dst.src[0]);
     const k = impl.one(Tensor, dst.src[1]);
     const w = impl.one(Tensor, dst.src[2]); // weights

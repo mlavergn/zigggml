@@ -164,8 +164,12 @@ fn rwkvWkv6F32(params: *const ComputeParams, dst: *Tensor) void {
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardRwkvWkv6, .{ .name = "ggml_compute_forward_rwkv_wkv6" });
+}
+
 /// Ports `ggml_compute_forward_rwkv_wkv6` (ops.cpp:10845 @cd959bae9).
-pub export fn ggml_compute_forward_rwkv_wkv6(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardRwkvWkv6(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
 
     switch (src0.type) {
@@ -254,8 +258,12 @@ fn glaF32(params: *const ComputeParams, dst: *Tensor) void {
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardGla, .{ .name = "ggml_compute_forward_gla" });
+}
+
 /// Ports `ggml_compute_forward_gla` (ops.cpp:11046 @cd959bae9).
-pub export fn ggml_compute_forward_gla(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardGla(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
 
     switch (src0.type) {
@@ -400,9 +408,9 @@ fn gatedDeltaNetOneChunk(params: *const ComputeParams, dst: *Tensor, ir0: i64, i
                 // precompute exp(g) into delta scratch (reused below)
                 for (0..sv) |i| delta[i] = expf(g_d[i]);
                 // S[i][:] *= exp(g[i]) => for each row j of M: M[j][i] *= exp(g[i])
-                for (0..sv) |j| vec.mul_f32(S_v, s_out + j * sv, s_out + j * sv, delta);
+                for (0..sv) |j| vec.mulF32(S_v, s_out + j * sv, s_out + j * sv, delta);
             } else {
-                vec.scale_f32(S_v * S_v, s_out, expf(g_d[0]));
+                vec.scaleF32(S_v * S_v, s_out, expf(g_d[0]));
             }
 
             // delta[j] = sum_i S[i][j] * k[i] = dot(row j of M, k)
@@ -413,7 +421,7 @@ fn gatedDeltaNetOneChunk(params: *const ComputeParams, dst: *Tensor, ir0: i64, i
             }
 
             // outer product: S[i][j] += k[i] * delta[j] => M[j][i] += delta[j] * k[i]
-            for (0..sv) |j| vec.mad_f32(S_v, s_out + j * sv, k_d, delta[j]);
+            for (0..sv) |j| vec.madF32(S_v, s_out + j * sv, k_d, delta[j]);
 
             // attn_out[j] = sum_i S[i][j] * q[i] = dot(row j of M, q)
             for (0..sv) |j| {
@@ -446,7 +454,7 @@ fn gatedDeltaNetF32(params: *const ComputeParams, dst: *Tensor) void {
     const nr = V.ne[1] * V.ne[3];
 
     // disable for NUMA
-    const disable_chunking = threading.ggml_is_numa();
+    const disable_chunking = threading.ggmlIsNuma();
 
     const nth: i64 = params.nth;
     const ith: i64 = params.ith;
@@ -463,10 +471,10 @@ fn gatedDeltaNetF32(params: *const ComputeParams, dst: *Tensor) void {
     const tp: *defs.Threadpool = @ptrCast(@alignCast(params.threadpool.?));
 
     if (ith == 0) {
-        threading.ggml_threadpool_chunk_set(tp, params.nth);
+        threading.ggmlThreadpoolChunkSet(tp, params.nth);
     }
 
-    threading.ggml_barrier(tp);
+    threading.ggmlBarrier(tp);
 
     const dr = @divTrunc(nr + nchunk - 1, nchunk);
 
@@ -477,12 +485,16 @@ fn gatedDeltaNetF32(params: *const ComputeParams, dst: *Tensor) void {
         const ir1 = @min(ir0 + dr, nr);
 
         gatedDeltaNetOneChunk(params, dst, ir0, ir1);
-        current_chunk = threading.ggml_threadpool_chunk_add(tp, 1);
+        current_chunk = threading.ggmlThreadpoolChunkAdd(tp, 1);
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardGatedDeltaNet, .{ .name = "ggml_compute_forward_gated_delta_net" });
+}
+
 /// Ports `ggml_compute_forward_gated_delta_net` (ops.cpp:11330 @cd959bae9).
-pub export fn ggml_compute_forward_gated_delta_net(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardGatedDeltaNet(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
 
     switch (src0.type) {
@@ -620,8 +632,12 @@ fn dsv4HcCombF32(params: *const ComputeParams, dst: *Tensor) void {
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardDsv4HcComb, .{ .name = "ggml_compute_forward_dsv4_hc_comb" });
+}
+
 /// Ports `ggml_compute_forward_dsv4_hc_comb` (ops.cpp:11469 @cd959bae9).
-pub export fn ggml_compute_forward_dsv4_hc_comb(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardDsv4HcComb(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
 
     switch (src0.type) {
@@ -699,8 +715,12 @@ fn dsv4HcPreF32(params: *const ComputeParams, dst: *Tensor) void {
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardDsv4HcPre, .{ .name = "ggml_compute_forward_dsv4_hc_pre" });
+}
+
 /// Ports `ggml_compute_forward_dsv4_hc_pre` (ops.cpp:11549 @cd959bae9).
-pub export fn ggml_compute_forward_dsv4_hc_pre(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardDsv4HcPre(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
 
     switch (src0.type) {
@@ -796,8 +816,12 @@ fn dsv4HcPostF32(params: *const ComputeParams, dst: *Tensor) void {
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardDsv4HcPost, .{ .name = "ggml_compute_forward_dsv4_hc_post" });
+}
+
 /// Ports `ggml_compute_forward_dsv4_hc_post` (ops.cpp:11643 @cd959bae9).
-pub export fn ggml_compute_forward_dsv4_hc_post(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardDsv4HcPost(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
 
     switch (src0.type) {
@@ -940,8 +964,12 @@ fn rwkvWkv7F32(params: *const ComputeParams, dst: *Tensor) void {
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardRwkvWkv7, .{ .name = "ggml_compute_forward_rwkv_wkv7" });
+}
+
 /// Ports `ggml_compute_forward_rwkv_wkv7` (ops.cpp:11945 @cd959bae9).
-pub export fn ggml_compute_forward_rwkv_wkv7(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardRwkvWkv7(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
 
     switch (src0.type) {

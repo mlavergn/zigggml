@@ -19,13 +19,11 @@
 
 const std = @import("std");
 const impl = @import("../impl.zig");
-const blocks = @import("blocks.zig");
 const quantize = @import("../quantize.zig");
 const dq = @import("iq_dequant.zig");
 const iq1 = @import("iq1.zig");
 const iq2 = @import("iq2.zig");
 const iq3 = @import("iq3.zig");
-const iq4 = @import("iq4.zig");
 const t = @import("testing.zig");
 const c = impl.c;
 
@@ -60,47 +58,47 @@ const cases = [_]Case{
     .{
         .name = "IQ2_XXS",
         .type = c.GGML_TYPE_IQ2_XXS,
-        .chunk = iq2.quantize_iq2_xxs,
-        .dequant = wrapDeq(dq.dequantize_row_iq2_xxs),
+        .chunk = iq2.quantizeIq2Xxs,
+        .dequant = wrapDeq(dq.dequantizeRowIq2Xxs),
     },
     .{
         .name = "IQ2_XS",
         .type = c.GGML_TYPE_IQ2_XS,
-        .chunk = iq2.quantize_iq2_xs,
-        .dequant = wrapDeq(dq.dequantize_row_iq2_xs),
+        .chunk = iq2.quantizeIq2Xs,
+        .dequant = wrapDeq(dq.dequantizeRowIq2Xs),
     },
     .{
         .name = "IQ2_S",
         .type = c.GGML_TYPE_IQ2_S,
-        .ref = wrapRef(iq2.quantize_row_iq2_s_ref),
-        .chunk = iq2.quantize_iq2_s,
-        .dequant = wrapDeq(dq.dequantize_row_iq2_s),
+        .ref = wrapRef(iq2.quantizeRowIq2SRef),
+        .chunk = iq2.quantizeIq2S,
+        .dequant = wrapDeq(dq.dequantizeRowIq2S),
     },
     .{
         .name = "IQ3_XXS",
         .type = c.GGML_TYPE_IQ3_XXS,
-        .ref = wrapRef(iq3.quantize_row_iq3_xxs_ref),
-        .chunk = iq3.quantize_iq3_xxs,
-        .dequant = wrapDeq(dq.dequantize_row_iq3_xxs),
+        .ref = wrapRef(iq3.quantizeRowIq3XxsRef),
+        .chunk = iq3.quantizeIq3Xxs,
+        .dequant = wrapDeq(dq.dequantizeRowIq3Xxs),
     },
     .{
         .name = "IQ3_S",
         .type = c.GGML_TYPE_IQ3_S,
-        .ref = wrapRef(iq3.quantize_row_iq3_s_ref),
-        .chunk = iq3.quantize_iq3_s,
-        .dequant = wrapDeq(dq.dequantize_row_iq3_s),
+        .ref = wrapRef(iq3.quantizeRowIq3SRef),
+        .chunk = iq3.quantizeIq3S,
+        .dequant = wrapDeq(dq.dequantizeRowIq3S),
     },
     .{
         .name = "IQ1_S",
         .type = c.GGML_TYPE_IQ1_S,
-        .chunk = iq1.quantize_iq1_s,
-        .dequant = wrapDeq(dq.dequantize_row_iq1_s),
+        .chunk = iq1.quantizeIq1S,
+        .dequant = wrapDeq(dq.dequantizeRowIq1S),
     },
     .{
         .name = "IQ1_M",
         .type = c.GGML_TYPE_IQ1_M,
-        .chunk = iq1.quantize_iq1_m,
-        .dequant = wrapDeq(dq.dequantize_row_iq1_m),
+        .chunk = iq1.quantizeIq1M,
+        .dequant = wrapDeq(dq.dequantizeRowIq1M),
     },
 };
 
@@ -110,7 +108,7 @@ test "every i-quant matches the C on every pattern" {
         // rather than the per-family initialiser is the point: it dispatches
         // on type, where calling `iq2xs_init_impl` directly aborts for the
         // 3-bit formats.
-        quantize.ggml_quantize_init(case.type);
+        quantize.ggmlQuantizeInit(case.type);
         for (t.all_patterns) |pattern| {
             // **Skipped where the C's own answer is unspecified.**
             //
@@ -157,7 +155,7 @@ test "every i-quant matches the C on every pattern" {
                 ref(&src, &buf, @intCast(t.n_elem));
                 const used = g.row_size * t.n_rows;
                 std.testing.expectEqual(g.ref.?, t.fnv(buf[0..used])) catch |e| {
-                    std.debug.print("{s}: ref differs on '{s}'\n", .{ case.name, pattern.name() });
+                    std.log.warn("{s}: ref differs on '{s}'", .{ case.name, pattern.name() });
                     return e;
                 };
                 @memcpy(deq_src[0..used], buf[0..used]);
@@ -168,7 +166,7 @@ test "every i-quant matches the C on every pattern" {
                 @memset(&buf, 0);
                 const n = case.chunk(&src, &buf, t.n_rows, t.n_per_row, null);
                 std.testing.expectEqual(want, t.fnv(buf[0..n])) catch |e| {
-                    std.debug.print("{s}: chunk differs on '{s}'\n", .{ case.name, pattern.name() });
+                    std.log.warn("{s}: chunk differs on '{s}'", .{ case.name, pattern.name() });
                     return e;
                 };
             }
@@ -177,7 +175,7 @@ test "every i-quant matches the C on every pattern" {
                 @memset(&buf, 0);
                 const n = case.chunk(&src, &buf, t.n_rows, t.n_per_row, &imatrix);
                 std.testing.expectEqual(want, t.fnv(buf[0..n])) catch |e| {
-                    std.debug.print("{s}: chunk+imatrix differs on '{s}'\n", .{ case.name, pattern.name() });
+                    std.log.warn("{s}: chunk+imatrix differs on '{s}'", .{ case.name, pattern.name() });
                     return e;
                 };
                 if (case.ref == null) {
@@ -192,7 +190,7 @@ test "every i-quant matches the C on every pattern" {
                 std.debug.assert(deq_len > 0);
                 case.dequant(@ptrCast(&deq_src), &out, @intCast(t.n_elem));
                 std.testing.expectEqual(want, t.fnv(std.mem.sliceAsBytes(out[0..]))) catch |e| {
-                    std.debug.print("{s}: dequantize differs on '{s}'\n", .{ case.name, pattern.name() });
+                    std.log.warn("{s}: dequantize differs on '{s}'", .{ case.name, pattern.name() });
                     return e;
                 };
             }

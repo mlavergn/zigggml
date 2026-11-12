@@ -6,7 +6,6 @@
 //! Ported from `llama.cpp/ggml/src/ggml-cuda/add-id.cu` at v0.9.0
 //! (`cd959bae9`). The kernel, `add_id_kernel`, stays CUDA.
 
-const std = @import("std");
 const impl = @import("../impl.zig");
 const common = @import("common.zig");
 const kernels = @import("kernels.zig");

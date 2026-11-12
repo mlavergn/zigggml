@@ -9,7 +9,6 @@
 //! `ggml_cuda_op_mul_mat_vec_f`, the row-split entry point, is not ported:
 //! nothing in this version of upstream calls it.
 
-const std = @import("std");
 const impl = @import("../impl.zig");
 const common = @import("common.zig");
 const kernels = @import("kernels.zig");

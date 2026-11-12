@@ -15,7 +15,6 @@
 //! generated per instantiation; the destination element type only selects
 //! the kernel, so the pointer type erases it (`?*anyopaque`).
 
-const std = @import("std");
 const impl = @import("../impl.zig");
 const common = @import("common.zig");
 const kernels = @import("kernels.zig");
@@ -80,7 +79,7 @@ fn DequantizeBlock(comptime d: Deq, comptime T: type) type {
 }
 
 /// Ports `dequantize_block_q8_0_f16_cuda` (convert.cu:267 @cd959bae9).
-fn dequantizeBlockQ8_0F16(vx: ?*const anyopaque, y: ?*anyopaque, k: i64, stream: cu.cudaStream_t) void {
+fn dequantizeBlockQ80F16(vx: ?*const anyopaque, y: ?*anyopaque, k: i64, stream: cu.cudaStream_t) void {
     const num_blocks: c_int = @truncate(@divTrunc(k + q8_0_ne_align - 1, q8_0_ne_align));
     const p: kernels.LaunchParams = .{ .grid = .{ .x = @bitCast(num_blocks) }, .block = .{ .x = common.warp_size }, .stream = stream };
     if (@rem(k, q8_0_ne_align) == 0) {
@@ -238,7 +237,7 @@ pub fn getToBf16(t: c.enum_ggml_type) ?ToFn {
 pub fn getToFp16(t: c.enum_ggml_type) ?ToFn {
     return switch (t) {
         c.GGML_TYPE_Q8_0 => if (common.fp16Available(common.info().devices[@intCast(common.getDevice())].cc))
-            dequantizeBlockQ8_0F16
+            dequantizeBlockQ80F16
         else
             DequantizeBlock(q8_0, half).cont,
         c.GGML_TYPE_F32 => ConvertUnary(f32, half).cont,

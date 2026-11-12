@@ -363,8 +363,12 @@ const BicubicTap = struct {
     }
 };
 
+comptime {
+    @export(&ggmlComputeForwardUpscale, .{ .name = "ggml_compute_forward_upscale" });
+}
+
 /// Ports `ggml_compute_forward_upscale` (ops.cpp:8387 @cd959bae9).
-pub export fn ggml_compute_forward_upscale(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardUpscale(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
 
     switch (src0.type) {
@@ -473,8 +477,12 @@ fn padF32(comptime circular: bool, params: *const ComputeParams, dst: *Tensor) v
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardPad, .{ .name = "ggml_compute_forward_pad" });
+}
+
 /// Ports `ggml_compute_forward_pad` (ops.cpp:8481 @cd959bae9).
-pub export fn ggml_compute_forward_pad(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardPad(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
     const circular = impl.getOpParamsI32(dst, 8) != 0;
     switch (src0.type) {
@@ -486,8 +494,12 @@ pub export fn ggml_compute_forward_pad(params: *const ComputeParams, dst: *Tenso
 // -----------------------------------------------------------------------------
 // pad_reflect_1d
 
+comptime {
+    @export(&ggmlComputeForwardPadReflect1d, .{ .name = "ggml_compute_forward_pad_reflect_1d" });
+}
+
 /// Ports `ggml_compute_forward_pad_reflect_1d` (ops.cpp:8504 @cd959bae9).
-pub export fn ggml_compute_forward_pad_reflect_1d(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardPadReflect1d(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
 
     impl.assert(src0.type == c.GGML_TYPE_F32, "src0->type == GGML_TYPE_F32");
@@ -517,7 +529,7 @@ pub export fn ggml_compute_forward_pad_reflect_1d(params: *const ComputeParams, 
                 const left: [*]f32 = @ptrCast(at(dst.data, j3 * nb3 + j2 * nb2 + j1 * nb1 + p0 * nb0));
                 const right: [*]f32 = @ptrCast(at(dst.data, j3 * nb3 + j2 * nb2 + j1 * nb1 + (l.ne0 - p1 - 1) * nb0));
 
-                vec.cpy_f32(l.ne00, left, @ptrCast(at(src0.data, j3 * nb03 + j2 * nb02 + j1 * nb01)));
+                vec.cpyF32(l.ne00, left, @ptrCast(at(src0.data, j3 * nb03 + j2 * nb02 + j1 * nb01)));
 
                 // `left[-i0]` and `right[-i0]`: pointer arithmetic below the
                 // row start, inside the padded row.
@@ -577,13 +589,17 @@ fn rollF32(params: *const ComputeParams, dst: *Tensor) void {
 
         const sh = wrapIndex(-s0, l.ne00);
         const n = l.ne00 - sh;
-        vec.cpy_f32(n, dst_row, src_row + @as(usize, @intCast(sh)));
-        vec.cpy_f32(sh, dst_row + @as(usize, @intCast(n)), src_row);
+        vec.cpyF32(n, dst_row, src_row + @as(usize, @intCast(sh)));
+        vec.cpyF32(sh, dst_row + @as(usize, @intCast(n)), src_row);
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardRoll, .{ .name = "ggml_compute_forward_roll" });
+}
+
 /// Ports `ggml_compute_forward_roll` (ops.cpp:8586 @cd959bae9).
-pub export fn ggml_compute_forward_roll(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardRoll(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
 
     switch (src0.type) {
@@ -620,8 +636,12 @@ fn arangeF32(params: *const ComputeParams, dst: *Tensor) void {
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardArange, .{ .name = "ggml_compute_forward_arange" });
+}
+
 /// Ports `ggml_compute_forward_arange` (ops.cpp:8629 @cd959bae9).
-pub export fn ggml_compute_forward_arange(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardArange(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     switch (dst.type) {
         c.GGML_TYPE_F32 => arangeF32(params, dst),
         else => impl.abort("fatal error"),
@@ -672,8 +692,12 @@ fn timestepEmbeddingF32(params: *const ComputeParams, dst: *Tensor) void {
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardTimestepEmbedding, .{ .name = "ggml_compute_forward_timestep_embedding" });
+}
+
 /// Ports `ggml_compute_forward_timestep_embedding` (ops.cpp:8677 @cd959bae9).
-pub export fn ggml_compute_forward_timestep_embedding(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardTimestepEmbedding(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
 
     switch (src0.type) {

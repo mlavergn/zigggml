@@ -88,7 +88,7 @@ const cu = common.cu;
 const c = impl.c;
 const Tensor = c.ggml_tensor;
 const Context = common.Context;
-const allocator = common.allocator;
+const allocator = std.heap.c_allocator;
 const cudaCheck = common.cudaCheck;
 
 // -----------------------------------------------------------------------------

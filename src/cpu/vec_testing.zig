@@ -196,8 +196,8 @@ fn checkKernel(
         const got: u32 = @bitCast(s);
         const exp = expectedBits(want, p);
         if (got != exp) {
-            std.debug.print(
-                "{s} n={d} pattern={s}: got 0x{X:0>8} ({d}), want 0x{X:0>8}\n",
+            std.log.warn(
+                "{s} n={d} pattern={s}: got 0x{X:0>8} ({d}), want 0x{X:0>8}",
                 .{ @tagName(which), n, @tagName(p), got, s, exp },
             );
             return error.GoldenMismatch;

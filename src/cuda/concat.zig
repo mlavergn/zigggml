@@ -12,7 +12,6 @@
 //! the `dim == 1` and `dim == 2` contiguous kernels and the non-contiguous
 //! one use `<<<>>>`. That asymmetry is upstream's and is kept.
 
-const std = @import("std");
 const impl = @import("../impl.zig");
 const common = @import("common.zig");
 const kernels = @import("kernels.zig");

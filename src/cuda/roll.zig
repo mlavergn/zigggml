@@ -6,7 +6,6 @@
 //! `llama.cpp/ggml/src/ggml-cuda/roll.cuh` at v0.9.0 (`cd959bae9`). The
 //! kernel, `roll_f32_cuda` (a `__global__`, despite the name), stays CUDA.
 
-const std = @import("std");
 const impl = @import("../impl.zig");
 const common = @import("common.zig");
 const kernels = @import("kernels.zig");

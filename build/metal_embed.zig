@@ -32,10 +32,9 @@ const impl_include = "#include \"ggml-metal-impl.h\"";
 
 /// Entry point: flattens one kernel and writes the `.metal` and `.s` outputs.
 ///
-/// Parameters:
 /// - `init`: process capabilities supplied by the runtime (allocator, IO, args).
 ///
-/// Return: nothing on success; propagates read, write, and allocation failures,
+/// - Returns: nothing on success; propagates read, write, and allocation failures,
 /// and returns `error.BadUsage` when the argument count is wrong.
 pub fn main(init: std.process.Init) !void {
     const gpa = init.gpa;
@@ -148,11 +147,10 @@ pub fn main(init: std.process.Init) !void {
 
 /// Reports whether `line` contains any of `needles`.
 ///
-/// Parameters:
 /// - `line`: the text to search; borrowed for the call only.
 /// - `needles`: substrings to look for.
 ///
-/// Return: true when at least one needle occurs in `line`.
+/// - Returns: true when at least one needle occurs in `line`.
 fn containsAny(line: []const u8, needles: []const []const u8) bool {
     for (needles) |needle| {
         if (std.mem.find(u8, line, needle) != null) return true;

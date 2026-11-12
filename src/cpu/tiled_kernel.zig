@@ -49,9 +49,7 @@
 
 const std = @import("std");
 const builtin = @import("builtin");
-const impl = @import("../impl.zig");
 const qblocks = @import("../quants/blocks.zig");
-const c = impl.c;
 
 /// Ports `TILED_TILE_K` (tiled-kernel.h:22 @cd959bae9): one `QK_K` block.
 pub const tile_k = 256;
@@ -164,12 +162,11 @@ const u8x64 = @Vector(64, u8);
 const i32x16 = @Vector(16, i32);
 const f32x16 = @Vector(16, f32);
 
-const sysv: std.builtin.CallingConvention = .{ .x86_64_sysv = .{} };
-extern fn @"llvm.x86.avx2.pmadd.ub.sw"(u8x32, i8x32) callconv(sysv) i16x16;
-extern fn @"llvm.x86.avx2.pmadd.wd"(i16x16, i16x16) callconv(sysv) i32x8;
-extern fn @"llvm.x86.avx2.psign.b"(i8x32, i8x32) callconv(sysv) i8x32;
-extern fn @"llvm.x86.avx2.phadd.d"(i32x8, i32x8) callconv(sysv) i32x8;
-extern fn @"llvm.x86.avx512.vpdpbusd.512"(i32x16, i8x64, i8x64) callconv(sysv) i32x16;
+extern fn @"llvm.x86.avx2.pmadd.ub.sw"(u8x32, i8x32) callconv(.{ .x86_64_sysv = .{} }) i16x16;
+extern fn @"llvm.x86.avx2.pmadd.wd"(i16x16, i16x16) callconv(.{ .x86_64_sysv = .{} }) i32x8;
+extern fn @"llvm.x86.avx2.psign.b"(i8x32, i8x32) callconv(.{ .x86_64_sysv = .{} }) i8x32;
+extern fn @"llvm.x86.avx2.phadd.d"(i32x8, i32x8) callconv(.{ .x86_64_sysv = .{} }) i32x8;
+extern fn @"llvm.x86.avx512.vpdpbusd.512"(i32x16, i8x64, i8x64) callconv(.{ .x86_64_sysv = .{} }) i32x16;
 
 /// Loads `n` lanes through a vector pointer (an array bitcast to a vector
 /// compiles to a lane-by-lane gather on x86).

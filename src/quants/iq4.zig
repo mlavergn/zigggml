@@ -44,7 +44,6 @@ fn bestIndexIq4nl(mid: *const [15]f32, x: f32) usize {
 /// `super_block_size == block_size == 32` and no sub-block scales, `iq4_xs`
 /// with 256 and 32.
 ///
-/// Parameters:
 /// - `super_block_size`, `block_size`: the two granularities.
 /// - `x`: the weights.
 /// - `dh`: receives the f16 super-block scale.
@@ -191,11 +190,15 @@ pub fn quantizeRowIq4NlImpl(
     }
 }
 
+comptime {
+    @export(&quantizeRowIq4NlRef, .{ .name = "quantize_row_iq4_nl_ref" });
+}
+
 /// Ports `quantize_row_iq4_nl_ref` (ggml-quants.c:5088 @cd959bae9).
 ///
 /// Note `ntry = -1`: no search, and the initial scale keeps the sign of `max`
 /// rather than flipping it. The chunk entry point uses `7` instead.
-pub export fn quantize_row_iq4_nl_ref(x: [*c]const f32, y: [*c]blocks.IQ4_NL, k: i64) void {
+pub fn quantizeRowIq4NlRef(x: [*c]const f32, y: [*c]blocks.IQ4_NL, k: i64) callconv(.c) void {
     impl.assert(@rem(k, c.QK4_NL) == 0, "k%QK4_NL == 0");
     const nblock: usize = @intCast(@divExact(k, c.QK4_NL));
 
@@ -233,14 +236,18 @@ pub export fn quantize_row_iq4_nl_ref(x: [*c]const f32, y: [*c]blocks.IQ4_NL, k:
     }
 }
 
+comptime {
+    @export(&quantizeIq4Nl, .{ .name = "quantize_iq4_nl" });
+}
+
 /// Ports `quantize_iq4_nl` (ggml-quants.c:5065 @cd959bae9).
-pub export fn quantize_iq4_nl(
+pub fn quantizeIq4Nl(
     src: [*c]const f32,
     dst: ?*anyopaque,
     nrow: i64,
     n_per_row: i64,
     quant_weights: [*c]const f32,
-) usize {
+) callconv(.c) usize {
     impl.assert(@rem(n_per_row, c.QK4_NL) == 0, "n_per_row%QK4_NL == 0");
     const nblock: usize = @intCast(@divExact(n_per_row, c.QK4_NL));
 
@@ -279,14 +286,18 @@ pub export fn quantize_iq4_nl(
     return @as(usize, @intCast(nrow)) * nblock * @sizeOf(blocks.IQ4_NL);
 }
 
+comptime {
+    @export(&quantizeIq4Xs, .{ .name = "quantize_iq4_xs" });
+}
+
 /// Ports `quantize_iq4_xs` (ggml-quants.c:5103 @cd959bae9).
-pub export fn quantize_iq4_xs(
+pub fn quantizeIq4Xs(
     src: [*c]const f32,
     dst: ?*anyopaque,
     nrow: i64,
     n_per_row: i64,
     quant_weights: [*c]const f32,
-) usize {
+) callconv(.c) usize {
     impl.assert(@rem(n_per_row, QK_K) == 0, "n_per_row%QK_K == 0");
     const nblock: usize = @intCast(@divExact(n_per_row, QK_K));
 
@@ -323,10 +334,14 @@ pub export fn quantize_iq4_xs(
     return @as(usize, @intCast(nrow)) * nblock * @sizeOf(blocks.IQ4_XS);
 }
 
+comptime {
+    @export(&quantizeRowIq4XsRef, .{ .name = "quantize_row_iq4_xs_ref" });
+}
+
 /// Ports `quantize_row_iq4_xs_ref` (ggml-quants.c:5123 @cd959bae9).
-pub export fn quantize_row_iq4_xs_ref(x: [*c]const f32, y: [*c]blocks.IQ4_XS, k: i64) void {
+pub fn quantizeRowIq4XsRef(x: [*c]const f32, y: [*c]blocks.IQ4_XS, k: i64) callconv(.c) void {
     std.debug.assert(@rem(k, QK_K) == 0);
-    _ = quantize_iq4_xs(x, @ptrCast(y), 1, k, null);
+    _ = quantizeIq4Xs(x, @ptrCast(y), 1, k, null);
 }
 
 // -----------------------------------------------------------------------------
@@ -373,7 +388,7 @@ fn checkIq4(
         ref(&src, @ptrCast(@alignCast(&buf)), @intCast(t.n_elem));
         const used = g.row_size * t.n_rows;
         std.testing.expectEqual(g.ref.?, t.fnv(buf[0..used])) catch |e| {
-            std.debug.print("{s}: quantize_row_*_ref differs on '{s}'\n", .{ name, pattern.name() });
+            std.log.warn("{s}: quantize_row_*_ref differs on '{s}'", .{ name, pattern.name() });
             return e;
         };
 
@@ -381,32 +396,32 @@ fn checkIq4(
         @memset(&out, 0);
         dequant(@ptrCast(@alignCast(&buf)), &out, @intCast(t.n_elem));
         std.testing.expectEqual(g.deq.?, t.fnv(std.mem.sliceAsBytes(out[0..]))) catch |e| {
-            std.debug.print("{s}: dequantize differs on '{s}'\n", .{ name, pattern.name() });
+            std.log.warn("{s}: dequantize differs on '{s}'", .{ name, pattern.name() });
             return e;
         };
 
         @memset(&buf, 0);
         const n0 = chunk(&src, &buf, t.n_rows, t.n_per_row, null);
         std.testing.expectEqual(g.chunk.?, t.fnv(buf[0..n0])) catch |e| {
-            std.debug.print("{s}: quantize_* differs on '{s}'\n", .{ name, pattern.name() });
+            std.log.warn("{s}: quantize_* differs on '{s}'", .{ name, pattern.name() });
             return e;
         };
 
         @memset(&buf, 0);
         const n1 = chunk(&src, &buf, t.n_rows, t.n_per_row, &imatrix);
         std.testing.expectEqual(g.chunk_imatrix.?, t.fnv(buf[0..n1])) catch |e| {
-            std.debug.print("{s}: quantize_* with imatrix differs on '{s}'\n", .{ name, pattern.name() });
+            std.log.warn("{s}: quantize_* with imatrix differs on '{s}'", .{ name, pattern.name() });
             return e;
         };
     }
 }
 
 test "iq4_nl matches the C on every pattern, ref and chunk" {
-    try checkIq4("IQ4_NL", blocks.IQ4_NL, quantize_row_iq4_nl_ref, quantize_iq4_nl, iq_dequant.dequantize_row_iq4_nl);
+    try checkIq4("IQ4_NL", blocks.IQ4_NL, quantizeRowIq4NlRef, quantizeIq4Nl, iq_dequant.dequantizeRowIq4Nl);
 }
 
 test "iq4_xs matches the C on every pattern, ref and chunk" {
-    try checkIq4("IQ4_XS", blocks.IQ4_XS, quantize_row_iq4_xs_ref, quantize_iq4_xs, iq_dequant.dequantize_row_iq4_xs);
+    try checkIq4("IQ4_XS", blocks.IQ4_XS, quantizeRowIq4XsRef, quantizeIq4Xs, iq_dequant.dequantizeRowIq4Xs);
 }
 
 test "the level table is sorted, which is what the midpoint count needs" {

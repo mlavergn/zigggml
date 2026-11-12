@@ -21,9 +21,6 @@ const Tensor = c.ggml_tensor;
 /// Ports `MMF_ROWS_PER_BLOCK` (mmf.cuh:9 @cd959bae9).
 const rows_per_block_default = 32;
 
-/// Ports `MMF_ROWS_PER_BLOCK_CDNA` (mmf.cuh:10 @cd959bae9).
-const rows_per_block_cdna = 64;
-
 /// Ports `mmf_get_max_block_size` (mmf.cuh:12 @cd959bae9), NVIDIA arm.
 fn getMaxBlockSize(x: c_int) i64 {
     _ = x;

@@ -18,9 +18,8 @@ const c = impl.c;
 const common = m.common;
 const vk = common.vk;
 const d = &common.dispatch;
-const allocator = common.allocator;
+const allocator = std.heap.c_allocator;
 const BackendCtx = m.context.BackendCtx;
-const Context = m.submit.Context;
 
 fn oom() noreturn {
     impl.abort("ggml_vulkan: out of memory");
@@ -44,7 +43,7 @@ fn free(backend: c.ggml_backend_t) callconv(.c) void {
 }
 
 /// Ports `ggml_backend_vk_get_default_buffer_type` (ggml-vulkan.cpp:13370 @cd959bae9).
-fn getDefaultBufferType(backend: c.ggml_backend_t) callconv(.c) c.ggml_backend_buffer_type_t {
+fn getDefaultBufferType(backend: c.ggml_backend_t) c.ggml_backend_buffer_type_t {
     return &backendCtx(backend).device.buffer_type;
 }
 

@@ -59,8 +59,6 @@
 //! the inference path. See PLAN.md.
 
 const std = @import("std");
-const impl = @import("../impl.zig");
-const c = impl.c;
 
 /// Ports the `GROUP_MAX_EPS` family (ggml-quants.c:20 @cd959bae9).
 ///
@@ -91,11 +89,10 @@ pub const group_max_eps_iq1_s: f32 = 1e-12;
 /// is half to even, and they differ on exactly the ties a quantizer hits
 /// constantly -- every weight that lands midway between two levels.
 ///
-/// Parameters:
 /// - `fval`: value to round. The C asserts `|fval| <= 4194303`, which the trick
 ///   requires; the assert is kept.
 ///
-/// Return: the rounded integer.
+/// - Returns: the rounded integer.
 pub inline fn nearestInt(fval: f32) i32 {
     std.debug.assert(@abs(fval) <= 4194303.0);
     const val = fval + 12582912.0;
@@ -109,7 +106,6 @@ pub inline fn nearestInt(fval: f32) i32 {
 /// searching 19 candidate scales around the naive one and keeping whichever
 /// minimises weighted squared error.
 ///
-/// Parameters:
 /// - `n`: weights in the block.
 /// - `nmax`: half the level count; levels run `[-nmax, nmax-1]`.
 /// - `x`: the weights.
@@ -121,7 +117,7 @@ pub inline fn nearestInt(fval: f32) i32 {
 ///   first fit.
 /// - `qw`: optional per-weight importance, overriding `rmse_type`'s weighting.
 ///
-/// Return: the chosen scale.
+/// - Returns: the chosen scale.
 pub fn makeQxQuants(
     n: usize,
     nmax: i32,
@@ -291,7 +287,6 @@ pub fn makeQ3Quants(n: usize, nmax: i32, x: [*]const f32, l_out: [*]i8, do_rmse:
 /// squares for the best `(scale, min)` pair together -- the `D` below is the
 /// determinant of that 2x2 system.
 ///
-/// Parameters:
 /// - `n`, `nmax`: block size and top level.
 /// - `x`: the weights.
 /// - `weights`: per-weight importance; required, unlike `makeQxQuants`.
@@ -303,7 +298,7 @@ pub fn makeQ3Quants(n: usize, nmax: i32, x: [*]const f32, l_out: [*]i8, do_rmse:
 /// - `rmin`, `rdelta`, `nstep`: the candidate range.
 /// - `use_mad`: absolute error rather than squared.
 ///
-/// Return: the chosen scale.
+/// - Returns: the chosen scale.
 pub fn makeQkx2Quants(
     n: usize,
     nmax: i32,
@@ -371,7 +366,7 @@ pub fn makeQkx2Quants(
             const l: i32 = if (v > 0) nearestInt(if (v < nmax_f) v else nmax_f) else 0;
             l_aux[i] = @intCast(l);
             const w = weights[i];
-            const lf = @as(f32, @floatFromInt(l));
+            const lf: f32 = @floatFromInt(l);
             sum_l += w * lf;
             sum_l2 += w * lf * lf;
             sum_xl += w * lf * x[i];
@@ -480,7 +475,7 @@ pub fn makeQkx3Quants(
             l = @max(0, @min(nmax, l));
             l_aux[i] = @intCast(l);
             const w = wAt(weights, x, i);
-            const lf = @as(f32, @floatFromInt(l));
+            const lf: f32 = @floatFromInt(l);
             sum_l += w * lf;
             sum_l2 += w * lf * lf;
             sum_xl += w * lf * x[i];
@@ -521,14 +516,13 @@ pub fn makeQkx3Quants(
 /// error, then up to five refinement passes moving individual levels, the same
 /// shape as `makeQ3Quants`'s.
 ///
-/// Parameters:
 /// - `n`, `nmax`: how many values and the top level.
 /// - `x`: the values, all non-negative.
 /// - `l_out`: receives the quantized levels.
 /// - `quant_weights`: per-value importance; **required**, unlike the other
 ///   fits here.
 ///
-/// Return: the chosen scale.
+/// - Returns: the chosen scale.
 pub fn makeQpQuants(n: usize, nmax: i32, x: [*]const f32, l_out: [*]u8, quant_weights: [*]const f32) f32 {
     var max: f32 = 0;
     for (0..n) |i| max = @max(max, x[i]);

@@ -24,7 +24,6 @@
 //! `sumf` directly — the one structural difference from its K-quant
 //! siblings.
 
-const std = @import("std");
 const impl = @import("../../impl.zig");
 const blocks = @import("blocks.zig");
 const epilogue = @import("epilogue.zig");
@@ -230,15 +229,31 @@ fn gemm(
     }
 }
 
-pub export fn ggml_gemv_q6_K_8x4_q8_K_generic(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+comptime {
+    @export(&ggmlGemvQ6K8x4Q8KGeneric, .{ .name = "ggml_gemv_q6_K_8x4_q8_K_generic" });
+}
+
+pub fn ggmlGemvQ6K8x4Q8KGeneric(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
     gemv(4, 8, n, s, bs, vx, vy, nr, nc);
 }
-pub export fn ggml_gemv_q6_K_8x8_q8_K_generic(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+comptime {
+    @export(&ggmlGemvQ6K8x8Q8KGeneric, .{ .name = "ggml_gemv_q6_K_8x8_q8_K_generic" });
+}
+
+pub fn ggmlGemvQ6K8x8Q8KGeneric(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
     gemv(8, 8, n, s, bs, vx, vy, nr, nc);
 }
-pub export fn ggml_gemm_q6_K_8x4_q8_K_generic(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+comptime {
+    @export(&ggmlGemmQ6K8x4Q8KGeneric, .{ .name = "ggml_gemm_q6_K_8x4_q8_K_generic" });
+}
+
+pub fn ggmlGemmQ6K8x4Q8KGeneric(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
     gemm(4, 8, n, s, bs, vx, vy, nr, nc);
 }
-pub export fn ggml_gemm_q6_K_8x8_q8_K_generic(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+comptime {
+    @export(&ggmlGemmQ6K8x8Q8KGeneric, .{ .name = "ggml_gemm_q6_K_8x8_q8_K_generic" });
+}
+
+pub fn ggmlGemmQ6K8x8Q8KGeneric(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
     gemm(8, 8, n, s, bs, vx, vy, nr, nc);
 }

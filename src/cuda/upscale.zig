@@ -14,7 +14,6 @@
 //! `dst_size = ne10 * ne11 * ne12 * ne13` in `int` before widening, so the
 //! product wraps the way the C's does on this target (`*%`).
 
-const std = @import("std");
 const impl = @import("../impl.zig");
 const common = @import("common.zig");
 const kernels = @import("kernels.zig");

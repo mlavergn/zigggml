@@ -122,8 +122,8 @@ fn softMaxF32(params: *const ComputeParams, dst: *Tensor) void {
                 const sp = at(f32, src0.data, j01 * s(l.nb01) + j02 * s(l.nb02) + j03 * s(l.nb03));
                 const dp = at(f32, dst.data, j01 * s(l.nb1) + j02 * s(l.nb2) + j03 * s(l.nb3));
 
-                vec.cpy_f32(l.ne00, wp, sp);
-                vec.scale_f32(l.ne00, wp, scale);
+                vec.cpyF32(l.ne00, wp, sp);
+                vec.scaleF32(l.ne00, wp, scale);
                 if (src1) |m| {
                     // broadcast the mask across rows
                     const moff = j11 * nb11 + j12 * nb12 + j13 * nb13;
@@ -139,7 +139,7 @@ fn softMaxF32(params: *const ComputeParams, dst: *Tensor) void {
                 }
 
                 var max: f32 = -std.math.inf(f32);
-                vec.max_f32(l.ne00, &max, wp);
+                vec.maxF32(l.ne00, &max, wp);
 
                 // if we have sinks, make a correction as if they were included in the softmax
                 if (sk) |k| {
@@ -158,14 +158,18 @@ fn softMaxF32(params: *const ComputeParams, dst: *Tensor) void {
                 }
 
                 sum = 1.0 / sum;
-                vec.scale_f32(l.ne00, dp, @floatCast(sum));
+                vec.scaleF32(l.ne00, dp, @floatCast(sum));
             }
         }
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardSoftMax, .{ .name = "ggml_compute_forward_soft_max" });
+}
+
 /// Ports `ggml_compute_forward_soft_max` (ops.cpp:5909 @cd959bae9).
-pub export fn ggml_compute_forward_soft_max(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardSoftMax(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
 
     switch (src0.type) {
@@ -228,8 +232,12 @@ fn softMaxExtBackF32(params: *const ComputeParams, dst: *Tensor) void {
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardSoftMaxExtBack, .{ .name = "ggml_compute_forward_soft_max_ext_back" });
+}
+
 /// Ports `ggml_compute_forward_soft_max_ext_back` (ops.cpp:6013 @cd959bae9).
-pub export fn ggml_compute_forward_soft_max_ext_back(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardSoftMaxExtBack(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
 
     switch (src0.type) {
@@ -292,8 +300,12 @@ fn clamp(comptime T: type, params: *const ComputeParams, dst: *Tensor) void {
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardClamp, .{ .name = "ggml_compute_forward_clamp" });
+}
+
 /// Ports `ggml_compute_forward_clamp` (ops.cpp:6106 @cd959bae9).
-pub export fn ggml_compute_forward_clamp(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardClamp(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
 
     switch (src0.type) {

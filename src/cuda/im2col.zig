@@ -7,7 +7,6 @@
 //! `llama.cpp/ggml/src/ggml-cuda/im2col.cuh` at v0.9.0 (`cd959bae9`). The
 //! kernels, `im2col_kernel` and `im2col_3d_kernel`, stay CUDA.
 
-const std = @import("std");
 const impl = @import("../impl.zig");
 const common = @import("common.zig");
 const kernels = @import("kernels.zig");

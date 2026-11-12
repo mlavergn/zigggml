@@ -291,35 +291,59 @@ pub extern fn ggml_metal_op_argmax_extra(op: *const Tensor) usize;
 // against its own `sizeof` and `offsetof`. Exported rather than asserted
 // at comptime because only the C compiler knows the answer.
 
-export fn zz_props_sizeof() usize {
+comptime {
+    @export(&zzPropsSizeof, .{ .name = "zz_props_sizeof" });
+}
+
+fn zzPropsSizeof() callconv(.c) usize {
     return @sizeOf(DeviceProps);
+}
+
+comptime {
+    @export(&zzPwpSizeof, .{ .name = "zz_pwp_sizeof" });
 }
 
 /// The same facts for `PipelineWithParams`, plus a value the C side reads
 /// back to prove the **return** ABI — 40 bytes with interior padding,
 /// returned by value 76 times over.
-export fn zz_pwp_sizeof() usize {
+fn zzPwpSizeof() callconv(.c) usize {
     return @sizeOf(PipelineWithParams);
 }
-export fn zz_pwp_nfields() usize {
+comptime {
+    @export(&zzPwpNfields, .{ .name = "zz_pwp_nfields" });
+}
+
+fn zzPwpNfields() callconv(.c) usize {
     return @typeInfo(PipelineWithParams).@"struct".field_names.len;
 }
-export fn zz_pwp_offset(i: usize) usize {
+comptime {
+    @export(&zzPwpOffset, .{ .name = "zz_pwp_offset" });
+}
+
+fn zzPwpOffset(i: usize) callconv(.c) usize {
     inline for (@typeInfo(PipelineWithParams).@"struct".field_names, 0..) |name, k| {
         if (k == i) return @offsetOf(PipelineWithParams, name);
     }
     return std.math.maxInt(usize);
 }
-export fn zz_pwp_field_size(i: usize) usize {
+comptime {
+    @export(&zzPwpFieldSize, .{ .name = "zz_pwp_field_size" });
+}
+
+fn zzPwpFieldSize(i: usize) callconv(.c) usize {
     inline for (@typeInfo(PipelineWithParams).@"struct".field_types, 0..) |F, k| {
         if (k == i) return @sizeOf(F);
     }
     return std.math.maxInt(usize);
 }
 
+comptime {
+    @export(&zzPwpRoundtrip, .{ .name = "zz_pwp_roundtrip" });
+}
+
 /// Returns a struct with every field set to a distinct marker, so the C
 /// side can confirm each one survives the return.
-export fn zz_pwp_roundtrip() PipelineWithParams {
+fn zzPwpRoundtrip() callconv(.c) PipelineWithParams {
     return .{
         .pipeline = @ptrFromInt(0xdead0000),
         .nsg = 11,
@@ -330,11 +354,23 @@ export fn zz_pwp_roundtrip() PipelineWithParams {
         .cnt = false,
     };
 }
-export fn zz_props_alignof() usize {
+comptime {
+    @export(&zzPropsAlignof, .{ .name = "zz_props_alignof" });
+}
+
+fn zzPropsAlignof() callconv(.c) usize {
     return @alignOf(DeviceProps);
 }
-export fn zz_props_nfields() usize {
+comptime {
+    @export(&zzPropsNfields, .{ .name = "zz_props_nfields" });
+}
+
+fn zzPropsNfields() callconv(.c) usize {
     return @typeInfo(DeviceProps).@"struct".field_names.len;
+}
+
+comptime {
+    @export(&zzPropsOffset, .{ .name = "zz_props_offset" });
 }
 
 /// The offset of field `i`, in declaration order, or `maxInt` past the end.
@@ -342,16 +378,20 @@ export fn zz_props_nfields() usize {
 /// One function over an index rather than 22 named exports, so adding a
 /// field upstream cannot leave a new one unchecked: the harness compares
 /// `zz_props_nfields` too.
-export fn zz_props_offset(i: usize) usize {
+fn zzPropsOffset(i: usize) callconv(.c) usize {
     inline for (@typeInfo(DeviceProps).@"struct".field_names, 0..) |name, k| {
         if (k == i) return @offsetOf(DeviceProps, name);
     }
     return std.math.maxInt(usize);
 }
 
+comptime {
+    @export(&zzPropsFieldSize, .{ .name = "zz_props_field_size" });
+}
+
 /// The size of field `i`, which catches a field of the right offset and
 /// the wrong width — `c_int` where the C has `size_t`, say.
-export fn zz_props_field_size(i: usize) usize {
+fn zzPropsFieldSize(i: usize) callconv(.c) usize {
     inline for (@typeInfo(DeviceProps).@"struct".field_types, 0..) |F, k| {
         if (k == i) return @sizeOf(F);
     }
@@ -360,36 +400,60 @@ export fn zz_props_field_size(i: usize) usize {
 
 // `BufferId`'s layout and round-trip, for `harness/struct_layout.cpp`.
 
-export fn zz_bid_sizeof() usize {
+comptime {
+    @export(&zzBidSizeof, .{ .name = "zz_bid_sizeof" });
+}
+
+fn zzBidSizeof() callconv(.c) usize {
     return @sizeOf(BufferId);
 }
 
-export fn zz_bid_alignof() usize {
+comptime {
+    @export(&zzBidAlignof, .{ .name = "zz_bid_alignof" });
+}
+
+fn zzBidAlignof() callconv(.c) usize {
     return @alignOf(BufferId);
 }
 
-export fn zz_bid_nfields() usize {
+comptime {
+    @export(&zzBidNfields, .{ .name = "zz_bid_nfields" });
+}
+
+fn zzBidNfields() callconv(.c) usize {
     return @typeInfo(BufferId).@"struct".field_names.len;
 }
 
-export fn zz_bid_offset(i: usize) usize {
+comptime {
+    @export(&zzBidOffset, .{ .name = "zz_bid_offset" });
+}
+
+fn zzBidOffset(i: usize) callconv(.c) usize {
     inline for (@typeInfo(BufferId).@"struct".field_names, 0..) |name, k| {
         if (k == i) return @offsetOf(BufferId, name);
     }
     return std.math.maxInt(usize);
 }
 
-export fn zz_bid_field_size(i: usize) usize {
+comptime {
+    @export(&zzBidFieldSize, .{ .name = "zz_bid_field_size" });
+}
+
+fn zzBidFieldSize(i: usize) callconv(.c) usize {
     inline for (@typeInfo(BufferId).@"struct".field_types, 0..) |F, k| {
         if (k == i) return @sizeOf(F);
     }
     return std.math.maxInt(usize);
 }
 
+comptime {
+    @export(&zzBidRoundtrip, .{ .name = "zz_bid_roundtrip" });
+}
+
 /// Takes a `BufferId` **by value** from C and hands the two fields back,
 /// so the gate can see whether the receive path carries them. This is the
 /// direction Zig 0.16 gets wrong for some shapes.
-export fn zz_bid_roundtrip(in: BufferId, out_metal: *?*anyopaque, out_offs: *usize) void {
+fn zzBidRoundtrip(in: BufferId, out_metal: *?*anyopaque, out_offs: *usize) callconv(.c) void {
     out_metal.* = in.metal;
     out_offs.* = in.offs;
 }
@@ -404,7 +468,7 @@ test {
 test "the props struct has the field count the gate expects" {
     // `make struct-layout` compares this against the C's; asserting it here
     // too means `zig build test` notices a field added on our side alone.
-    try std.testing.expectEqual(@as(usize, 18), zz_props_nfields());
+    try std.testing.expectEqual(@as(usize, 18), zzPropsNfields());
 }
 
 test "the device id enum has the C's width and order" {

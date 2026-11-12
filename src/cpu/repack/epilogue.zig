@@ -38,13 +38,12 @@ const std = @import("std");
 
 /// `acc += sumi * d_weight * d_act`, with clang's contraction.
 ///
-/// Parameters:
 /// - `acc`: the running `sumf` or `sum_minf` for this column.
 /// - `sumi`: the integer dot product, or the integer min product.
 /// - `d_weight`: the weight block's scale for this column, already f32.
 /// - `d_act`: the activation block's scale for this row.
 ///
-/// Return: the new accumulator.
+/// - Returns: the new accumulator.
 pub inline fn accumulate(acc: f32, sumi: i32, d_weight: f32, d_act: f32) f32 {
     return @mulAdd(f32, @as(f32, @floatFromInt(sumi)) * d_weight, d_act, acc);
 }

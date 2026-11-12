@@ -707,11 +707,10 @@ fn getBestKernel(device: c_int, dst: *const Tensor) BestKernel {
 /// `dst`'s bytes plus room for the F16 copies of K and V the chosen kernel
 /// needs.
 ///
-/// Parameters:
 /// - `device`: the buffer type's device.
 /// - `dst`: a `GGML_OP_FLASH_ATTN_EXT` node.
 ///
-/// Return: the allocation size in bytes.
+/// - Returns: the allocation size in bytes.
 pub fn getAllocSize(device: c_int, dst: *const Tensor) usize {
     impl.assert(dst.op == c.GGML_OP_FLASH_ATTN_EXT, "dst->op == GGML_OP_FLASH_ATTN_EXT");
 

@@ -246,7 +246,6 @@ fn switchSrc0Type(comptime D: type, src0_d: ?*const anyopaque, src0_type: c.ggml
 
 /// Ports `get_rows_cuda` (getrows.cu:412 @cd959bae9).
 ///
-/// Parameters:
 /// - `src0_d`, `src0_type`: the rows to gather from.
 /// - `src1_d`: the `int32_t` row indices.
 /// - `dst_d`, `dst_type`: the output.

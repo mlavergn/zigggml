@@ -41,7 +41,6 @@ const defs = @import("../defs.zig");
 const extra = @import("../extra.zig");
 const features = @import("../features.zig");
 const threading = @import("../threading.zig");
-const cpu_traits = @import("../traits.zig");
 const convert = @import("convert.zig");
 
 const c = impl.c;
@@ -193,7 +192,7 @@ fn repackFor(comptime b: Bloc, comptime inter: i64, comptime cols: i64) *const C
 /// - `nb_cols`: `NB_COLS`, how many weight rows one interleaved block holds.
 /// - `param_type`: `PARAM_TYPE`, the type activations are quantized to.
 ///
-/// Return: a type whose `instance` is the one `static const` the C holds
+/// - Returns: a type whose `instance` is the one `static const` the C holds
 /// per instantiation, and whose `base` is the `extra.TensorTraits` the
 /// vtable dispatch reaches it through.
 fn TensorTraits(
@@ -425,7 +424,7 @@ fn TensorTraits(
             }
 
             // disable for NUMA
-            const disable_chunking = threading.ggml_is_numa();
+            const disable_chunking = threading.ggmlIsNuma();
 
             // 4x chunks per thread
             const nr0 = c.ggml_nrows(src0);
@@ -460,10 +459,10 @@ fn TensorTraits(
             if (ith == 0) {
                 // Every thread starts at ith, so the first unclaimed chunk
                 // is nth. That saves a round of coordination at the start.
-                threading.ggml_threadpool_chunk_set(@ptrCast(@alignCast(params.threadpool.?)), nth);
+                threading.ggmlThreadpoolChunkSet(@ptrCast(@alignCast(params.threadpool.?)), nth);
             }
 
-            threading.ggml_barrier(@ptrCast(@alignCast(params.threadpool.?)));
+            threading.ggmlBarrier(@ptrCast(@alignCast(params.threadpool.?)));
 
             // The first chunk comes from our thread id; the rest are claimed.
             var current_chunk: i64 = ith;
@@ -488,13 +487,13 @@ fn TensorTraits(
 
                 // Make sure the current plane is the last one before exiting.
                 if (src0_start >= src0_end) {
-                    current_chunk = threading.ggml_threadpool_chunk_add(@ptrCast(@alignCast(params.threadpool.?)), 1);
+                    current_chunk = threading.ggmlThreadpoolChunkAdd(@ptrCast(@alignCast(params.threadpool.?)), 1);
                     continue;
                 }
 
                 forwardMulMatOneChunk(params, dst, src0_start, src0_end, src1_start, src1_end);
 
-                current_chunk = threading.ggml_threadpool_chunk_add(@ptrCast(@alignCast(params.threadpool.?)), 1);
+                current_chunk = threading.ggmlThreadpoolChunkAdd(@ptrCast(@alignCast(params.threadpool.?)), 1);
             }
         }
 
@@ -602,7 +601,7 @@ fn TensorTraits(
                 }
             }
 
-            threading.ggml_barrier(@ptrCast(@alignCast(params.threadpool.?)));
+            threading.ggmlBarrier(@ptrCast(@alignCast(params.threadpool.?)));
 
             // compute each matrix multiplication in sequence
             var cur_a: i64 = 0;
@@ -728,87 +727,86 @@ inline fn traitsOf(comptime T: type) *const extra.TensorTraits {
 /// Ports `ggml_repack_get_optimal_repack_type` (ggml-cpu/repack.cpp:4930
 /// @cd959bae9).
 ///
-/// Parameters:
 /// - `cur`: the weight tensor being considered.
 ///
-/// Return: the traits to hang off `cur->extra`, or null when no
+/// - Returns: the traits to hang off `cur->extra`, or null when no
 /// interleaved kernel fits this type and shape. Borrowed; the instances
 /// are statics that live for the process.
 pub fn getOptimalRepackType(cur: *const Tensor) ?*const extra.TensorTraits {
     const ne1 = cur.ne[1];
 
     if (cur.type == c.GGML_TYPE_Q4_0) {
-        if (features.ggml_cpu_has_avx2() != 0 or
-            (features.ggml_cpu_has_sve() != 0 and features.ggml_cpu_has_matmul_int8() != 0 and features.ggml_cpu_get_sve_cnt() == 32))
+        if (features.ggmlCpuHasAvx2() != 0 or
+            (features.ggmlCpuHasSve() != 0 and features.ggmlCpuHasMatmulInt8() != 0 and features.ggmlCpuGetSveCnt() == 32))
         {
             if (@rem(ne1, 8) == 0) return traitsOf(inst.q4_0_8x8_q8_0);
         }
-        if (features.ggml_cpu_has_neon() != 0 and features.ggml_cpu_has_matmul_int8() != 0) {
+        if (features.ggmlCpuHasNeon() != 0 and features.ggmlCpuHasMatmulInt8() != 0) {
             if (@rem(ne1, 4) == 0) return traitsOf(inst.q4_0_4x8_q8_0);
         }
-        if (features.ggml_cpu_has_neon() != 0 and features.ggml_cpu_has_dotprod() != 0) {
+        if (features.ggmlCpuHasNeon() != 0 and features.ggmlCpuHasDotprod() != 0) {
             if (@rem(ne1, 4) == 0) return traitsOf(inst.q4_0_4x4_q8_0);
         }
         // s390x's arm, new at v0.4.1; `ggml_cpu_has_vxe` is 0 on every
         // target this port builds, so it is reached only there.
-        if (features.ggml_cpu_has_vxe() != 0) {
+        if (features.ggmlCpuHasVxe() != 0) {
             if (@rem(ne1, 4) == 0) return traitsOf(inst.q4_0_4x4_q8_0);
         }
         // The C's `ggml_cpu_has_riscv_v()` arm is empty without __riscv_zvfh.
     } else if (cur.type == c.GGML_TYPE_Q4_K) {
-        if (features.ggml_cpu_has_avx2() != 0) {
+        if (features.ggmlCpuHasAvx2() != 0) {
             if (@rem(ne1, 8) == 0) return traitsOf(inst.q4_K_8x8_q8_K);
         }
-        if (features.ggml_cpu_has_neon() != 0 and features.ggml_cpu_has_matmul_int8() != 0) {
+        if (features.ggmlCpuHasNeon() != 0 and features.ggmlCpuHasMatmulInt8() != 0) {
             if (@rem(ne1, 8) == 0) return traitsOf(inst.q4_K_8x8_q8_K);
         }
-        if (features.ggml_cpu_has_neon() != 0 and features.ggml_cpu_has_dotprod() != 0) {
+        if (features.ggmlCpuHasNeon() != 0 and features.ggmlCpuHasDotprod() != 0) {
             if (@rem(ne1, 8) == 0) return traitsOf(inst.q4_K_8x4_q8_K);
         }
     } else if (cur.type == c.GGML_TYPE_Q2_K) {
-        if (features.ggml_cpu_has_avx512() != 0) {
+        if (features.ggmlCpuHasAvx512() != 0) {
             if (@rem(ne1, 8) == 0) return traitsOf(inst.q2_K_8x8_q8_K);
         }
     } else if (cur.type == c.GGML_TYPE_Q5_K) {
-        if (features.ggml_cpu_has_neon() != 0 and features.ggml_cpu_has_matmul_int8() != 0) {
+        if (features.ggmlCpuHasNeon() != 0 and features.ggmlCpuHasMatmulInt8() != 0) {
             if (@rem(ne1, 8) == 0) return traitsOf(inst.q5_K_8x8_q8_K);
         }
-        if (features.ggml_cpu_has_neon() != 0 and features.ggml_cpu_has_dotprod() != 0) {
+        if (features.ggmlCpuHasNeon() != 0 and features.ggmlCpuHasDotprod() != 0) {
             if (@rem(ne1, 8) == 0) return traitsOf(inst.q5_K_8x4_q8_K);
         }
     } else if (cur.type == c.GGML_TYPE_Q6_K) {
-        if (features.ggml_cpu_has_neon() != 0 and features.ggml_cpu_has_matmul_int8() != 0) {
+        if (features.ggmlCpuHasNeon() != 0 and features.ggmlCpuHasMatmulInt8() != 0) {
             if (@rem(ne1, 8) == 0) return traitsOf(inst.q6_K_8x8_q8_K);
         }
-        if (features.ggml_cpu_has_neon() != 0 and features.ggml_cpu_has_dotprod() != 0) {
+        if (features.ggmlCpuHasNeon() != 0 and features.ggmlCpuHasDotprod() != 0) {
             if (@rem(ne1, 8) == 0) return traitsOf(inst.q6_K_8x4_q8_K);
         }
     } else if (cur.type == c.GGML_TYPE_IQ4_NL) {
-        if (features.ggml_cpu_has_avx2() != 0) {
+        if (features.ggmlCpuHasAvx2() != 0) {
             if (@rem(ne1, 8) == 0) return traitsOf(inst.iq4_nl_8x8_q8_0);
         }
-        if (features.ggml_cpu_has_neon() != 0 and features.ggml_cpu_has_dotprod() != 0) {
+        if (features.ggmlCpuHasNeon() != 0 and features.ggmlCpuHasDotprod() != 0) {
             if (@rem(ne1, 4) == 0) return traitsOf(inst.iq4_nl_4x4_q8_0);
         }
     } else if (cur.type == c.GGML_TYPE_MXFP4) {
-        if (features.ggml_cpu_has_avx2() != 0) {
+        if (features.ggmlCpuHasAvx2() != 0) {
             if (@rem(ne1, 8) == 0) return traitsOf(inst.mxfp4_8x8_q8_0);
         }
-        if (features.ggml_cpu_has_neon() != 0 and features.ggml_cpu_has_dotprod() != 0) {
+        if (features.ggmlCpuHasNeon() != 0 and features.ggmlCpuHasDotprod() != 0) {
             if (@rem(ne1, 4) == 0) return traitsOf(inst.mxfp4_4x4_q8_0);
         }
     } else if (cur.type == c.GGML_TYPE_Q8_0) {
-        if (features.ggml_cpu_has_neon() != 0 and features.ggml_cpu_has_matmul_int8() != 0) {
+        if (features.ggmlCpuHasNeon() != 0 and features.ggmlCpuHasMatmulInt8() != 0) {
             if (@rem(ne1, 4) == 0) return traitsOf(inst.q8_0_4x8_q8_0);
         }
-        if (features.ggml_cpu_has_neon() != 0 and features.ggml_cpu_has_dotprod() != 0) {
+        if (features.ggmlCpuHasNeon() != 0 and features.ggmlCpuHasDotprod() != 0) {
             if (@rem(ne1, 4) == 0) return traitsOf(inst.q8_0_4x4_q8_0);
         }
     } else if (cur.type == c.GGML_TYPE_Q1_0) {
-        if (features.ggml_cpu_has_neon() != 0 and features.ggml_cpu_has_matmul_int8() != 0) {
+        if (features.ggmlCpuHasNeon() != 0 and features.ggmlCpuHasMatmulInt8() != 0) {
             if (@rem(ne1, 4) == 0) return traitsOf(inst.q1_0_4x8_q8_0);
         }
-        if (features.ggml_cpu_has_neon() != 0 and features.ggml_cpu_has_dotprod() != 0) {
+        if (features.ggmlCpuHasNeon() != 0 and features.ggmlCpuHasDotprod() != 0) {
             if (@rem(ne1, 4) == 0) return traitsOf(inst.q1_0_4x4_q8_0);
         }
     }
@@ -981,9 +979,9 @@ fn bufferType() c.ggml_backend_buffer_type_t {
 
 /// The barrel's entry point. See `bufferType`.
 ///
-/// Return: the `CPU_REPACK` buffer type, borrowed for the life of the
+/// - Returns: the `CPU_REPACK` buffer type, borrowed for the life of the
 /// process.
-pub fn ggml_backend_cpu_repack_buffer_type() c.ggml_backend_buffer_type_t {
+pub fn ggmlBackendCpuRepackBufferType() c.ggml_backend_buffer_type_t {
     return bufferType();
 }
 

@@ -202,10 +202,9 @@ pub const logDebug = struct {
 /// Aborts through ggml's own handler rather than Zig's panic, so a failure in
 /// ported code surfaces the same way a failure in C code does.
 ///
-/// Parameters:
 /// - `msg`: message passed to `ggml_abort` as a literal format string.
 ///
-/// Return: never.
+/// - Returns: never.
 pub fn abort(comptime msg: []const u8) noreturn {
     c.ggml_abort("ggml-alloc.zig", 0, msg ++ "");
     unreachable;
@@ -216,11 +215,10 @@ pub fn abort(comptime msg: []const u8) noreturn {
 /// Unlike `std.debug.assert`, this stays live in release builds, matching the C
 /// macro, which is not gated on `NDEBUG`.
 ///
-/// Parameters:
 /// - `ok`: the condition that must hold.
 /// - `msg`: text identifying the assertion when it fails.
 ///
-/// Return: nothing when `ok` holds; aborts otherwise.
+/// - Returns: nothing when `ok` holds; aborts otherwise.
 pub fn assert(ok: bool, comptime msg: []const u8) void {
     if (!ok) abort("GGML_ASSERT(" ++ msg ++ ") failed");
 }
@@ -266,11 +264,10 @@ pub fn ggmlCalloc(num: usize, size: usize) ?*anyopaque {
 
 /// Ports the `GGML_PAD` macro (ggml.h:267 @cd959bae9): rounds `x` up to a multiple of `n`.
 ///
-/// Parameters:
 /// - `x`: value to round up.
 /// - `n`: alignment; must be a power of two, as in the C macro.
 ///
-/// Return: `x` rounded up to the next multiple of `n`.
+/// - Returns: `x` rounded up to the next multiple of `n`.
 /// Ports `TENSOR_ALIGNMENT` (ggml-impl.h:44 @cd959bae9).
 ///
 /// The alignment every backend buffer rounds its base up to. Lives here
@@ -293,22 +290,20 @@ pub inline fn pad(x: usize, n: usize) usize {
 
 /// Narrows a C many-pointer to a Zig many-pointer.
 ///
-/// Parameters:
 /// - `T`: pointee type.
 /// - `p`: the C pointer; must be non-null.
 ///
-/// Return: the same address, typed so indexing yields a normal pointer.
+/// - Returns: the same address, typed so indexing yields a normal pointer.
 pub inline fn many(comptime T: type, p: [*c]T) [*]T {
     return @ptrCast(p);
 }
 
 /// Narrows a C pointer to a Zig single-item pointer.
 ///
-/// Parameters:
 /// - `T`: pointee type.
 /// - `p`: the C pointer; must be non-null.
 ///
-/// Return: the same address as a `*T`.
+/// - Returns: the same address as a `*T`.
 pub inline fn one(comptime T: type, p: [*c]T) *T {
     return @ptrCast(p);
 }
@@ -323,17 +318,15 @@ pub inline fn isView(t: *const c.ggml_tensor) bool {
 
 /// Ports `ggml_are_same_layout` (ggml-impl.h:75 @cd959bae9).
 ///
-/// Parameters:
 /// - `a`, `b`: tensors to compare; borrowed for the call only.
 /// Ports `ggml_op_is_empty` (ggml-impl.h:90 @cd959bae9).
 ///
 /// True for the five ops that produce a view rather than data. The graph
 /// walks past them: there is nothing to compute.
 ///
-/// Parameters:
 /// - `op`: the op to test.
 ///
-/// Return: true when the op writes nothing.
+/// - Returns: true when the op writes nothing.
 pub fn opIsEmpty(op: c.enum_ggml_op) bool {
     return switch (op) {
         c.GGML_OP_NONE,
@@ -347,7 +340,7 @@ pub fn opIsEmpty(op: c.enum_ggml_op) bool {
 }
 
 ///
-/// Return: true when type, shape, and strides all match.
+/// - Returns: true when type, shape, and strides all match.
 pub fn areSameLayout(a: *const c.ggml_tensor, b: *const c.ggml_tensor) bool {
     if (a.type != b.type) return false;
     for (0..c.GGML_MAX_DIMS) |i| {
@@ -366,7 +359,6 @@ pub fn areSameLayout(a: *const c.ggml_tensor, b: *const c.ggml_tensor) bool {
 
 /// Ports `ggml_set_op_params` (ggml-impl.h:147 @cd959bae9).
 ///
-/// Parameters:
 /// - `tensor`: tensor whose parameters to set.
 /// - `params`: source bytes, at most `GGML_MAX_OP_PARAMS`.
 pub fn setOpParams(tensor: *c.ggml_tensor, params: []const u8) void {
@@ -545,11 +537,10 @@ pub inline fn hash(p: *const c.ggml_tensor) usize {
 /// Linear probing from the hash position. Aborts when the table is full, which
 /// callers rely on: the returned index is always valid.
 ///
-/// Parameters:
 /// - `set`: the hash set to search and possibly insert into.
 /// - `key`: tensor to look up.
 ///
-/// Return: the index of `key`, inserting it if it was absent.
+/// - Returns: the index of `key`, inserting it if it was absent.
 pub fn hashFindOrInsert(set: *HashSet, key: *c.ggml_tensor) usize {
     const h = hash(key) % set.size;
     var i = h;
@@ -568,7 +559,7 @@ pub fn hashFindOrInsert(set: *HashSet, key: *c.ggml_tensor) usize {
 
 /// Ports `ggml_hash_find` (ggml-impl.h:271 @cd959bae9).
 ///
-/// Return: the index where `key` is or would go, or `hashset_full` if the
+/// - Returns: the index where `key` is or would go, or `hashset_full` if the
 /// table holds neither it nor a free slot. A returned index is only a *hit*
 /// if the used bit is also set -- callers must check both, which is the
 /// asymmetry that makes this easy to get wrong.
@@ -584,7 +575,7 @@ pub fn hashFind(set: *const HashSet, key: *const c.ggml_tensor) usize {
 
 /// Ports `ggml_hash_insert` (ggml-impl.h:291 @cd959bae9).
 ///
-/// Return: the index it was inserted at, or `hashset_already_exists` when the
+/// - Returns: the index it was inserted at, or `hashset_already_exists` when the
 /// key was already present. Aborts when the table is full.
 pub fn hashInsert(set: *HashSet, key: *c.ggml_tensor) usize {
     const h = hash(key) % set.size;
@@ -794,10 +785,9 @@ inline fn fp32ToBits(f: f32) u32 {
 /// hardware convert, which is what the C does and therefore what the ported
 /// code must do.
 ///
-/// Parameters:
 /// - `h`: the half-precision bit pattern.
 ///
-/// Return: the widened value. Exact for every input, including subnormals,
+/// - Returns: the widened value. Exact for every input, including subnormals,
 /// infinities, and NaNs.
 pub fn fp16ToFp32(h: u16) f32 {
     const w = @as(u32, h) << 16;
@@ -828,10 +818,9 @@ pub fn fp16ToFp32(h: u16) f32 {
 /// rounding falls out of the hardware's own round-to-nearest-even, which is
 /// how the C avoids implementing rounding by hand.
 ///
-/// Parameters:
 /// - `f`: the value to narrow.
 ///
-/// Return: the half-precision bit pattern. NaNs collapse to 0x7E00, matching
+/// - Returns: the half-precision bit pattern. NaNs collapse to 0x7E00, matching
 /// the C exactly.
 pub fn fp32ToFp16(f: f32) u16 {
     const scale_to_inf: f32 = @bitCast(@as(u32, 0x77800000)); // 0x1.0p+112
@@ -871,10 +860,9 @@ pub inline fn bf16ToFp32(bits: u16) f32 {
 /// rather than flushed, and NaNs are forced quiet, both matching Google Brain's
 /// reference conversion as the C comment notes.
 ///
-/// Parameters:
 /// - `s`: the value to narrow.
 ///
-/// Return: the brain-float bit pattern.
+/// - Returns: the brain-float bit pattern.
 pub fn fp32ToBf16(s: f32) u16 {
     const u = fp32ToBits(s);
     if ((u & 0x7fffffff) > 0x7f800000) {

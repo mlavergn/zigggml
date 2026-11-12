@@ -48,12 +48,11 @@ const pow3 = [6]u8{ 1, 3, 9, 27, 81, 243 };
 /// One base-three digit, as `ggml_vec_dot_tq1_0_q8_K_generic` extracts it
 /// (ggml-cpu/quants.c:529 @cd959bae9).
 ///
-/// Parameters:
 /// - `byte`: the packed byte, holding five digits as a base-3 fraction of 256.
 /// - `l`: which digit, 0 the **most** significant -- the order the quantizer
 ///   wrote them in.
 ///
-/// Return: the digit's ternary value, 0, 1 or 2 -- **not** yet shifted to
+/// - Returns: the digit's ternary value, 0, 1 or 2 -- **not** yet shifted to
 /// -1, 0, +1.
 inline fn digit(byte: u8, l: usize) u16 {
     // `q` is a `uint8_t` in the C and the truncation is load-bearing: it is
@@ -62,13 +61,17 @@ inline fn digit(byte: u8, l: usize) u16 {
     return (@as(u16, q) * 3) >> 8;
 }
 
+comptime {
+    @export(&ggmlVecDotTq10Q8KGeneric, .{ .name = "ggml_vec_dot_tq1_0_q8_K_generic" });
+}
+
 /// Ports `ggml_vec_dot_tq1_0_q8_K_generic` (ggml-cpu/quants.c:529 @cd959bae9).
 ///
 /// The 256 weights of a super-block are stored as 5 digits per byte across
 /// `qs`, plus a 4-digit tail in `qh`. `qs` is 48 bytes, so the first loop
 /// covers the 32-byte-aligned part and the second the 16-byte remainder --
 /// which is why the two loops differ only in their stride.
-pub export fn ggml_vec_dot_tq1_0_q8_K_generic(
+pub fn ggmlVecDotTq10Q8KGeneric(
     n: c_int,
     s: [*c]f32,
     bs: usize,
@@ -77,7 +80,7 @@ pub export fn ggml_vec_dot_tq1_0_q8_K_generic(
     vy: ?*const anyopaque,
     by: usize,
     nrc: c_int,
-) void {
+) callconv(.c) void {
     std.debug.assert(nrc == 1);
     _ = .{ bs, bx, by };
 
@@ -131,12 +134,16 @@ pub export fn ggml_vec_dot_tq1_0_q8_K_generic(
     s[0] = sumf;
 }
 
+comptime {
+    @export(&ggmlVecDotTq20Q8KGeneric, .{ .name = "ggml_vec_dot_tq2_0_q8_K_generic" });
+}
+
 /// Ports `ggml_vec_dot_tq2_0_q8_K_generic` (ggml-cpu/quants.c:581 @cd959bae9).
 ///
 /// Four two-bit digits per byte, mapped `{0,1,2} -> {-1,0,1}` by subtracting
 /// one. Simpler than `tq1_0` because two bits waste a quarter of the range in
 /// exchange for a plain shift-and-mask.
-pub export fn ggml_vec_dot_tq2_0_q8_K_generic(
+pub fn ggmlVecDotTq20Q8KGeneric(
     n: c_int,
     s: [*c]f32,
     bs: usize,
@@ -145,7 +152,7 @@ pub export fn ggml_vec_dot_tq2_0_q8_K_generic(
     vy: ?*const anyopaque,
     by: usize,
     nrc: c_int,
-) void {
+) callconv(.c) void {
     std.debug.assert(nrc == 1);
     _ = .{ bs, bx, by };
 
@@ -190,11 +197,11 @@ const testing = @import("testing.zig");
 const golden = @import("golden.zig");
 
 test "tq1_0 dot matches the C" {
-    try testing.check(ggml_vec_dot_tq1_0_q8_K_generic, c.GGML_TYPE_TQ1_0, c.GGML_TYPE_Q8_K, golden.tq1_0);
+    try testing.check(ggmlVecDotTq10Q8KGeneric, c.GGML_TYPE_TQ1_0, c.GGML_TYPE_Q8_K, golden.tq1_0);
 }
 
 test "tq2_0 dot matches the C" {
-    try testing.check(ggml_vec_dot_tq2_0_q8_K_generic, c.GGML_TYPE_TQ2_0, c.GGML_TYPE_Q8_K, golden.tq2_0);
+    try testing.check(ggmlVecDotTq20Q8KGeneric, c.GGML_TYPE_TQ2_0, c.GGML_TYPE_Q8_K, golden.tq2_0);
 }
 
 /// Packs five ternary digits exactly as `quantize_row_tq1_0_ref` does

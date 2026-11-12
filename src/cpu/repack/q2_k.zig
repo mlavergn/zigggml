@@ -32,7 +32,6 @@
 //! `arch-fallback.h` renames the generic to the bare name here, so
 //! `repack.o` exports `ggml_gemv_q2_K_8x8_q8_K` without a suffix.
 
-const std = @import("std");
 const impl = @import("../../impl.zig");
 const blocks = @import("blocks.zig");
 const epilogue = @import("epilogue.zig");
@@ -80,10 +79,14 @@ fn gemv(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaq
                     var i: i32 = 0;
                     while (i < blocklen) : (i += 1) {
                         const q = bl.qs[@intCast(k * ncols_interleaved * blocklen + j * blocklen + i)];
-                        const v0: i32 = @as(i8, @bitCast(q & 3));
-                        const v1: i32 = @as(i8, @bitCast((q >> 2) & 3));
-                        const v2: i32 = @as(i8, @bitCast((q >> 4) & 3));
-                        const v3: i32 = @as(i8, @bitCast((q >> 6) & 3));
+                        const v0_raw: i8 = @bitCast(q & 3);
+                        const v0: i32 = v0_raw;
+                        const v1_raw: i8 = @bitCast((q >> 2) & 3);
+                        const v1: i32 = v1_raw;
+                        const v2_raw: i8 = @bitCast((q >> 4) & 3);
+                        const v2: i32 = v2_raw;
+                        const v3_raw: i8 = @bitCast((q >> 6) & 3);
+                        const v3: i32 = v3_raw;
                         const base = (k >> 2) * 128 + @rem(k, 4) * blocklen + i;
                         var sumi1: i32 = v0 * al.qs[@intCast(base)];
                         var sumi2: i32 = v1 * al.qs[@intCast(base + 32)];
@@ -156,10 +159,14 @@ fn gemm(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaq
                             var i: i32 = 0;
                             while (i < blocklen) : (i += 1) {
                                 const q = bl.qs[@intCast(k * ncols_interleaved * blocklen + j * blocklen + i)];
-                                const v0: i32 = @as(i8, @bitCast(q & 3));
-                                const v1: i32 = @as(i8, @bitCast((q >> 2) & 3));
-                                const v2: i32 = @as(i8, @bitCast((q >> 4) & 3));
-                                const v3: i32 = @as(i8, @bitCast((q >> 6) & 3));
+                                const v0_raw: i8 = @bitCast(q & 3);
+                                const v0: i32 = v0_raw;
+                                const v1_raw: i8 = @bitCast((q >> 2) & 3);
+                                const v1: i32 = v1_raw;
+                                const v2_raw: i8 = @bitCast((q >> 4) & 3);
+                                const v2: i32 = v2_raw;
+                                const v3_raw: i8 = @bitCast((q >> 6) & 3);
+                                const v3: i32 = v3_raw;
                                 const base = (k >> 2) * 512 + @rem(k, 4) * 4 * blocklen + m * blocklen + i;
                                 var sumi1: i32 = v0 * al.qs[@intCast(base)];
                                 var sumi2: i32 = v1 * al.qs[@intCast(base + 128)];
@@ -200,9 +207,9 @@ fn gemm(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaq
 }
 
 /// Exported per architecture -- see `arm/fallback.zig`.
-pub fn ggml_gemv_q2_K_8x8_q8_K_generic(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+pub fn ggmlGemvQ2K8x8Q8KGeneric(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
     gemv(n, s, bs, vx, vy, nr, nc);
 }
-pub fn ggml_gemm_q2_K_8x8_q8_K_generic(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+pub fn ggmlGemmQ2K8x8Q8KGeneric(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
     gemm(n, s, bs, vx, vy, nr, nc);
 }

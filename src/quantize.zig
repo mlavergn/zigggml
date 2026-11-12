@@ -79,7 +79,7 @@ const quantizers = .{
     .{ c.GGML_TYPE_IQ4_XS, "quantize_iq4_xs" },
 };
 
-/// Return: the routine for `t`, or null when `t` is not a block format.
+/// - Returns: the routine for `t`, or null when `t` is not a block format.
 fn quantizerFor(t: c.enum_ggml_type) ?QuantizeFn {
     inline for (quantizers) |entry| {
         if (t == entry[0]) return @extern(QuantizeFn, .{ .name = entry[1] });
@@ -87,11 +87,15 @@ fn quantizerFor(t: c.enum_ggml_type) ?QuantizeFn {
     return null;
 }
 
+comptime {
+    @export(&ggmlQuantizeInit, .{ .name = "ggml_quantize_init" });
+}
+
 /// Ports `ggml_quantize_init` (ggml.c:8158 @cd959bae9).
 ///
 /// Builds the shared codebook the i-quants index into. Idempotent, and a
 /// no-op for every other format.
-pub export fn ggml_quantize_init(t: c.enum_ggml_type) void {
+pub fn ggmlQuantizeInit(t: c.enum_ggml_type) callconv(.c) void {
     c.ggml_critical_section_start();
 
     switch (t) {
@@ -109,11 +113,15 @@ pub export fn ggml_quantize_init(t: c.enum_ggml_type) void {
     c.ggml_critical_section_end();
 }
 
+comptime {
+    @export(&ggmlQuantizeFree, .{ .name = "ggml_quantize_free" });
+}
+
 /// Ports `ggml_quantize_free` (ggml.c:8176 @cd959bae9).
 ///
 /// Releases every codebook unconditionally rather than tracking which were
 /// built; the free routines tolerate a table that was never allocated.
-pub export fn ggml_quantize_free() void {
+pub fn ggmlQuantizeFree() callconv(.c) void {
     c.ggml_critical_section_start();
 
     iq2xs_free_impl(c.GGML_TYPE_IQ2_XXS);
@@ -127,14 +135,22 @@ pub export fn ggml_quantize_free() void {
     c.ggml_critical_section_end();
 }
 
+comptime {
+    @export(&ggmlQuantizeRequiresImatrix, .{ .name = "ggml_quantize_requires_imatrix" });
+}
+
 /// Ports `ggml_quantize_requires_imatrix` (ggml.c:8190 @cd959bae9).
 ///
 /// Note `IQ1_M` is absent: the C lists it commented out, and leaving it out is
 /// deliberate rather than an oversight, so it is left out here too.
-pub export fn ggml_quantize_requires_imatrix(t: c.enum_ggml_type) bool {
+pub fn ggmlQuantizeRequiresImatrix(t: c.enum_ggml_type) callconv(.c) bool {
     return t == c.GGML_TYPE_IQ2_XXS or
         t == c.GGML_TYPE_IQ2_XS or
         t == c.GGML_TYPE_IQ1_S;
+}
+
+comptime {
+    @export(&ggmlQuantizeChunk, .{ .name = "ggml_quantize_chunk" });
 }
 
 /// Ports `ggml_quantize_chunk` (ggml.c:8198 @cd959bae9).
@@ -142,7 +158,6 @@ pub export fn ggml_quantize_requires_imatrix(t: c.enum_ggml_type) bool {
 /// Quantizes `nrows` rows starting at element `start`, which must fall on both
 /// a block boundary and a row boundary.
 ///
-/// Parameters:
 /// - `t`: destination format.
 /// - `src`: source floats, indexed from `start`.
 /// - `dst`: destination, written from row `start / n_per_row` onward.
@@ -151,8 +166,8 @@ pub export fn ggml_quantize_requires_imatrix(t: c.enum_ggml_type) bool {
 /// - `imatrix`: importance matrix, required by the formats
 ///   `ggml_quantize_requires_imatrix` names and ignored by the rest.
 ///
-/// Return: bytes written, which the C asserts equals `nrows * row_size`.
-pub export fn ggml_quantize_chunk(
+/// - Returns: bytes written, which the C asserts equals `nrows * row_size`.
+pub fn ggmlQuantizeChunk(
     t: c.enum_ggml_type,
     src: [*c]const f32,
     dst: ?*anyopaque,
@@ -160,20 +175,20 @@ pub export fn ggml_quantize_chunk(
     nrows: i64,
     n_per_row: i64,
     imatrix: [*c]const f32,
-) usize {
+) callconv(.c) usize {
     const n = nrows * n_per_row;
 
-    if (ggml_quantize_requires_imatrix(t)) {
+    if (ggmlQuantizeRequiresImatrix(t)) {
         impl.assert(imatrix != null, "imatrix != NULL");
     }
 
-    impl.assert(@rem(start, types.ggml_blck_size(t)) == 0, "start % type_traits[type].blck_size == 0");
+    impl.assert(@rem(start, types.ggmlBlckSize(t)) == 0, "start % type_traits[type].blck_size == 0");
     impl.assert(@rem(start, n_per_row) == 0, "start % n_per_row == 0");
 
-    ggml_quantize_init(t); // this is noop if already initialized
+    ggmlQuantizeInit(t); // this is noop if already initialized
 
     const start_row: usize = @intCast(@divTrunc(start, n_per_row));
-    const row_size = types.ggml_row_size(t, n_per_row);
+    const row_size = types.ggmlRowSize(t, n_per_row);
 
     var result: usize = 0;
 
@@ -215,15 +230,15 @@ test {
 }
 
 test "only the three i-quant formats the C lists require an importance matrix" {
-    try std.testing.expect(ggml_quantize_requires_imatrix(c.GGML_TYPE_IQ2_XXS));
-    try std.testing.expect(ggml_quantize_requires_imatrix(c.GGML_TYPE_IQ2_XS));
-    try std.testing.expect(ggml_quantize_requires_imatrix(c.GGML_TYPE_IQ1_S));
+    try std.testing.expect(ggmlQuantizeRequiresImatrix(c.GGML_TYPE_IQ2_XXS));
+    try std.testing.expect(ggmlQuantizeRequiresImatrix(c.GGML_TYPE_IQ2_XS));
+    try std.testing.expect(ggmlQuantizeRequiresImatrix(c.GGML_TYPE_IQ1_S));
 
     // IQ1_M is commented out in the C. If a future pin uncomments it this
     // test fails, which is the point.
-    try std.testing.expect(!ggml_quantize_requires_imatrix(c.GGML_TYPE_IQ1_M));
-    try std.testing.expect(!ggml_quantize_requires_imatrix(c.GGML_TYPE_Q4_K));
-    try std.testing.expect(!ggml_quantize_requires_imatrix(c.GGML_TYPE_F32));
+    try std.testing.expect(!ggmlQuantizeRequiresImatrix(c.GGML_TYPE_IQ1_M));
+    try std.testing.expect(!ggmlQuantizeRequiresImatrix(c.GGML_TYPE_Q4_K));
+    try std.testing.expect(!ggmlQuantizeRequiresImatrix(c.GGML_TYPE_F32));
 }
 
 test "the dispatch table covers every quantized format the C switches on" {
@@ -238,8 +253,8 @@ test "the dispatch table covers every quantized format the C switches on" {
         const t: c.enum_ggml_type = @intCast(i);
         // Retired slots are zeroed in the traits table and report block size
         // zero; they are not formats and belong in neither branch.
-        if (types.ggml_blck_size(t) == 0) continue;
-        if (!types.ggml_is_quantized(t)) continue;
+        if (types.ggmlBlckSize(t) == 0) continue;
+        if (!types.ggmlIsQuantized(t)) continue;
         if (std.mem.findScalar(c.enum_ggml_type, &not_destinations, t) != null) {
             try std.testing.expect(quantizerFor(t) == null);
             continue;

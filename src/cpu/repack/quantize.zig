@@ -22,13 +22,10 @@
 //! **is** the live implementation — note the asymmetry, which is why the
 //! exported names differ between the two halves.
 
-const std = @import("std");
 const impl = @import("../../impl.zig");
 const blocks = @import("blocks.zig");
 const helpers = @import("../../quants/helpers.zig");
 const convert = @import("../convert.zig");
-
-const c = impl.c;
 
 const QK8_0 = 32;
 const QK_K = 256;
@@ -143,21 +140,29 @@ fn quantizeMatQ8K(comptime blck_size_interleave: i32, x: [*]const f32, vy: *anyo
     }
 }
 
-pub export fn ggml_quantize_mat_q8_0_4x4_generic(x: [*]const f32, vy: *anyopaque, k: i64) callconv(.c) void {
+comptime {
+    @export(&ggmlQuantizeMatQ804x4Generic, .{ .name = "ggml_quantize_mat_q8_0_4x4_generic" });
+}
+
+pub fn ggmlQuantizeMatQ804x4Generic(x: [*]const f32, vy: *anyopaque, k: i64) callconv(.c) void {
     quantizeMatQ80(4, x, vy, k);
 }
 
-pub export fn ggml_quantize_mat_q8_0_4x8_generic(x: [*]const f32, vy: *anyopaque, k: i64) callconv(.c) void {
+comptime {
+    @export(&ggmlQuantizeMatQ804x8Generic, .{ .name = "ggml_quantize_mat_q8_0_4x8_generic" });
+}
+
+pub fn ggmlQuantizeMatQ804x8Generic(x: [*]const f32, vy: *anyopaque, k: i64) callconv(.c) void {
     quantizeMatQ80(8, x, vy, k);
 }
 
 /// No ARM override exists for the `q8_K` pair: ARM's `arch-fallback.h` gives
 /// both the live name, and x86's gives it to the `4x4` one. So they are
 /// exported per architecture -- `arm/fallback.zig`, `x86/fallback.zig`.
-pub fn ggml_quantize_mat_q8_K_4x4_generic(x: [*]const f32, vy: *anyopaque, k: i64) callconv(.c) void {
+pub fn ggmlQuantizeMatQ8K4x4Generic(x: [*]const f32, vy: *anyopaque, k: i64) callconv(.c) void {
     quantizeMatQ8K(4, x, vy, k);
 }
 
-pub fn ggml_quantize_mat_q8_K_4x8_generic(x: [*]const f32, vy: *anyopaque, k: i64) callconv(.c) void {
+pub fn ggmlQuantizeMatQ8K4x8Generic(x: [*]const f32, vy: *anyopaque, k: i64) callconv(.c) void {
     quantizeMatQ8K(8, x, vy, k);
 }

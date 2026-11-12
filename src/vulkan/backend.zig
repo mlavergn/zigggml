@@ -30,7 +30,7 @@ const instance = m.instance;
 
 const vk = common.vk;
 const c = impl.c;
-const allocator = common.allocator;
+const allocator = std.heap.c_allocator;
 
 extern fn atoi(s: [*:0]const u8) c_int;
 

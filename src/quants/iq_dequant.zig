@@ -76,8 +76,12 @@ inline fn signOf(signs: u8, j: usize) f32 {
     return if ((signs & c.kmask_iq2xs[j]) != 0) -1.0 else 1.0;
 }
 
+comptime {
+    @export(&dequantizeRowIq2Xxs, .{ .name = "dequantize_row_iq2_xxs" });
+}
+
 /// Ports `dequantize_row_iq2_xxs` (ggml-quants.c:2504 @cd959bae9).
-pub export fn dequantize_row_iq2_xxs(x: [*c]const blocks.IQ2_XXS, y_in: [*c]f32, k: i64) void {
+pub fn dequantizeRowIq2Xxs(x: [*c]const blocks.IQ2_XXS, y_in: [*c]f32, k: i64) callconv(.c) void {
     std.debug.assert(@rem(k, QK_K) == 0);
     const nb: usize = @intCast(@divExact(k, QK_K));
     var y = y_in;
@@ -104,8 +108,12 @@ pub export fn dequantize_row_iq2_xxs(x: [*c]const blocks.IQ2_XXS, y_in: [*c]f32,
     }
 }
 
+comptime {
+    @export(&dequantizeRowIq2Xs, .{ .name = "dequantize_row_iq2_xs" });
+}
+
 /// Ports `dequantize_row_iq2_xs` (ggml-quants.c:2532 @cd959bae9).
-pub export fn dequantize_row_iq2_xs(x: [*c]const blocks.IQ2_XS, y_in: [*c]f32, k: i64) void {
+pub fn dequantizeRowIq2Xs(x: [*c]const blocks.IQ2_XS, y_in: [*c]f32, k: i64) callconv(.c) void {
     std.debug.assert(@rem(k, QK_K) == 0);
     const nb: usize = @intCast(@divExact(k, QK_K));
     var y = y_in;
@@ -131,8 +139,12 @@ pub export fn dequantize_row_iq2_xs(x: [*c]const blocks.IQ2_XS, y_in: [*c]f32, k
     }
 }
 
+comptime {
+    @export(&dequantizeRowIq2S, .{ .name = "dequantize_row_iq2_s" });
+}
+
 /// Ports `dequantize_row_iq2_s` (ggml-quants.c:2559 @cd959bae9).
-pub export fn dequantize_row_iq2_s(x: [*c]const blocks.IQ2_S, y_in: [*c]f32, k: i64) void {
+pub fn dequantizeRowIq2S(x: [*c]const blocks.IQ2_S, y_in: [*c]f32, k: i64) callconv(.c) void {
     std.debug.assert(@rem(k, QK_K) == 0);
     const nb: usize = @intCast(@divExact(k, QK_K));
     var y = y_in;
@@ -166,8 +178,12 @@ pub export fn dequantize_row_iq2_s(x: [*c]const blocks.IQ2_S, y_in: [*c]f32, k: 
     }
 }
 
+comptime {
+    @export(&dequantizeRowIq3Xxs, .{ .name = "dequantize_row_iq3_xxs" });
+}
+
 /// Ports `dequantize_row_iq3_xxs` (ggml-quants.c:2591 @cd959bae9).
-pub export fn dequantize_row_iq3_xxs(x: [*c]const blocks.IQ3_XXS, y_in: [*c]f32, k: i64) void {
+pub fn dequantizeRowIq3Xxs(x: [*c]const blocks.IQ3_XXS, y_in: [*c]f32, k: i64) callconv(.c) void {
     std.debug.assert(@rem(k, QK_K) == 0);
     const nb: usize = @intCast(@divExact(k, QK_K));
     var y = y_in;
@@ -199,10 +215,14 @@ pub export fn dequantize_row_iq3_xxs(x: [*c]const blocks.IQ3_XXS, y_in: [*c]f32,
     }
 }
 
+comptime {
+    @export(&dequantizeRowIq3S, .{ .name = "dequantize_row_iq3_s" });
+}
+
 /// Ports `dequantize_row_iq3_s` (ggml-quants.c:2623 @cd959bae9).
 ///
 /// Two sub-blocks per iteration, because one `scales` byte covers both.
-pub export fn dequantize_row_iq3_s(x: [*c]const blocks.IQ3_S, y_in: [*c]f32, k: i64) void {
+pub fn dequantizeRowIq3S(x: [*c]const blocks.IQ3_S, y_in: [*c]f32, k: i64) callconv(.c) void {
     std.debug.assert(@rem(k, QK_K) == 0);
     const nb: usize = @intCast(@divExact(k, QK_K));
     var y = y_in;
@@ -251,11 +271,15 @@ pub export fn dequantize_row_iq3_s(x: [*c]const blocks.IQ3_S, y_in: [*c]f32, k: 
     }
 }
 
+comptime {
+    @export(&dequantizeRowIq1S, .{ .name = "dequantize_row_iq1_s" });
+}
+
 /// Ports `dequantize_row_iq1_s` (ggml-quants.c:2666 @cd959bae9).
 ///
 /// The grid values are *signed* here, and every one is shifted by a constant
 /// delta before scaling -- so a grid zero does not dequantize to zero.
-pub export fn dequantize_row_iq1_s(x: [*c]const blocks.IQ1_S, y_in: [*c]f32, k: i64) void {
+pub fn dequantizeRowIq1S(x: [*c]const blocks.IQ1_S, y_in: [*c]f32, k: i64) callconv(.c) void {
     std.debug.assert(@rem(k, QK_K) == 0);
     const nb: usize = @intCast(@divExact(k, QK_K));
     var y = y_in;
@@ -281,11 +305,15 @@ pub export fn dequantize_row_iq1_s(x: [*c]const blocks.IQ1_S, y_in: [*c]f32, k: 
     }
 }
 
+comptime {
+    @export(&dequantizeRowIq1M, .{ .name = "dequantize_row_iq1_m" });
+}
+
 /// Ports `dequantize_row_iq1_m` (ggml-quants.c:2691 @cd959bae9).
 ///
 /// The only format with no scale field: its f16 is reassembled from four
 /// nibbles scattered across the `scales` shorts. See `blocks.iq1mScale`.
-pub export fn dequantize_row_iq1_m(x: [*c]const blocks.IQ1_M, y_in: [*c]f32, k: i64) void {
+pub fn dequantizeRowIq1M(x: [*c]const blocks.IQ1_M, y_in: [*c]f32, k: i64) callconv(.c) void {
     std.debug.assert(@rem(k, QK_K) == 0);
     const nb: usize = @intCast(@divExact(k, QK_K));
     var y = y_in;
@@ -335,12 +363,16 @@ pub export fn dequantize_row_iq1_m(x: [*c]const blocks.IQ1_M, y_in: [*c]f32, k: 
     }
 }
 
+comptime {
+    @export(&dequantizeRowIq4Nl, .{ .name = "dequantize_row_iq4_nl" });
+}
+
 /// Ports `dequantize_row_iq4_nl` (ggml-quants.c:2741 @cd959bae9).
 ///
 /// Not a codebook of vectors like the others: `kvalues_iq4nl` is 16 scalar
 /// levels, spaced non-uniformly to match the distribution of weights rather
 /// than the number line.
-pub export fn dequantize_row_iq4_nl(x: [*c]const blocks.IQ4_NL, y_in: [*c]f32, k: i64) void {
+pub fn dequantizeRowIq4Nl(x: [*c]const blocks.IQ4_NL, y_in: [*c]f32, k: i64) callconv(.c) void {
     std.debug.assert(@rem(k, c.QK4_NL) == 0);
     const nb: usize = @intCast(@divExact(k, c.QK4_NL));
     var y = y_in;
@@ -356,8 +388,12 @@ pub export fn dequantize_row_iq4_nl(x: [*c]const blocks.IQ4_NL, y_in: [*c]f32, k
     }
 }
 
+comptime {
+    @export(&dequantizeRowIq4Xs, .{ .name = "dequantize_row_iq4_xs" });
+}
+
 /// Ports `dequantize_row_iq4_xs` (ggml-quants.c:2759 @cd959bae9).
-pub export fn dequantize_row_iq4_xs(x: [*c]const blocks.IQ4_XS, y_in: [*c]f32, k: i64) void {
+pub fn dequantizeRowIq4Xs(x: [*c]const blocks.IQ4_XS, y_in: [*c]f32, k: i64) callconv(.c) void {
     std.debug.assert(@rem(k, QK_K) == 0);
     const nb: usize = @intCast(@divExact(k, QK_K));
     var y = y_in;

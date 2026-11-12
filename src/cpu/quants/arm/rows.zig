@@ -41,29 +41,31 @@ extern fn quantize_row_q8_K_ref(x: [*c]const f32, y: ?*anyopaque, k: i64) void;
 /// shape is kept because it is what the two callers share, and because a
 /// reduction that *looks* like the C's is easier to check against it.
 ///
-/// Parameters:
 /// - `srcv`: the eight loaded vectors.
 ///
-/// Return: the largest absolute value across all 32 elements.
+/// - Returns: the largest absolute value across all 32 elements.
 fn absMax(srcv: *const [8]f32x4) f32 {
     var asrcv: [8]f32x4 = undefined;
-    for (0..8) |j| asrcv[j] = neon.abs_f32(srcv[j]);
+    for (0..8) |j| asrcv[j] = neon.absF32(srcv[j]);
 
     var amaxv: [8]f32x4 = undefined;
-    for (0..4) |j| amaxv[2 * j] = neon.max_f32(asrcv[2 * j], asrcv[2 * j + 1]);
-    for (0..2) |j| amaxv[4 * j] = neon.max_f32(amaxv[4 * j], amaxv[4 * j + 2]);
-    amaxv[0] = neon.max_f32(amaxv[0], amaxv[4]);
+    for (0..4) |j| amaxv[2 * j] = neon.maxF32(asrcv[2 * j], asrcv[2 * j + 1]);
+    for (0..2) |j| amaxv[4 * j] = neon.maxF32(amaxv[4 * j], amaxv[4 * j + 2]);
+    amaxv[0] = neon.maxF32(amaxv[0], amaxv[4]);
 
-    return neon.maxvq_f32(amaxv[0]);
+    return neon.maxvqF32(amaxv[0]);
+}
+
+comptime {
+    @export(&quantizeRowQ80, .{ .name = "quantize_row_q8_0" });
 }
 
 /// Ports `quantize_row_q8_0` (arch/arm/quants.c:41 @cd959bae9).
 ///
-/// Parameters:
 /// - `x`: the source row.
 /// - `vy`: destination, `k / 32` blocks.
 /// - `k`: element count; must be a multiple of `QK8_0`.
-pub export fn quantize_row_q8_0(x: [*c]const f32, vy: ?*anyopaque, k: i64) void {
+pub fn quantizeRowQ80(x: [*c]const f32, vy: ?*anyopaque, k: i64) callconv(.c) void {
     comptime std.debug.assert(c.QK8_0 == 32);
     std.debug.assert(@rem(k, c.QK8_0) == 0);
     const nb: usize = @intCast(@divTrunc(k, c.QK8_0));
@@ -82,8 +84,8 @@ pub export fn quantize_row_q8_0(x: [*c]const f32, vy: ?*anyopaque, k: i64) void 
         y[i].d = convert.cpuFp32ToFp16(d);
 
         for (0..8) |j| {
-            const v = neon.mul_n_f32(srcv[j], id);
-            const vi = neon.cvtnq_s32_f32(v);
+            const v = neon.mulNF32(srcv[j], id);
+            const vi = neon.cvtnqS32F32(v);
 
             // The C reads the four lanes out one at a time rather than
             // narrowing and storing, and the narrowing is a truncation to
@@ -95,16 +97,19 @@ pub export fn quantize_row_q8_0(x: [*c]const f32, vy: ?*anyopaque, k: i64) void 
     }
 }
 
+comptime {
+    @export(&quantizeRowQ81, .{ .name = "quantize_row_q8_1" });
+}
+
 /// Ports `quantize_row_q8_1` (arch/arm/quants.c:85 @cd959bae9).
 ///
 /// Identical to `q8_0` but for the per-block sum in `s`, which the `q4_1` and
 /// `q5_1` dot products need to apply their minimum without a second pass.
 ///
-/// Parameters:
 /// - `x`: the source row.
 /// - `vy`: destination, `k / 32` blocks.
 /// - `k`: element count; must be a multiple of `QK8_1`.
-pub export fn quantize_row_q8_1(x: [*c]const f32, vy: ?*anyopaque, k: i64) void {
+pub fn quantizeRowQ81(x: [*c]const f32, vy: ?*anyopaque, k: i64) callconv(.c) void {
     std.debug.assert(@rem(k, c.QK8_1) == 0);
     const nb: usize = @intCast(@divTrunc(k, c.QK8_1));
 
@@ -124,8 +129,8 @@ pub export fn quantize_row_q8_1(x: [*c]const f32, vy: ?*anyopaque, k: i64) void 
         var accv = neon.dup(neon.i32x4, 0);
 
         for (0..8) |j| {
-            const v = neon.mul_n_f32(srcv[j], id);
-            const vi = neon.cvtnq_s32_f32(v);
+            const v = neon.mulNF32(srcv[j], id);
+            const vi = neon.cvtnqS32F32(v);
 
             inline for (0..4) |l| {
                 y[i].qs[4 * j + l] = @truncate(neon.lane(vi, l));
@@ -136,8 +141,12 @@ pub export fn quantize_row_q8_1(x: [*c]const f32, vy: ?*anyopaque, k: i64) void 
             accv = neon.add(accv, vi);
         }
 
-        y[i].s = convert.cpuFp32ToFp16(d * @as(f32, @floatFromInt(neon.addvq_s32(accv))));
+        y[i].s = convert.cpuFp32ToFp16(d * @as(f32, @floatFromInt(neon.addvqS32(accv))));
     }
+}
+
+comptime {
+    @export(&quantizeRowQ8K, .{ .name = "quantize_row_q8_K" });
 }
 
 /// Ports `quantize_row_q8_K` (arch/arm/quants.c:134 @cd959bae9).
@@ -145,7 +154,7 @@ pub export fn quantize_row_q8_1(x: [*c]const f32, vy: ?*anyopaque, k: i64) void 
 /// The C's comment calls this a "placeholder implementation for Apple
 /// targets": there is no NEON version, so the symbol exists only to occupy the
 /// name that `arch-fallback.h` would otherwise alias to the generic one.
-pub export fn quantize_row_q8_K(x: [*c]const f32, y: ?*anyopaque, k: i64) void {
+pub fn quantizeRowQ8K(x: [*c]const f32, y: ?*anyopaque, k: i64) callconv(.c) void {
     quantize_row_q8_K_ref(x, y, k);
 }
 
@@ -160,15 +169,15 @@ const testing = @import("../testing.zig");
 const golden = if (@import("../../features.zig").golden_generic) @import("golden_generic.zig") else @import("golden.zig");
 
 test "q8_0 row quantizer matches the C" {
-    try testing.checkRow(quantize_row_q8_0, c.GGML_TYPE_Q8_0, golden.row_q8_0);
+    try testing.checkRow(quantizeRowQ80, c.GGML_TYPE_Q8_0, golden.row_q8_0);
 }
 
 test "q8_1 row quantizer matches the C" {
-    try testing.checkRow(quantize_row_q8_1, c.GGML_TYPE_Q8_1, golden.row_q8_1);
+    try testing.checkRow(quantizeRowQ81, c.GGML_TYPE_Q8_1, golden.row_q8_1);
 }
 
 test "q8_K row quantizer matches the C" {
-    try testing.checkRow(quantize_row_q8_K, c.GGML_TYPE_Q8_K, golden.row_q8_K);
+    try testing.checkRow(quantizeRowQ8K, c.GGML_TYPE_Q8_K, golden.row_q8_K);
 }
 
 test "the NEON and scalar q8 quantizers agree byte for byte" {
@@ -188,14 +197,14 @@ test "the NEON and scalar q8 quantizers agree byte for byte" {
     var a: [2048]u8 align(8) = @splat(0);
     var b: [2048]u8 align(8) = @splat(0);
 
-    quantize_row_q8_0(&x, &a, 512);
-    generic.quantize_row_q8_0_generic(&x, &b, 512);
+    quantizeRowQ80(&x, &a, 512);
+    generic.quantizeRowQ80Generic(&x, &b, 512);
     try std.testing.expectEqualSlices(u8, &b, &a);
 
     @memset(&a, 0);
     @memset(&b, 0);
-    quantize_row_q8_1(&x, &a, 512);
-    generic.quantize_row_q8_1_generic(&x, &b, 512);
+    quantizeRowQ81(&x, &a, 512);
+    generic.quantizeRowQ81Generic(&x, &b, 512);
     try std.testing.expectEqualSlices(u8, &b, &a);
 }
 
@@ -205,7 +214,7 @@ test "an all-zero row takes the divide-by-zero guard" {
     var x: [32]f32 = @splat(0.0);
     var out: [64]u8 align(8) = @splat(0xAA);
 
-    quantize_row_q8_0(&x, &out, 32);
+    quantizeRowQ80(&x, &out, 32);
 
     const blk: *const blocks.Q8_0 = @ptrCast(&out);
     try std.testing.expectEqual(@as(u16, 0), blk.d);

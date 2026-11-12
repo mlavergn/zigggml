@@ -480,23 +480,35 @@ const all = [_]Entry{
     .{ .name = "N_MM_NK_TOTAL", .value = N_MM_NK_TOTAL },
 };
 
-/// Return: the `i`th constant's value, or `maxInt` past the end.
-export fn zz_fc_value(i: usize) c_long {
+comptime {
+    @export(&zzFcValue, .{ .name = "zz_fc_value" });
+}
+
+/// - Returns: the `i`th constant's value, or `maxInt` past the end.
+fn zzFcValue(i: usize) callconv(.c) c_long {
     inline for (all, 0..) |e, k| {
         if (k == i) return e.value;
     }
     return std.math.maxInt(c_long);
 }
 
-/// Return: the `i`th constant's name, NUL-terminated, or null past the end.
-export fn zz_fc_name(i: usize) ?[*:0]const u8 {
+comptime {
+    @export(&zzFcName, .{ .name = "zz_fc_name" });
+}
+
+/// - Returns: the `i`th constant's name, NUL-terminated, or null past the end.
+fn zzFcName(i: usize) callconv(.c) ?[*:0]const u8 {
     inline for (all, 0..) |e, k| {
         if (k == i) return e.name;
     }
     return null;
 }
 
-export fn zz_fc_count() usize {
+comptime {
+    @export(&zzFcCount, .{ .name = "zz_fc_count" });
+}
+
+fn zzFcCount() callconv(.c) usize {
     return count;
 }
 

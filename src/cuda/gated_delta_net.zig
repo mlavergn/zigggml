@@ -12,7 +12,6 @@
 //! prefill goes to the chunked kernel in `gated_delta_net_mma.zig` first
 //! (#29353).
 
-const std = @import("std");
 const impl = @import("../impl.zig");
 const common = @import("common.zig");
 const kernels = @import("kernels.zig");

@@ -9,7 +9,6 @@
 //! Only the stride is read from `op_params`; padding and dilation are the
 //! C's hard-coded 0 and 1.
 
-const std = @import("std");
 const impl = @import("../impl.zig");
 const common = @import("common.zig");
 const kernels = @import("kernels.zig");

@@ -55,8 +55,12 @@ fn customParams(dst: *const Tensor) impl.CustomOpParams {
 // -----------------------------------------------------------------------------
 // The user-callback ops
 
+comptime {
+    @export(&ggmlComputeForwardMapCustom1, .{ .name = "ggml_compute_forward_map_custom1" });
+}
+
 /// Ports `ggml_compute_forward_map_custom1` (ops.cpp:11965 @cd959bae9).
-pub export fn ggml_compute_forward_map_custom1(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardMapCustom1(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const a = dst.src[0];
 
     const p = customParams(dst);
@@ -65,8 +69,12 @@ pub export fn ggml_compute_forward_map_custom1(params: *const ComputeParams, dst
     fun.?(dst, a, params.ith, params.nth, p.userdata);
 }
 
+comptime {
+    @export(&ggmlComputeForwardMapCustom2, .{ .name = "ggml_compute_forward_map_custom2" });
+}
+
 /// Ports `ggml_compute_forward_map_custom2` (ops.cpp:11979 @cd959bae9).
-pub export fn ggml_compute_forward_map_custom2(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardMapCustom2(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const a = dst.src[0];
     const b = dst.src[1];
 
@@ -76,8 +84,12 @@ pub export fn ggml_compute_forward_map_custom2(params: *const ComputeParams, dst
     fun.?(dst, a, b, params.ith, params.nth, p.userdata);
 }
 
+comptime {
+    @export(&ggmlComputeForwardMapCustom3, .{ .name = "ggml_compute_forward_map_custom3" });
+}
+
 /// Ports `ggml_compute_forward_map_custom3` (ops.cpp:11994 @cd959bae9).
-pub export fn ggml_compute_forward_map_custom3(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardMapCustom3(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const a = dst.src[0];
     const b = dst.src[1];
     const cc = dst.src[2];
@@ -88,8 +100,12 @@ pub export fn ggml_compute_forward_map_custom3(params: *const ComputeParams, dst
     fun.?(dst, a, b, cc, params.ith, params.nth, p.userdata);
 }
 
+comptime {
+    @export(&ggmlComputeForwardCustom, .{ .name = "ggml_compute_forward_custom" });
+}
+
 /// Ports `ggml_compute_forward_custom` (ops.cpp:12010 @cd959bae9).
-pub export fn ggml_compute_forward_custom(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardCustom(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const p = customParams(dst);
     const fun: c.ggml_custom_op_t = @ptrCast(@alignCast(p.fun));
 
@@ -143,32 +159,36 @@ fn crossEntropyLossF32(params: *const ComputeParams, dst: *Tensor) void {
         // #ifndef NDEBUG: assert(!isnan(s0[i])), assert(!isnan(s1[i]))
 
         var max: f32 = -std.math.inf(f32);
-        vec.max_f32(nc, &max, s0);
+        vec.maxF32(nc, &max, s0);
         const sum_softmax = vec.log_soft_max_f32(@intCast(nc), st, s0, max);
         // assert(sum_softmax >= 0.0); -- compiled out under NDEBUG
 
         // `-sum_softmax` is a `ggml_float` narrowed at the call.
-        vec.add1_f32(nc, st, st, @floatCast(-sum_softmax));
-        vec.mul_f32(nc, st, st, s1);
+        vec.add1F32(nc, st, st, @floatCast(-sum_softmax));
+        vec.mulF32(nc, st, st, s1);
 
         var sum_st: f32 = 0.0;
-        vec.sum_f32(nc, &sum_st, st);
+        vec.sumF32(nc, &sum_st, st);
         sum_thread += sum_st;
 
         // #ifndef NDEBUG: assert(!isnan(st[i])), assert(!isinf(st[i]))
     }
     sums[@intCast(ith)] = sum_thread;
-    threading.ggml_barrier(@ptrCast(@alignCast(params.threadpool.?)));
+    threading.ggmlBarrier(@ptrCast(@alignCast(params.threadpool.?)));
 
     if (ith == 0) {
         const dp: [*]f32 = @ptrCast(@alignCast(dst.data.?));
-        vec.sum_f32(nth, &dp[0], sums);
+        vec.sumF32(nth, &dp[0], sums);
         dp[0] *= -1.0 / @as(f32, @floatFromInt(nr));
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardCrossEntropyLoss, .{ .name = "ggml_compute_forward_cross_entropy_loss" });
+}
+
 /// Ports `ggml_compute_forward_cross_entropy_loss` (ops.cpp:12098 @cd959bae9).
-pub export fn ggml_compute_forward_cross_entropy_loss(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardCrossEntropyLoss(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
 
     switch (src0.type) {
@@ -224,23 +244,27 @@ fn crossEntropyLossBackF32(params: *const ComputeParams, dst: *Tensor) void {
 
         // soft_max
         var max: f32 = -std.math.inf(f32);
-        vec.max_f32(nc, &max, s0);
+        vec.maxF32(nc, &max, s0);
         const sum = vec.soft_max_f32(@intCast(nc), ds0, s0, max);
         // assert(sum > 0.0); -- compiled out under NDEBUG
         // `1.0/sum` is a `double` division, narrowed at the call.
-        vec.scale_f32(nc, ds0, @floatCast(1.0 / sum));
+        vec.scaleF32(nc, ds0, @floatCast(1.0 / sum));
 
         // grad(src0f) = (softmax(src0f) - src1f) * grad(cross_entropy_loss(src0f, src1f)) / nr
-        vec.sub_f32(nc, ds0, ds0, s1);
-        vec.scale_f32(nc, ds0, d_by_nr);
+        vec.subF32(nc, ds0, ds0, s1);
+        vec.scaleF32(nc, ds0, d_by_nr);
 
         // #ifndef NDEBUG: assert(!isnan(ds0[i])), assert(!isinf(ds0[i]))
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardCrossEntropyLossBack, .{ .name = "ggml_compute_forward_cross_entropy_loss_back" });
+}
+
 /// Ports `ggml_compute_forward_cross_entropy_loss_back`
 /// (ops.cpp:12181 @cd959bae9).
-pub export fn ggml_compute_forward_cross_entropy_loss_back(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardCrossEntropyLossBack(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
 
     switch (src0.type) {
@@ -335,8 +359,12 @@ fn optStepAdamwF32(params: *const ComputeParams, dst: *Tensor) void {
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardOptStepAdamw, .{ .name = "ggml_compute_forward_opt_step_adamw" });
+}
+
 /// Ports `ggml_compute_forward_opt_step_adamw` (ops.cpp:12266 @cd959bae9).
-pub export fn ggml_compute_forward_opt_step_adamw(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardOptStepAdamw(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
 
     switch (src0.type) {
@@ -400,8 +428,12 @@ fn optStepSgdF32(params: *const ComputeParams, dst: *Tensor) void {
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardOptStepSgd, .{ .name = "ggml_compute_forward_opt_step_sgd" });
+}
+
 /// Ports `ggml_compute_forward_opt_step_sgd` (ops.cpp:12328 @cd959bae9).
-pub export fn ggml_compute_forward_opt_step_sgd(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardOptStepSgd(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
 
     switch (src0.type) {
@@ -483,8 +515,12 @@ fn solveTriF32(params: *const ComputeParams, dst: *Tensor) void {
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardSolveTri, .{ .name = "ggml_compute_forward_solve_tri" });
+}
+
 /// Ports `ggml_compute_forward_solve_tri` (ops.cpp:11123 @cd959bae9).
-pub export fn ggml_compute_forward_solve_tri(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardSolveTri(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
     const src1 = impl.one(Tensor, dst.src[1]);
 

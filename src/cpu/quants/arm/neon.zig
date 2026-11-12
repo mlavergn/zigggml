@@ -83,11 +83,10 @@ fn lanes(comptime V: type) comptime_int {
 
 /// Ports `vld1q_*` and `vld1_*`: a vector read from unaligned memory.
 ///
-/// Parameters:
 /// - `V`: the vector type to read.
 /// - `p`: source bytes; need not be aligned.
 ///
-/// Return: the vector.
+/// - Returns: the vector.
 pub inline fn load(comptime V: type, p: [*]const u8) V {
     return @as(*align(1) const V, @ptrCast(p)).*;
 }
@@ -108,7 +107,7 @@ pub inline fn dup(comptime V: type, x: Elem(V)) V {
 }
 
 /// Ports `vcreate_u8`: the eight bytes of a `u64`, little-endian.
-pub inline fn create_u8(x: u64) u8x8 {
+pub inline fn createU8(x: u64) u8x8 {
     return @bitCast(x);
 }
 
@@ -118,7 +117,7 @@ pub inline fn lane(v: anytype, comptime i: usize) Elem(@TypeOf(v)) {
 }
 
 /// Ports `vset_lane_u32`.
-pub inline fn setLane_u32(x: u32, v: u32x2, comptime i: usize) u32x2 {
+pub inline fn setLaneU32(x: u32, v: u32x2, comptime i: usize) u32x2 {
     var out = v;
     out[i] = x;
     return out;
@@ -270,7 +269,7 @@ pub inline fn ceq(a: anytype, b: @TypeOf(a)) @TypeOf(a) {
 }
 
 /// Ports `vhaddq_u8`: `(a + b) >> 1`, computed without overflowing the lane.
-pub inline fn hadd_u8(a: u8x16, b: u8x16) u8x16 {
+pub inline fn haddU8(a: u8x16, b: u8x16) u8x16 {
     const wa: u16x16 = a;
     const wb: u16x16 = b;
     const one: u16x16 = @splat(1);
@@ -280,17 +279,17 @@ pub inline fn hadd_u8(a: u8x16, b: u8x16) u8x16 {
 const u16x16 = @Vector(16, u16);
 
 /// Ports `vmovl_u8`: zero-extend eight `u8` to eight `u16`.
-pub inline fn movl_u8(v: u8x8) u16x8 {
+pub inline fn movlU8(v: u8x8) u16x8 {
     return v;
 }
 
 /// Ports `vmovl_s8`: sign-extend eight `i8` to eight `i16`.
-pub inline fn movl_s8(v: i8x8) i16x8 {
+pub inline fn movlS8(v: i8x8) i16x8 {
     return v;
 }
 
 /// Ports `vmovl_u16`: zero-extend four `u16` to four `u32`.
-pub inline fn movl_u16(v: u16x4) u32x4 {
+pub inline fn movlU16(v: u16x4) u32x4 {
     return v;
 }
 
@@ -298,14 +297,14 @@ pub inline fn movl_u16(v: u16x4) u32x4 {
 ///
 /// The widening is the point -- an `i16 * i16` product does not fit an `i16`,
 /// and doing this as `mul` on `i16x4` would silently truncate.
-pub inline fn mull_s16(a: i16x4, b: i16x4) i32x4 {
+pub inline fn mullS16(a: i16x4, b: i16x4) i32x4 {
     const wa: i32x4 = a;
     const wb: i32x4 = b;
     return wa *% wb;
 }
 
 /// Ports `vmlaq_s32`: `a + b * c`, elementwise, on integers.
-pub inline fn mla_s32(a: i32x4, b: i32x4, cc: i32x4) i32x4 {
+pub inline fn mlaS32(a: i32x4, b: i32x4, cc: i32x4) i32x4 {
     return a +% b *% cc;
 }
 
@@ -313,21 +312,21 @@ pub inline fn mla_s32(a: i32x4, b: i32x4, cc: i32x4) i32x4 {
 ///
 /// Result is `{a0+a1, a2+a3, b0+b1, b2+b3}` -- the halves do **not**
 /// interleave.
-pub inline fn paddq_s32(a: i32x4, b: i32x4) i32x4 {
+pub inline fn paddqS32(a: i32x4, b: i32x4) i32x4 {
     const evens = @shuffle(i32, a, b, [4]i32{ 0, 2, ~@as(i32, 0), ~@as(i32, 2) });
     const odds = @shuffle(i32, a, b, [4]i32{ 1, 3, ~@as(i32, 1), ~@as(i32, 3) });
     return evens +% odds;
 }
 
 /// Ports `vpaddq_s16`: the same, on eight-lane vectors.
-pub inline fn paddq_s16(a: i16x8, b: i16x8) i16x8 {
+pub inline fn paddqS16(a: i16x8, b: i16x8) i16x8 {
     const evens = @shuffle(i16, a, b, [8]i32{ 0, 2, 4, 6, ~@as(i32, 0), ~@as(i32, 2), ~@as(i32, 4), ~@as(i32, 6) });
     const odds = @shuffle(i16, a, b, [8]i32{ 1, 3, 5, 7, ~@as(i32, 1), ~@as(i32, 3), ~@as(i32, 5), ~@as(i32, 7) });
     return evens +% odds;
 }
 
 /// Ports `vpaddlq_s16`: pairwise **widening** add, eight `i16` to four `i32`.
-pub inline fn paddlq_s16(v: i16x8) i32x4 {
+pub inline fn paddlqS16(v: i16x8) i32x4 {
     const w: @Vector(8, i32) = v;
     const evens = @shuffle(i32, w, undefined, [4]i32{ 0, 2, 4, 6 });
     const odds = @shuffle(i32, w, undefined, [4]i32{ 1, 3, 5, 7 });
@@ -335,12 +334,12 @@ pub inline fn paddlq_s16(v: i16x8) i32x4 {
 }
 
 /// Ports `vzip1_u8` and `vzip2_u8`: interleave the low or high halves.
-pub inline fn zip1_u8(a: u8x8, b: u8x8) u8x8 {
+pub inline fn zip1U8(a: u8x8, b: u8x8) u8x8 {
     return @shuffle(u8, a, b, [8]i32{ 0, ~@as(i32, 0), 1, ~@as(i32, 1), 2, ~@as(i32, 2), 3, ~@as(i32, 3) });
 }
 
 /// Ports `vzip2_u8`.
-pub inline fn zip2_u8(a: u8x8, b: u8x8) u8x8 {
+pub inline fn zip2U8(a: u8x8, b: u8x8) u8x8 {
     return @shuffle(u8, a, b, [8]i32{ 4, ~@as(i32, 4), 5, ~@as(i32, 5), 6, ~@as(i32, 6), 7, ~@as(i32, 7) });
 }
 
@@ -354,7 +353,7 @@ pub inline fn zip2_u8(a: u8x8, b: u8x8) u8x8 {
 /// Where `idx` is a constant, as it is at every call site in `quants.c`,
 /// `@shuffle` expresses the same thing and lowers to the same instruction.
 /// This form takes a runtime vector so a call site can read like the C.
-pub inline fn qtbl1q_u8(t: u8x16, idx: u8x16) u8x16 {
+pub inline fn qtbl1qU8(t: u8x16, idx: u8x16) u8x16 {
     const ta: [16]u8 = t;
     const ia: [16]u8 = idx;
     var out: [16]u8 = undefined;
@@ -365,8 +364,8 @@ pub inline fn qtbl1q_u8(t: u8x16, idx: u8x16) u8x16 {
 }
 
 /// Ports `vqtbl1q_s8`: the same permute over signed lanes.
-pub inline fn qtbl1q_s8(t: i8x16, idx: u8x16) i8x16 {
-    return @bitCast(qtbl1q_u8(@bitCast(t), idx));
+pub inline fn qtbl1qS8(t: i8x16, idx: u8x16) i8x16 {
+    return @bitCast(qtbl1qU8(@bitCast(t), idx));
 }
 
 // -----------------------------------------------------------------------------
@@ -376,7 +375,7 @@ pub inline fn qtbl1q_s8(t: i8x16, idx: u8x16) i8x16 {
 ///
 /// Order is irrelevant here -- integer addition is associative, and both NEON
 /// and `@reduce` wrap the same way on overflow.
-pub inline fn addvq_s32(v: i32x4) i32 {
+pub inline fn addvqS32(v: i32x4) i32 {
     return @reduce(.Add, v);
 }
 
@@ -386,7 +385,7 @@ pub inline fn addvq_s32(v: i32x4) i32 {
 /// `((a0+a1)+a2)+a3`, where `vaddvq_f32` lowers to two `faddp` and gives
 /// `(a0+a1) + (a2+a3)`. Float addition is not associative, so the two differ in
 /// the last bit -- measured on `{1e8, 1, -1e8, 1}`, where they give 0 and 1.
-pub inline fn addvq_f32(v: f32x4) f32 {
+pub inline fn addvqF32(v: f32x4) f32 {
     return (v[0] + v[1]) + (v[2] + v[3]);
 }
 
@@ -410,7 +409,7 @@ inline fn fmaxScalar(a: f32, b: f32) f32 {
 /// block scale came out `0x7fc00000` where the C kept the payload. On
 /// aarch64 this is the instruction; elsewhere (unit tests on x86) the same
 /// semantics in scalar code, pairwise as `fmaxv` reduces.
-pub inline fn maxvq_f32(v: f32x4) f32 {
+pub inline fn maxvqF32(v: f32x4) f32 {
     if (comptime builtin.cpu.arch == .aarch64) return @"llvm.aarch64.neon.fmaxv.f32.v4f32"(v);
     return fmaxScalar(fmaxScalar(v[0], v[1]), fmaxScalar(v[2], v[3]));
 }
@@ -419,14 +418,14 @@ pub inline fn maxvq_f32(v: f32x4) f32 {
 // Float arithmetic
 
 /// Ports `vabsq_f32`.
-pub inline fn abs_f32(v: f32x4) f32x4 {
+pub inline fn absF32(v: f32x4) f32x4 {
     return @abs(v);
 }
 
 /// Ports `vmaxq_f32`: elementwise maximum, as `fmax` computes it -- a NaN
 /// in either lane propagates, where `@max` (`maxnum`, `fmaxnm`) would take
 /// the number. See `maxvq_f32`.
-pub inline fn max_f32(a: f32x4, b: f32x4) f32x4 {
+pub inline fn maxF32(a: f32x4, b: f32x4) f32x4 {
     if (comptime builtin.cpu.arch == .aarch64) return @"llvm.aarch64.neon.fmax.v4f32"(a, b);
     var r: f32x4 = undefined;
     inline for (0..4) |l| r[l] = fmaxScalar(a[l], b[l]);
@@ -434,12 +433,12 @@ pub inline fn max_f32(a: f32x4, b: f32x4) f32x4 {
 }
 
 /// Ports `vmulq_f32`.
-pub inline fn mul_f32(a: f32x4, b: f32x4) f32x4 {
+pub inline fn mulF32(a: f32x4, b: f32x4) f32x4 {
     return a * b;
 }
 
 /// Ports `vmulq_n_f32`: every lane times one scalar.
-pub inline fn mul_n_f32(v: f32x4, x: f32) f32x4 {
+pub inline fn mulNF32(v: f32x4, x: f32) f32x4 {
     const s: f32x4 = @splat(x);
     return v * s;
 }
@@ -458,18 +457,18 @@ pub const f16x4 = @Vector(4, f16);
 
 /// Ports `vfmaq_f16(c, b, a)`: `a*b + c` in half precision, **fused** --
 /// one rounding, not two.
-pub inline fn fma_f16(acc: f16x8, a: f16x8, b: f16x8) f16x8 {
+pub inline fn fmaF16(acc: f16x8, a: f16x8, b: f16x8) f16x8 {
     return @mulAdd(f16x8, a, b, acc);
 }
 
 /// Ports `vaddq_f16`.
-pub inline fn add_f16(a: f16x8, b: f16x8) f16x8 {
+pub inline fn addF16(a: f16x8, b: f16x8) f16x8 {
     return a + b;
 }
 
 /// Ports `vcvt_f32_f16(vget_low_f16(v))` and its `vget_high_f16` twin:
 /// widen one half of an `f16x8` to `f32x4`.
-pub inline fn cvt_f32_f16_half(v: f16x8, comptime upper: bool) f32x4 {
+pub inline fn cvtF32F16Half(v: f16x8, comptime upper: bool) f32x4 {
     const base: usize = if (upper) 4 else 0;
     const half: f16x4 = .{ v[base], v[base + 1], v[base + 2], v[base + 3] };
     return @floatCast(half);
@@ -480,18 +479,18 @@ pub inline fn cvt_f32_f16_half(v: f16x8, comptime upper: bool) f32x4 {
 /// The intrinsic reads as a multiply and an add, and clang emits `fmla` for it
 /// -- one rounding rather than two. Written as `a + v * s` this would round
 /// twice and differ in the last bit, so it is `@mulAdd`.
-pub inline fn mla_n_f32(a: f32x4, v: f32x4, x: f32) f32x4 {
+pub inline fn mlaNF32(a: f32x4, v: f32x4, x: f32) f32x4 {
     const s: f32x4 = @splat(x);
     return @mulAdd(f32x4, v, s, a);
 }
 
 /// Ports `vfmaq_f32`: `a + b * cc`, fused by definition.
-pub inline fn fma_f32(a: f32x4, b: f32x4, cc: f32x4) f32x4 {
+pub inline fn fmaF32(a: f32x4, b: f32x4, cc: f32x4) f32x4 {
     return @mulAdd(f32x4, b, cc, a);
 }
 
 /// Ports `vcvtq_f32_s32`: four `i32` widened to four `f32`.
-pub inline fn cvt_f32_s32(v: i32x4) f32x4 {
+pub inline fn cvtF32S32(v: i32x4) f32x4 {
     return @floatFromInt(v);
 }
 
@@ -505,7 +504,7 @@ pub inline fn cvt_f32_s32(v: i32x4) f32x4 {
 ///
 /// The trick is exact only within +/-2^22, which every caller here satisfies --
 /// the values are weights scaled into +/-127.
-pub inline fn cvtnq_s32_f32(v: f32x4) i32x4 {
+pub inline fn cvtnqS32F32(v: f32x4) i32x4 {
     const magic: f32x4 = @splat(12582912.0); // 1.5 * 2^23
     const shifted = v + magic;
     const bits: i32x4 = @bitCast(shifted);
@@ -530,18 +529,17 @@ extern fn @"llvm.aarch64.neon.sdot.v4i32.v16i8"(i32x4, i8x16, i8x16) i32x4;
 /// path's throughput was measured: Qwen3.5 2B `Q4_K_M` on the CPU device of
 /// an M5 Max decoded at 4.9 t/s on one thread with it.
 ///
-/// Parameters:
 /// - `acc`: the accumulator, added to lane-wise.
 /// - `a`, `b`: sixteen `i8` lanes each.
 ///
-/// Return: the four accumulated sums.
-pub inline fn dotq_s32(acc: i32x4, a: i8x16, b: i8x16) i32x4 {
+/// - Returns: the four accumulated sums.
+pub inline fn dotqS32(acc: i32x4, a: i8x16, b: i8x16) i32x4 {
     if (comptime has_dotprod) return @"llvm.aarch64.neon.sdot.v4i32.v16i8"(acc, a, b);
-    return dotq_s32_portable(acc, a, b);
+    return dotqS32Portable(acc, a, b);
 }
 
 /// `dotq_s32` without the instruction. See there.
-pub inline fn dotq_s32_portable(acc: i32x4, a: i8x16, b: i8x16) i32x4 {
+pub inline fn dotqS32Portable(acc: i32x4, a: i8x16, b: i8x16) i32x4 {
     const wa: @Vector(16, i32) = a;
     const wb: @Vector(16, i32) = b;
     const p = wa *% wb;
@@ -566,8 +564,8 @@ pub inline fn dotq_s32_portable(acc: i32x4, a: i8x16, b: i8x16) i32x4 {
 /// `f32` before reducing them sees the difference; the legacy dot products
 /// do. Call this wherever the C spells `ggml_vdotq_s32`, and `dotq_s32`
 /// where it spells `vdotq_s32` inside an `#if __ARM_FEATURE_DOTPROD`.
-pub inline fn ggml_vdotq_s32(acc: i32x4, a: i8x16, b: i8x16) i32x4 {
-    if (comptime has_dotprod) return dotq_s32(acc, a, b);
+pub inline fn ggmlVdotqS32(acc: i32x4, a: i8x16, b: i8x16) i32x4 {
+    if (comptime has_dotprod) return dotqS32(acc, a, b);
     const wa: @Vector(16, i32) = a;
     const wb: @Vector(16, i32) = b;
     const p = wa *% wb;
@@ -590,10 +588,10 @@ pub inline fn ggml_vdotq_s32(acc: i32x4, a: i8x16, b: i8x16) i32x4 {
 ///
 /// `idx` is `comptime` because the instruction encodes it. Named `idx`
 /// rather than `lane` because this file already has a `lane` accessor.
-pub inline fn dotq_laneq_s32(acc: i32x4, a: i8x16, b: i8x16, comptime idx: u2) i32x4 {
+pub inline fn dotqLaneqS32(acc: i32x4, a: i8x16, b: i8x16, comptime idx: u2) i32x4 {
     const words: i32x4 = @bitCast(b);
     const splat: i32x4 = @splat(words[idx]);
-    return dotq_s32(acc, a, @bitCast(splat));
+    return dotqS32(acc, a, @bitCast(splat));
 }
 
 /// Whether this build targets a CPU with the i8mm extension: the C's
@@ -631,18 +629,17 @@ extern fn @"llvm.aarch64.neon.smmla.v4i32.v16i8"(i32x4, i8x16, i8x16) i32x4;
 /// with i8mm, so the portable form serves a baseline `zig build test` and the
 /// test below that holds the two together.
 ///
-/// Parameters:
 /// - `acc`: the accumulator, added to lane-wise.
 /// - `a`, `b`: two rows of eight `i8` each.
 ///
-/// Return: the four accumulated sums.
-pub inline fn mmlaq_s32(acc: i32x4, a: i8x16, b: i8x16) i32x4 {
+/// - Returns: the four accumulated sums.
+pub inline fn mmlaqS32(acc: i32x4, a: i8x16, b: i8x16) i32x4 {
     if (comptime has_i8mm) return @"llvm.aarch64.neon.smmla.v4i32.v16i8"(acc, a, b);
-    return mmlaq_s32_portable(acc, a, b);
+    return mmlaqS32Portable(acc, a, b);
 }
 
 /// `mmlaq_s32` without the instruction. See there.
-pub inline fn mmlaq_s32_portable(acc: i32x4, a: i8x16, b: i8x16) i32x4 {
+pub inline fn mmlaqS32Portable(acc: i32x4, a: i8x16, b: i8x16) i32x4 {
     // Each row of `a` repeated twice, against both rows of `b` at once.
     // Written as whole-vector operations rather than nested `inline for`:
     // the gemms call this sixty-four times in one unrolled body, and the
@@ -669,42 +666,42 @@ pub inline fn mmlaq_s32_portable(acc: i32x4, a: i8x16, b: i8x16) i32x4 {
 /// Ports `vreinterpretq_s8_s64(vzip1q_s64(vreinterpretq_s64_s8(a),
 /// vreinterpretq_s64_s8(b)))`: the low eight bytes of `a`, then the low
 /// eight of `b`.
-pub inline fn zip1q_s64(a: i8x16, b: i8x16) i8x16 {
+pub inline fn zip1qS64(a: i8x16, b: i8x16) i8x16 {
     return @shuffle(i8, a, b, [16]i32{ 0, 1, 2, 3, 4, 5, 6, 7, -1, -2, -3, -4, -5, -6, -7, -8 });
 }
 
 /// Ports the `vzip2q_s64` form of `zip1q_s64`: the high eight bytes of `a`,
 /// then the high eight of `b`.
-pub inline fn zip2q_s64(a: i8x16, b: i8x16) i8x16 {
+pub inline fn zip2qS64(a: i8x16, b: i8x16) i8x16 {
     return @shuffle(i8, a, b, [16]i32{ 8, 9, 10, 11, 12, 13, 14, 15, -9, -10, -11, -12, -13, -14, -15, -16 });
 }
 
 /// Ports `vpadd_s32`: the **two-lane** pairwise add,
 /// `[a0+a1, b0+b1]`. Not `a + b`.
-pub inline fn padd_s32(a: i32x2, b: i32x2) i32x2 {
+pub inline fn paddS32(a: i32x2, b: i32x2) i32x2 {
     return .{ a[0] +% a[1], b[0] +% b[1] };
 }
 
 /// Ports `vmla_s32`: the two-lane integer `acc + a * b`, wrapping.
-pub inline fn mla_s32x2(acc: i32x2, a: i32x2, b: i32x2) i32x2 {
+pub inline fn mlaS32x2(acc: i32x2, a: i32x2, b: i32x2) i32x2 {
     return acc +% (a *% b);
 }
 
 /// Ports `vcvt_f32_s32` for two lanes.
-pub inline fn cvt_f32_s32x2(v: i32x2) @Vector(2, f32) {
+pub inline fn cvtF32S32x2(v: i32x2) @Vector(2, f32) {
     return @floatFromInt(v);
 }
 
 /// Ports `vmlal_lane_s16`: `acc + widen(a) * widen(b[idx])`, the lane
 /// variant of `mlal_s16`. `idx` is `comptime` because the instruction
 /// encodes it.
-pub inline fn mlal_lane_s16(acc: i32x4, a: i16x4, b: i16x4, comptime idx: u2) i32x4 {
+pub inline fn mlalLaneS16(acc: i32x4, a: i16x4, b: i16x4, comptime idx: u2) i32x4 {
     const splat: i16x4 = @splat(b[idx]);
-    return acc +% mull_s16(a, splat);
+    return acc +% mullS16(a, splat);
 }
 
 /// Ports `vmlaq_s32`: integer `acc + a * b`, wrapping.
-pub inline fn mlaq_s32(acc: i32x4, a: i32x4, b: i32x4) i32x4 {
+pub inline fn mlaqS32(acc: i32x4, a: i32x4, b: i32x4) i32x4 {
     return acc +% (a *% b);
 }
 
@@ -716,33 +713,33 @@ pub inline fn mlaq_s32(acc: i32x4, a: i32x4, b: i32x4) i32x4 {
 /// `a | (b << 4)`. The general form is written here because that is what
 /// the instruction does, and a caller that has not pre-masked `a` would
 /// otherwise get a silently different answer.
-pub inline fn sli_n_u8(a: u8x16, b: u8x16, comptime n: u3) u8x16 {
+pub inline fn sliNU8(a: u8x16, b: u8x16, comptime n: u3) u8x16 {
     const keep: u8x16 = @splat((@as(u8, 1) << n) - 1);
     return (a & keep) | (b << @as(@Vector(16, u3), @splat(n)));
 }
 
 /// Ports `vmovl_s16`: widen `i16x4` to `i32x4`, sign-extending.
-pub inline fn movl_s16(v: i16x4) i32x4 {
+pub inline fn movlS16(v: i16x4) i32x4 {
     return v;
 }
 
 /// Ports `vmlsq_f32`: `acc - a * b`, **fused** — one rounding, like its
 /// `vmlaq_f32` counterpart. The subtraction is folded into the FMA by
 /// negating the multiplier, not applied afterwards.
-pub inline fn mlsq_f32(acc: f32x4, a: f32x4, b: f32x4) f32x4 {
+pub inline fn mlsqF32(acc: f32x4, a: f32x4, b: f32x4) f32x4 {
     return @mulAdd(f32x4, -a, b, acc);
 }
 
 /// Ports `vmlaq_f32`: `acc + a * b`, **fused**. `arm_neon.h` defines it as
 /// that one expression, and `-ffp-contract=on` makes it one `fmla` -- the
 /// same as `vmlaq_n_f32` with a vector in place of the scalar.
-pub inline fn mlaq_f32(acc: f32x4, a: f32x4, b: f32x4) f32x4 {
+pub inline fn mlaqF32(acc: f32x4, a: f32x4, b: f32x4) f32x4 {
     return @mulAdd(f32x4, a, b, acc);
 }
 
 /// Ports `vextq_f32(a, b, n)`: lanes `n..3` of `a`, then lanes `0..n-1` of
 /// `b`. With `a == b` it rotates down by `n`.
-pub inline fn extq_f32(a: f32x4, b: f32x4, comptime n: u2) f32x4 {
+pub inline fn extqF32(a: f32x4, b: f32x4, comptime n: u2) f32x4 {
     const mask = comptime blk: {
         var m: [4]i32 = undefined;
         for (0..4) |i| m[i] = if (i + n < 4) @intCast(i + n) else ~@as(i32, @intCast(i + n - 4));
@@ -752,20 +749,20 @@ pub inline fn extq_f32(a: f32x4, b: f32x4, comptime n: u2) f32x4 {
 }
 
 /// Ports `vzip1q_f32`: `[a0, b0, a1, b1]`.
-pub inline fn zip1q_f32(a: f32x4, b: f32x4) f32x4 {
+pub inline fn zip1qF32(a: f32x4, b: f32x4) f32x4 {
     return @shuffle(f32, a, b, [4]i32{ 0, -1, 1, -2 });
 }
 
 /// Ports `vmulq_n_s32`: every lane times one scalar, wrapping.
-pub inline fn mulq_n_s32(v: i32x4, x: i32) i32x4 {
+pub inline fn mulqNS32(v: i32x4, x: i32) i32x4 {
     const s: i32x4 = @splat(x);
     return v *% s;
 }
 
 /// Ports `vmlal_s16`: `acc + widen(a) * widen(b)`, a widening
 /// multiply-accumulate from `i16x4` pairs into `i32x4`.
-pub inline fn mlal_s16(acc: i32x4, a: i16x4, b: i16x4) i32x4 {
-    return acc +% mull_s16(a, b);
+pub inline fn mlalS16(acc: i32x4, a: i16x4, b: i16x4) i32x4 {
+    return acc +% mullS16(a, b);
 }
 
 /// Ports `vcvtq_n_f32_s32`: convert to `f32` **and** divide by `2^n`, in
@@ -775,30 +772,30 @@ pub inline fn mlal_s16(acc: i32x4, a: i16x4, b: i16x4) i32x4 {
 /// before the dot product, where the scalar `_generic` form instead shifts
 /// the integer sum right by four. The two are not the same rounding: this
 /// scales an exact integer, the shift truncates.
-pub inline fn cvtq_n_f32_s32(v: i32x4, comptime n: comptime_int) f32x4 {
+pub inline fn cvtqNF32S32(v: i32x4, comptime n: comptime_int) f32x4 {
     const scale: f32x4 = @splat(1.0 / @as(f32, 1 << n));
-    return cvt_f32_s32(v) * scale;
+    return cvtF32S32(v) * scale;
 }
 
 /// Ports `vld1q_dup_s64` reinterpreted as `i8x16`: one 8-byte group
 /// broadcast into both halves of a vector.
-pub inline fn dupq_i8x16_from8(p: [*]const i8) i8x16 {
+pub inline fn dupqI8x16From8(p: [*]const i8) i8x16 {
     const half: @Vector(8, i8) = p[0..8].*;
     return combine(half, half);
 }
 
 /// Ports `vcvt_f32_f16`: widen four `f16` to `f32x4`.
-pub inline fn cvt_f32_f16(v: f16x4) f32x4 {
+pub inline fn cvtF32F16(v: f16x4) f32x4 {
     return @floatCast(v);
 }
 
 /// Ports `vld1_f16`: four `f16` from memory, as the `u16` the import gives.
-pub inline fn load_f16x4(p: [*]const u16) f16x4 {
+pub inline fn loadF16x4(p: [*]const u16) f16x4 {
     return @bitCast(@as(@Vector(4, u16), p[0..4].*));
 }
 
 /// Ports `vld1_dup_f16`: one `f16` broadcast to all four lanes.
-pub inline fn dup_f16x4(v: u16) f16x4 {
+pub inline fn dupF16x4(v: u16) f16x4 {
     const bits: @Vector(4, u16) = @splat(v);
     return @bitCast(bits);
 }
@@ -837,7 +834,7 @@ test "vdotq_s32 matches the definition on every lane, both forms" {
     // The definition, spelled out. Arrays, not vectors: a vector index has to
     // be comptime-known.
     const acca: [4]i32 = acc;
-    for ([_][4]i32{ dotq_s32(acc, a, b), dotq_s32_portable(acc, a, b) }) |got| {
+    for ([_][4]i32{ dotqS32(acc, a, b), dotqS32Portable(acc, a, b) }) |got| {
         for (0..4) |g| {
             var want: i32 = acca[g];
             for (0..4) |k| want += @as(i32, aa[4 * g + k]) * ba[4 * g + k];
@@ -866,7 +863,7 @@ test "vdotq_s32: the instruction and the portable form agree" {
             b = @splat(-128);
             acc = @splat(std.math.maxInt(i32));
         }
-        try std.testing.expectEqual(dotq_s32_portable(acc, a, b), dotq_s32(acc, a, b));
+        try std.testing.expectEqual(dotqS32Portable(acc, a, b), dotqS32(acc, a, b));
     }
 }
 
@@ -875,15 +872,15 @@ test "vdotq_s32 wraps rather than trapping, as sdot does" {
     const b: i8x16 = @splat(127);
     const acc: i32x4 = @splat(std.math.maxInt(i32));
     // Would panic with a checked add; the hardware truncates.
-    _ = dotq_s32(acc, a, b);
-    _ = dotq_s32_portable(acc, a, b);
+    _ = dotqS32(acc, a, b);
+    _ = dotqS32Portable(acc, a, b);
 }
 
 test "the float reduction is pairwise, not sequential" {
     // The case that separates them. If `addvq_f32` were `@reduce(.Add, ...)`
     // this would be 1, and every kernel using it would be off by a bit.
     const v: f32x4 = .{ 1e8, 1.0, -1e8, 1.0 };
-    try std.testing.expectEqual(@as(f32, 0.0), addvq_f32(v));
+    try std.testing.expectEqual(@as(f32, 0.0), addvqF32(v));
     try std.testing.expectEqual(@as(f32, 1.0), @reduce(.Add, v));
 }
 
@@ -892,7 +889,7 @@ test "vmlaq_n_f32 is fused" {
     // only before the add.
     const a: f32x4 = @splat(1.0);
     const b: f32x4 = @splat(std.math.floatEps(f32) / 2.0);
-    const fused = mla_n_f32(a, b, 1.0);
+    const fused = mlaNF32(a, b, 1.0);
     const unfused = a + b * @as(f32x4, @splat(1.0));
 
     // Fused keeps the tiny addend's influence through a single rounding.
@@ -904,14 +901,14 @@ test "vmlaq_n_f32 is fused" {
     const x: f32x4 = @splat(1.0 + std.math.floatEps(f32));
     try std.testing.expectEqual(
         @mulAdd(f32, x[0], x[0], -big[0]),
-        mla_n_f32(-big, x, x[0])[0],
+        mlaNF32(-big, x, x[0])[0],
     );
 }
 
 test "cvtnq_s32_f32 rounds halves to even, not away from zero" {
     // The distinction `@round` gets wrong. 0.5 -> 0, 1.5 -> 2, 2.5 -> 2.
     const v: f32x4 = .{ 0.5, 1.5, 2.5, 3.5 };
-    const got = cvtnq_s32_f32(v);
+    const got = cvtnqS32F32(v);
 
     try std.testing.expectEqual(@as(i32, 0), got[0]);
     try std.testing.expectEqual(@as(i32, 2), got[1]);
@@ -920,7 +917,7 @@ test "cvtnq_s32_f32 rounds halves to even, not away from zero" {
 
     // Negative halves too, and ordinary values.
     const w: f32x4 = .{ -0.5, -1.5, -2.5, 7.4 };
-    const gw = cvtnq_s32_f32(w);
+    const gw = cvtnqS32F32(w);
     try std.testing.expectEqual(@as(i32, 0), gw[0]);
     try std.testing.expectEqual(@as(i32, -2), gw[1]);
     try std.testing.expectEqual(@as(i32, -2), gw[2]);
@@ -936,18 +933,18 @@ test "cvtnq_s32_f32 agrees with ggml's scalar nearest_int" {
         seed = 1103515245 *% seed +% 12345;
         const x = (@as(f32, @floatFromInt(seed >> 8)) / 65536.0) - 128.0;
         const v: f32x4 = @splat(x);
-        try std.testing.expectEqual(helpers.nearestInt(x), cvtnq_s32_f32(v)[0]);
+        try std.testing.expectEqual(helpers.nearestInt(x), cvtnqS32F32(v)[0]);
     }
 }
 
 test "pairwise adds keep the halves separate" {
     const a: i32x4 = .{ 1, 2, 3, 4 };
     const b: i32x4 = .{ 10, 20, 30, 40 };
-    const got = paddq_s32(a, b);
+    const got = paddqS32(a, b);
     try std.testing.expectEqual(i32x4{ 3, 7, 30, 70 }, got);
 
     const w: i16x8 = .{ 1, 2, 3, 4, 5, 6, 7, 8 };
-    try std.testing.expectEqual(i32x4{ 3, 7, 11, 15 }, paddlq_s16(w));
+    try std.testing.expectEqual(i32x4{ 3, 7, 11, 15 }, paddlqS16(w));
 }
 
 test "vceqq_u8 yields a lane mask, not a bool" {
@@ -969,11 +966,11 @@ test "vbicq keeps the first operand" {
 test "halving add does not overflow the lane" {
     const a: u8x16 = @splat(255);
     const b: u8x16 = @splat(255);
-    try std.testing.expectEqual(@as(u8, 255), hadd_u8(a, b)[0]);
+    try std.testing.expectEqual(@as(u8, 255), haddU8(a, b)[0]);
 
     const c1: u8x16 = @splat(200);
     const c2: u8x16 = @splat(100);
-    try std.testing.expectEqual(@as(u8, 150), hadd_u8(c1, c2)[0]);
+    try std.testing.expectEqual(@as(u8, 150), haddU8(c1, c2)[0]);
 }
 
 test "the variable shift goes right on a negative amount" {
@@ -1017,7 +1014,7 @@ test "the table permute zeroes out-of-range indices" {
     ia[2] = 255;
     const idx: u8x16 = ia;
 
-    const got: [16]u8 = qtbl1q_u8(t, idx);
+    const got: [16]u8 = qtbl1qU8(t, idx);
     try std.testing.expectEqual(@as(u8, 15), got[0]);
     try std.testing.expectEqual(@as(u8, 0), got[1]);
     try std.testing.expectEqual(@as(u8, 0), got[2]);
@@ -1040,7 +1037,7 @@ test "vmmlaq_s32 is a times b transposed, on every lane" {
         ba[i] = @intCast(@as(i32, @intCast(i * 5 % 19)) - 9);
     }
     const acc: i32x4 = .{ 1, -2, 3, -4 };
-    const got: [4]i32 = mmlaq_s32_portable(acc, aa, ba);
+    const got: [4]i32 = mmlaqS32Portable(acc, aa, ba);
     for (0..2) |i| {
         for (0..2) |j| {
             var want: i32 = acc[2 * i + j];
@@ -1069,7 +1066,7 @@ test "vmmlaq_s32: the instruction and the portable form agree" {
             b = @splat(-128);
             acc = @splat(std.math.maxInt(i32));
         }
-        try std.testing.expectEqual(mmlaq_s32_portable(acc, a, b), mmlaq_s32(acc, a, b));
+        try std.testing.expectEqual(mmlaqS32Portable(acc, a, b), mmlaqS32(acc, a, b));
     }
 }
 
@@ -1080,8 +1077,8 @@ test "the 64-bit zips interleave rows, not bytes" {
         aa[i] = @intCast(i);
         ba[i] = @intCast(i + 16);
     }
-    const lo: [16]i8 = zip1q_s64(aa, ba);
-    const hi: [16]i8 = zip2q_s64(aa, ba);
+    const lo: [16]i8 = zip1qS64(aa, ba);
+    const hi: [16]i8 = zip2qS64(aa, ba);
     for (0..8) |i| {
         try std.testing.expectEqual(aa[i], lo[i]);
         try std.testing.expectEqual(ba[i], lo[8 + i]);
@@ -1093,20 +1090,20 @@ test "the 64-bit zips interleave rows, not bytes" {
 test "vextq_f32 and vzip1q_f32 reorder ABCD to ACBD" {
     // The two-row kernels' epilogue: `vzip1q_f32(v, vextq_f32(v, v, 2))`.
     const v: f32x4 = .{ 0, 1, 2, 3 };
-    try std.testing.expectEqual(f32x4{ 2, 3, 0, 1 }, extq_f32(v, v, 2));
-    try std.testing.expectEqual(f32x4{ 0, 2, 1, 3 }, zip1q_f32(v, extq_f32(v, v, 2)));
+    try std.testing.expectEqual(f32x4{ 2, 3, 0, 1 }, extqF32(v, v, 2));
+    try std.testing.expectEqual(f32x4{ 0, 2, 1, 3 }, zip1qF32(v, extqF32(v, v, 2)));
     const w: f32x4 = .{ 4, 5, 6, 7 };
-    try std.testing.expectEqual(f32x4{ 1, 2, 3, 4 }, extq_f32(v, w, 1));
+    try std.testing.expectEqual(f32x4{ 1, 2, 3, 4 }, extqF32(v, w, 1));
 }
 
 test "max_f32 and maxvq_f32 propagate a NaN with its payload, as fmax and fmaxv do" {
     const nan_payload: f32 = @bitCast(@as(u32, 0x7fd12345));
     const v: f32x4 = .{ 1.0, nan_payload, 3.0, -2.0 };
-    try std.testing.expectEqual(@as(u32, 0x7fd12345), @as(u32, @bitCast(maxvq_f32(v))));
-    const m = max_f32(v, @as(f32x4, @splat(2.0)));
+    try std.testing.expectEqual(@as(u32, 0x7fd12345), @as(u32, @bitCast(maxvqF32(v))));
+    const m = maxF32(v, @as(f32x4, @splat(2.0)));
     try std.testing.expectEqual(@as(u32, 0x7fd12345), @as(u32, @bitCast(m[1])));
     try std.testing.expectEqual(@as(f32, 2.0), m[0]);
     try std.testing.expectEqual(@as(f32, 3.0), m[2]);
     // Without a NaN, the plain maximum.
-    try std.testing.expectEqual(@as(f32, 4.5), maxvq_f32(.{ 1.0, 4.5, -7.0, 0.0 }));
+    try std.testing.expectEqual(@as(f32, 4.5), maxvqF32(.{ 1.0, 4.5, -7.0, 0.0 }));
 }

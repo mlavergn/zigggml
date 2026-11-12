@@ -27,7 +27,7 @@ const S = @import("vulkan_shaders");
 const c = impl.c;
 const common = m.common;
 const vk = common.vk;
-const allocator = common.allocator;
+const allocator = std.heap.c_allocator;
 const Device = m.device.Device;
 const Pipeline = m.pipeline.Pipeline;
 const MatmulPipelineKey = m.pipeline.MatmulPipelineKey;
@@ -61,7 +61,7 @@ pub const Tile = struct {
         return self.v[i];
     }
 
-    fn push_(self: *Tile, x: u32) void {
+    fn pushValue(self: *Tile, x: u32) void {
         self.v[self.n] = x;
         self.n += 1;
     }
@@ -336,7 +336,7 @@ const Walk = struct {
     /// The `ggml_vk_create_pipeline2` lambda, for names built at run time.
     fn createFmt(w: *Walk, base: *?*Pipeline, comptime fmt: []const u8, fargs: anytype, a: Args) void {
         var buf: [128]u8 = undefined;
-        const name = std.fmt.bufPrint(&buf, fmt, fargs) catch unreachable;
+        const name = std.fmt.bufPrint(&buf, fmt, fargs) catch @panic("name buffer too small");
         w.create(base, name, a);
     }
 };
@@ -405,12 +405,12 @@ const warp_size_idx = 10;
 /// constants with ALIGNED, and the Intel Windows shared-memory switches.
 fn mulMmSpec(device: *const Device, spec_in: Tile, aligned: bool) Tile {
     var spec = spec_in;
-    spec.push_(@intFromBool(aligned)); // constantID=11: ALIGNED
+    spec.pushValue(@intFromBool(aligned)); // constantID=11: ALIGNED
     if (device.vendor_id == common.vendor_id.intel and device.coopmat_support and
         device.driver_id == vk.VK_DRIVER_ID_INTEL_PROPRIETARY_WINDOWS)
     {
-        spec.push_(0); // constantID=12: SHMEM_STRIDE_PAD = 0
-        spec.push_(1); // constantID=13: APPLY_SLM_A_RESHAPE = true
+        spec.pushValue(0); // constantID=12: SHMEM_STRIDE_PAD = 0
+        spec.pushValue(1); // constantID=13: APPLY_SLM_A_RESHAPE = true
     }
     return spec;
 }
@@ -419,13 +419,13 @@ fn mulMmSpec(device: *const Device, spec_in: Tile, aligned: bool) Tile {
 /// `mulMmSpec`, with the A type the unified quant shader decodes.
 fn mulMmSpecQuant(device: *const Device, spec_in: Tile, aligned: bool, ty: c.ggml_type) Tile {
     var spec = spec_in;
-    spec.push_(@intFromBool(aligned)); // constantID=11: ALIGNED
-    spec.push_(@intCast(ty)); // constantID=12: MmTypeA
+    spec.pushValue(@intFromBool(aligned)); // constantID=11: ALIGNED
+    spec.pushValue(@intCast(ty)); // constantID=12: MmTypeA
     if (device.vendor_id == common.vendor_id.intel and device.coopmat_support and
         device.driver_id == vk.VK_DRIVER_ID_INTEL_PROPRIETARY_WINDOWS)
     {
-        spec.push_(0); // constantID=13: SHMEM_STRIDE_PAD = 0
-        spec.push_(1); // constantID=14: APPLY_SLM_A_RESHAPE = true
+        spec.pushValue(0); // constantID=13: SHMEM_STRIDE_PAD = 0
+        spec.pushValue(1); // constantID=14: APPLY_SLM_A_RESHAPE = true
     }
     return spec;
 }
@@ -435,11 +435,11 @@ fn mulMmSpecQuant(device: *const Device, spec_in: Tile, aligned: bool, ty: c.ggm
 /// block size.
 fn mulMmCm2Spec(device: *const Device, spec_in: Tile, aligned: bool, ty: ?c.ggml_type) Tile {
     var spec = spec_in;
-    spec.push_(@intFromBool(aligned)); // ALIGNED
-    spec.push_(device.subgroup_size); // subgroup_size
+    spec.pushValue(@intFromBool(aligned)); // ALIGNED
+    spec.pushValue(device.subgroup_size); // subgroup_size
     if (ty) |t| {
-        spec.push_(@intCast(t)); // MmTypeA
-        spec.push_(@intCast(c.ggml_type_size(t))); // MmABlockBytes
+        spec.pushValue(@intCast(t)); // MmTypeA
+        spec.pushValue(@intCast(c.ggml_type_size(t))); // MmABlockBytes
     }
     return spec;
 }
@@ -637,7 +637,6 @@ fn ocp(device: *const Device) bool {
 
 /// Ports `ggml_vk_load_shaders` (ggml-vulkan.cpp:1681 @cd959bae9).
 ///
-/// Parameters:
 /// - `device`: the device whose pipeline slots are walked.
 /// - `requested`: the pipeline to compile, or null to only describe them.
 pub fn loadShaders(device: *Device, requested: ?*Pipeline) void {
@@ -1920,7 +1919,7 @@ fn walkRest(w: *Walk, subgroup_min_size_16: bool, subgroup_size_16: u32, subgrou
         const spec = [_]u32{ device.subgroup_size, @intCast(i + 1) };
         if (device.subgroup_arithmetic and device.subgroup_require_full_support) {
             var buf: [64]u8 = undefined;
-            const name = std.fmt.bufPrint(&buf, "mul_mat_vec_p021_f16_f32{d}", .{i + 1}) catch unreachable;
+            const name = std.fmt.bufPrint(&buf, "mul_mat_vec_p021_f16_f32{d}", .{i + 1}) catch @panic("name buffer too small");
             w.create(&device.pipeline_mul_mat_vec_p021_f16_f32[i], name, .{ .spv = S.mul_mat_vec_p021_f16_f32_subgroup_add_data, .parameter_count = mul_mat_vec_num_bindings, .push_constant_size = @sizeOf(push.MatVecP021), .wg_denoms = .{ 1, 1, 1 }, .spec = &spec, .disable_robustness = true, .require_full_subgroups = true });
         } else {
             w.createFmt(&device.pipeline_mul_mat_vec_p021_f16_f32[i], "mul_mat_vec_p021_f16_f32{d}", .{i + 1}, .{ .spv = S.mul_mat_vec_p021_f16_f32_data, .parameter_count = mul_mat_vec_num_bindings, .push_constant_size = @sizeOf(push.MatVecP021), .wg_denoms = .{ 1, 1, 1 }, .spec = &spec, .disable_robustness = true });

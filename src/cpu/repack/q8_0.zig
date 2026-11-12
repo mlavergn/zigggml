@@ -15,7 +15,6 @@
 //!
 //! Only the `4x4` and `4x8` shapes exist here; there is no `8x8`.
 
-const std = @import("std");
 const impl = @import("../../impl.zig");
 const blocks = @import("blocks.zig");
 const epilogue = @import("epilogue.zig");
@@ -139,15 +138,31 @@ fn gemm(
     }
 }
 
-pub export fn ggml_gemv_q8_0_4x4_q8_0_generic(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+comptime {
+    @export(&ggmlGemvQ804x4Q80Generic, .{ .name = "ggml_gemv_q8_0_4x4_q8_0_generic" });
+}
+
+pub fn ggmlGemvQ804x4Q80Generic(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
     gemv(4, 4, n, s, bs, vx, vy, nr, nc);
 }
-pub export fn ggml_gemv_q8_0_4x8_q8_0_generic(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+comptime {
+    @export(&ggmlGemvQ804x8Q80Generic, .{ .name = "ggml_gemv_q8_0_4x8_q8_0_generic" });
+}
+
+pub fn ggmlGemvQ804x8Q80Generic(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
     gemv(4, 8, n, s, bs, vx, vy, nr, nc);
 }
-pub export fn ggml_gemm_q8_0_4x4_q8_0_generic(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+comptime {
+    @export(&ggmlGemmQ804x4Q80Generic, .{ .name = "ggml_gemm_q8_0_4x4_q8_0_generic" });
+}
+
+pub fn ggmlGemmQ804x4Q80Generic(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
     gemm(4, 4, n, s, bs, vx, vy, nr, nc);
 }
-pub export fn ggml_gemm_q8_0_4x8_q8_0_generic(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
+comptime {
+    @export(&ggmlGemmQ804x8Q80Generic, .{ .name = "ggml_gemm_q8_0_4x8_q8_0_generic" });
+}
+
+pub fn ggmlGemmQ804x8Q80Generic(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) callconv(.c) void {
     gemm(4, 8, n, s, bs, vx, vy, nr, nc);
 }

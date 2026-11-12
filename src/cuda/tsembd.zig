@@ -7,7 +7,6 @@
 //! `llama.cpp/ggml/src/ggml-cuda/tsembd.cuh` at v0.9.0 (`cd959bae9`). The
 //! kernel, `timestep_embedding_f32`, stays CUDA.
 
-const std = @import("std");
 const impl = @import("../impl.zig");
 const common = @import("common.zig");
 const kernels = @import("kernels.zig");

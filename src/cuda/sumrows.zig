@@ -10,7 +10,6 @@
 //! The block size depends on the device's SM count: 512 threads when there
 //! are fewer than two rows per SM, else 32 or 128 by row length.
 
-const std = @import("std");
 const impl = @import("../impl.zig");
 const common = @import("common.zig");
 const kernels = @import("kernels.zig");

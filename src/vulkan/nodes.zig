@@ -13,8 +13,7 @@ const m = @import("module.zig");
 
 const c = impl.c;
 const common = m.common;
-const vk = common.vk;
-const allocator = common.allocator;
+const allocator = std.heap.c_allocator;
 const BackendCtx = m.context.BackendCtx;
 const Context = m.submit.Context;
 const CGraph = impl.CGraph;
@@ -94,7 +93,7 @@ fn overlapsUnsynced(node: *const c.ggml_tensor, unsynced: []const *const c.ggml_
 /// one node (or fused run) into the compute context, after a barrier if it
 /// depends on unsynchronised work; submits the batch if asked.
 ///
-/// Return: whether the node enqueued work.
+/// - Returns: whether the node enqueued work.
 pub fn buildGraph(ctx: *BackendCtx, cgraph: *CGraph, node_idx: c_int, node_idx_begin: c_int, last_node: bool, almost_ready: bool, submit: bool) bool {
     const node = nodeAt(cgraph, node_idx);
     if (c.ggml_is_empty(node) or impl.opIsEmpty(node.op) or node.buffer == null) return false;

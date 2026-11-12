@@ -50,9 +50,6 @@ const common = @import("common.zig");
 const Tensor = c.ggml_tensor;
 const CGraph = impl.CGraph;
 
-/// The allocator ported ggml uses — libc's, as in the rest of `metal/`.
-const allocator = std.heap.c_allocator;
-
 /// Ports `GGML_METAL_FUSION_MAX` (ggml-metal-fusion.h:23 @cd959bae9): the
 /// most nodes one kernel fuses, and the longest run the optimizer packs.
 pub const max = 16;
@@ -148,9 +145,13 @@ fn filterOps(comptime ops_all: []const c.enum_ggml_op) []const c.enum_ggml_op {
     }
 }
 
+comptime {
+    @export(&ggmlMetalFusionGetId, .{ .name = "ggml_metal_fusion_get_id" });
+}
+
 /// Ports `ggml_metal_fusion_get_id` (ggml-metal-fusion.cpp:69 @cd959bae9):
 /// the pattern's identifier, for callers that see the struct as opaque.
-pub export fn ggml_metal_fusion_get_id(fusion: *const Fusion) callconv(.c) Id {
+pub fn ggmlMetalFusionGetId(fusion: *const Fusion) callconv(.c) Id {
     return fusion.id;
 }
 
@@ -245,7 +246,7 @@ fn checkNorm(fusion: *const Fusion, nodes: [*]const *const Tensor, gf: *const CG
             return false;
         }
 
-        if (!types.ggml_is_contiguous_rows(src(nodes[j], 1))) {
+        if (!types.ggmlIsContiguousRows(src(nodes[j], 1))) {
             return false;
         }
 
@@ -273,11 +274,11 @@ fn checkSsmConvSilu(fusion: *const Fusion, nodes: [*]const *const Tensor, gf: *c
         return false;
     }
 
-    if (types.ggml_get_unary_op(un) != c.GGML_UNARY_OP_SILU) {
+    if (types.ggmlGetUnaryOp(un) != c.GGML_UNARY_OP_SILU) {
         return false;
     }
 
-    if (conv.type != c.GGML_TYPE_F32 or un.type != c.GGML_TYPE_F32 or !types.ggml_is_contiguous_rows(un)) {
+    if (conv.type != c.GGML_TYPE_F32 or un.type != c.GGML_TYPE_F32 or !types.ggmlIsContiguousRows(un)) {
         return false;
     }
 
@@ -348,7 +349,7 @@ fn checkGdnCache(fusion: *const Fusion, nodes: [*]const *const Tensor, gf: *cons
     const n_tokens: i64 = g2.ne[2];
     const n_seqs: i64 = g2.ne[3];
     const K: i64 = impl.getOpParamsI32(gdn, 0);
-    const tail_off: usize = types.ggml_row_size(c.GGML_TYPE_F32, S_v * H * n_tokens * n_seqs);
+    const tail_off: usize = types.ggmlRowSize(c.GGML_TYPE_F32, S_v * H * n_tokens * n_seqs);
 
     const D: i64 = S_v * S_v * H;
     const n_written: i64 = @min(n_tokens, K);
@@ -366,8 +367,8 @@ fn checkGdnCache(fusion: *const Fusion, nodes: [*]const *const Tensor, gf: *cons
     const expected_ne = [c.GGML_MAX_DIMS]i64{ D, n_seqs, n_written, 1 };
     if (dst.type != c.GGML_TYPE_F32 or
         !std.mem.eql(i64, &expected_ne, &dst.ne) or
-        dst.nb[0] != types.ggml_type_size(c.GGML_TYPE_F32) or
-        dst.nb[1] != types.ggml_row_size(c.GGML_TYPE_F32, D))
+        dst.nb[0] != types.ggmlTypeSize(c.GGML_TYPE_F32) or
+        dst.nb[1] != types.ggmlRowSize(c.GGML_TYPE_F32, D))
     {
         return false;
     }
@@ -546,8 +547,8 @@ fn checkTopkMoe(fusion: *const Fusion, nodes: [*]const *const Tensor, gf: *const
     }
 
     if (!c.ggml_is_contiguous(logits) or !c.ggml_is_contiguous(out) or
-        ids.nb[0] != types.ggml_type_size(c.GGML_TYPE_I32) or
-        ids.nb[1] != types.ggml_type_size(c.GGML_TYPE_I32) *% @as(usize, @bitCast(n_expert)))
+        ids.nb[0] != types.ggmlTypeSize(c.GGML_TYPE_I32) or
+        ids.nb[1] != types.ggmlTypeSize(c.GGML_TYPE_I32) *% @as(usize, @bitCast(n_expert)))
     {
         return false;
     }
@@ -586,7 +587,7 @@ fn checkTopkMoe(fusion: *const Fusion, nodes: [*]const *const Tensor, gf: *const
     }
 
     const outputs = [2]c_int{ raw_start + 3, raw_end };
-    if (!graph.ggml_can_fuse_subgraph_ext(gf, &raw_idxs, raw_count, ops_all.ptr, &outputs, 2)) {
+    if (!graph.ggmlCanFuseSubgraphExt(gf, &raw_idxs, raw_count, ops_all.ptr, &outputs, 2)) {
         return false;
     }
 
@@ -616,7 +617,7 @@ const MoeReduceMatch = struct {
 /// @cd959bae9): a MUL by the routing weights, one VIEW per expert, then
 /// one ADD per additional expert summing the views in order.
 ///
-/// Return: the match, or null.
+/// - Returns: the match, or null.
 fn matchMoeReduce(gf: *const CGraph, node_idx: c_int, ops_all: []const c.enum_ggml_op) ?MoeReduceMatch {
     if (node_idx < 0 or node_idx + @as(c_int, @intCast(ops_all.len)) > gf.n_nodes) {
         return null;
@@ -712,7 +713,7 @@ fn matchMoeReduce(gf: *const CGraph, node_idx: c_int, ops_all: []const c.enum_gg
     }
 
     const outputs = [1]c_int{node_idx + raw_count - 1};
-    if (!graph.ggml_can_fuse_subgraph_ext(gf, &raw_idxs, raw_count, ops_all.ptr, &outputs, 1)) {
+    if (!graph.ggmlCanFuseSubgraphExt(gf, &raw_idxs, raw_count, ops_all.ptr, &outputs, 1)) {
         return null;
     }
 
@@ -813,7 +814,7 @@ fn checkMulMatAdd(fusion: *const Fusion, nodes: [*]const *const Tensor, gf: *con
     const add = nodes[1];
 
     if (mulMatAddOperand(mm, add) == null or
-        !common.ggml_metal_op_mul_mat_may_use_mma(mm))
+        !common.ggmlMetalOpMulMatMayUseMma(mm))
     {
         return false;
     }
@@ -824,7 +825,7 @@ fn checkMulMatAdd(fusion: *const Fusion, nodes: [*]const *const Tensor, gf: *con
 
     const res = mulMatAddResidual(mm, add) orelse return false;
 
-    if (!common.ggml_metal_op_mul_mat_use_mma(mm)) {
+    if (!common.ggmlMetalOpMulMatUseMma(mm)) {
         return false;
     }
 
@@ -992,6 +993,10 @@ fn addPatternAllocDeps(user_data: ?*anyopaque, add_alloc_dep: AddAllocDepFn, gf:
     }
 }
 
+comptime {
+    @export(&ggmlMetalFusionAddAllocDeps, .{ .name = "ggml_metal_fusion_add_alloc_deps" });
+}
+
 /// Ports `ggml_metal_fusion_add_alloc_deps` (ggml-metal-fusion.cpp:834
 /// @cd959bae9).
 ///
@@ -1001,7 +1006,7 @@ fn addPatternAllocDeps(user_data: ?*anyopaque, add_alloc_dep: AddAllocDepFn, gf:
 /// its last node, and the scan resumes past it. Only the op sequence is
 /// matched, not the checks, so a pattern that would be refused still pins
 /// its inputs: harmless, and the C's choice.
-pub export fn ggml_metal_fusion_add_alloc_deps(
+pub fn ggmlMetalFusionAddAllocDeps(
     user_data: ?*anyopaque,
     add_alloc_dep: AddAllocDepFn,
     gf: *CGraph,
@@ -1055,25 +1060,28 @@ fn label(fusion: *const Fusion) [:0]u8 {
     var j: usize = 0;
     while (j < fusion.ops.len) : (j += 1) {
         if (j > 0) {
-            buf.append(allocator, '+') catch impl.abort("metal: out of memory building a fusion label");
+            buf.append(std.heap.c_allocator, '+') catch impl.abort("metal: out of memory building a fusion label");
         }
-        buf.appendSlice(allocator, std.mem.span(types.ggml_op_name(fusion.ops[j]))) catch
+        buf.appendSlice(std.heap.c_allocator, std.mem.span(types.ggmlOpName(fusion.ops[j]))) catch
             impl.abort("metal: out of memory building a fusion label");
     }
-    return buf.toOwnedSliceSentinel(allocator, 0) catch impl.abort("metal: out of memory building a fusion label");
+    return buf.toOwnedSliceSentinel(std.heap.c_allocator, 0) catch impl.abort("metal: out of memory building a fusion label");
+}
+
+comptime {
+    @export(&ggmlMetalFusionInfoInit, .{ .name = "ggml_metal_fusion_info_init" });
 }
 
 /// Ports `ggml_metal_fusion_info_init` (ggml-metal-fusion.cpp:883
 /// @cd959bae9).
 ///
-/// Parameters:
 /// - `enabled`: whether the encoders try to fuse at all.
 /// - `debug`: `GGML_METAL_FUSION_DEBUG`; above 0 the counters are kept.
 ///
-/// Return: a new info, owned by the caller and freed with
+/// - Returns: a new info, owned by the caller and freed with
 /// `ggml_metal_fusion_info_free`.
-pub export fn ggml_metal_fusion_info_init(enabled: bool, debug: c_int) callconv(.c) *Info {
-    const finfo = allocator.create(Info) catch impl.abort("metal: out of memory allocating the fusion info");
+pub fn ggmlMetalFusionInfoInit(enabled: bool, debug: c_int) callconv(.c) *Info {
+    const finfo = std.heap.c_allocator.create(Info) catch impl.abort("metal: out of memory allocating the fusion info");
     finfo.* = .{
         .enabled = enabled,
         .stats = debug > 0,
@@ -1082,66 +1090,98 @@ pub export fn ggml_metal_fusion_info_init(enabled: bool, debug: c_int) callconv(
     };
 
     if (finfo.stats) {
-        ggml_metal_fusion_info_labels_init(finfo);
+        ggmlMetalFusionInfoLabelsInit(finfo);
     }
 
     return finfo;
 }
 
+comptime {
+    @export(&ggmlMetalFusionInfoFree, .{ .name = "ggml_metal_fusion_info_free" });
+}
+
 /// Ports `ggml_metal_fusion_info_free` (ggml-metal-fusion.cpp:897
 /// @cd959bae9).
-pub export fn ggml_metal_fusion_info_free(finfo: ?*Info) callconv(.c) void {
+pub fn ggmlMetalFusionInfoFree(finfo: ?*Info) callconv(.c) void {
     const self = finfo orelse return; // `delete nullptr` is a no-op
     freeLabels(self);
-    allocator.destroy(self);
+    std.heap.c_allocator.destroy(self);
 }
 
 fn freeLabels(finfo: *Info) void {
-    for (finfo.labels) |l| allocator.free(l);
-    if (finfo.labels.len > 0) allocator.free(finfo.labels);
-    if (finfo.counts.len > 0) allocator.free(finfo.counts);
+    for (finfo.labels) |l| std.heap.c_allocator.free(l);
+    if (finfo.labels.len > 0) std.heap.c_allocator.free(finfo.labels);
+    if (finfo.counts.len > 0) std.heap.c_allocator.free(finfo.counts);
     finfo.labels = &.{};
     finfo.counts = &.{};
 }
 
+comptime {
+    @export(&ggmlMetalFusionInfoEnabled, .{ .name = "ggml_metal_fusion_info_enabled" });
+}
+
 /// Ports `ggml_metal_fusion_info_enabled` (ggml-metal-fusion.cpp:901
 /// @cd959bae9).
-pub export fn ggml_metal_fusion_info_enabled(finfo: *const Info) callconv(.c) bool {
+pub fn ggmlMetalFusionInfoEnabled(finfo: *const Info) callconv(.c) bool {
     return finfo.enabled;
+}
+
+comptime {
+    @export(&ggmlMetalFusionInfoStats, .{ .name = "ggml_metal_fusion_info_stats" });
 }
 
 /// Ports `ggml_metal_fusion_info_stats` (ggml-metal-fusion.cpp:905
 /// @cd959bae9).
-pub export fn ggml_metal_fusion_info_stats(finfo: *const Info) callconv(.c) bool {
+pub fn ggmlMetalFusionInfoStats(finfo: *const Info) callconv(.c) bool {
     return finfo.stats;
+}
+
+comptime {
+    @export(&ggmlMetalFusionInfoDebug, .{ .name = "ggml_metal_fusion_info_debug" });
 }
 
 /// Ports `ggml_metal_fusion_info_debug` (ggml-metal-fusion.cpp:909
 /// @cd959bae9).
-pub export fn ggml_metal_fusion_info_debug(finfo: *const Info) callconv(.c) c_int {
+pub fn ggmlMetalFusionInfoDebug(finfo: *const Info) callconv(.c) c_int {
     return finfo.debug;
+}
+
+comptime {
+    @export(&ggmlMetalFusionInfoNFusions, .{ .name = "ggml_metal_fusion_info_n_fusions" });
 }
 
 /// Ports `ggml_metal_fusion_info_n_fusions` (ggml-metal-fusion.cpp:913
 /// @cd959bae9). Zero until the labels are built.
-pub export fn ggml_metal_fusion_info_n_fusions(finfo: *const Info) callconv(.c) c_int {
+pub fn ggmlMetalFusionInfoNFusions(finfo: *const Info) callconv(.c) c_int {
     return @intCast(finfo.labels.len);
+}
+
+comptime {
+    @export(&ggmlMetalFusionInfoLabel, .{ .name = "ggml_metal_fusion_info_label" });
 }
 
 /// Ports `ggml_metal_fusion_info_label` (ggml-metal-fusion.cpp:917
 /// @cd959bae9).
 ///
-/// Return: the label of table entry `idx`, borrowed from `finfo`.
-pub export fn ggml_metal_fusion_info_label(finfo: *const Info, idx: c_int) callconv(.c) [*:0]const u8 {
+/// - Returns: the label of table entry `idx`, borrowed from `finfo`.
+pub fn ggmlMetalFusionInfoLabel(finfo: *const Info, idx: c_int) callconv(.c) [*:0]const u8 {
     impl.assert(idx >= 0 and idx < @as(c_int, @intCast(finfo.labels.len)), "idx >= 0 && idx < (int) finfo->labels.size()");
     return finfo.labels[@intCast(idx)].ptr;
 }
 
+comptime {
+    @export(&ggmlMetalFusionInfoCount, .{ .name = "ggml_metal_fusion_info_count" });
+}
+
 /// Ports `ggml_metal_fusion_info_count` (ggml-metal-fusion.cpp:922
 /// @cd959bae9).
-pub export fn ggml_metal_fusion_info_count(finfo: *const Info, idx: c_int) callconv(.c) u64 {
+pub fn ggmlMetalFusionInfoCount(finfo: *const Info, idx: c_int) callconv(.c) u64 {
     impl.assert(idx >= 0 and idx < @as(c_int, @intCast(finfo.counts.len)), "idx >= 0 && idx < (int) finfo->counts.size()");
     return finfo.counts[@intCast(idx)];
+}
+
+comptime {
+    @export(&ggmlMetalFusionInfoCountFusion, .{ .name = "ggml_metal_fusion_info_count_fusion" });
 }
 
 /// Ports `ggml_metal_fusion_info_count_fusion` (ggml-metal-fusion.cpp:927
@@ -1151,7 +1191,7 @@ pub export fn ggml_metal_fusion_info_count(finfo: *const Info, idx: c_int) callc
 ///
 /// The C subtracts the pointers whatever `fusion` is; a pointer from
 /// outside the table lands out of range and is ignored, and so here.
-pub export fn ggml_metal_fusion_info_count_fusion(finfo: *Info, fusion: ?*const Fusion) callconv(.c) void {
+pub fn ggmlMetalFusionInfoCountFusion(finfo: *Info, fusion: ?*const Fusion) callconv(.c) void {
     if (!finfo.stats or fusion == null) {
         return;
     }
@@ -1167,15 +1207,23 @@ pub export fn ggml_metal_fusion_info_count_fusion(finfo: *Info, fusion: ?*const 
     }
 }
 
+comptime {
+    @export(&ggmlMetalFusionInfoSetEnabled, .{ .name = "ggml_metal_fusion_info_set_enabled" });
+}
+
 /// Ports `ggml_metal_fusion_info_set_enabled` (ggml-metal-fusion.cpp:938
 /// @cd959bae9).
-pub export fn ggml_metal_fusion_info_set_enabled(finfo: *Info, enabled: bool) callconv(.c) void {
+pub fn ggmlMetalFusionInfoSetEnabled(finfo: *Info, enabled: bool) callconv(.c) void {
     finfo.enabled = enabled;
+}
+
+comptime {
+    @export(&ggmlMetalFusionInfoLabelsInit, .{ .name = "ggml_metal_fusion_info_labels_init" });
 }
 
 /// Ports `ggml_metal_fusion_info_labels_init` (ggml-metal-fusion.cpp:942
 /// @cd959bae9): one label and one zeroed counter per table entry, once.
-pub export fn ggml_metal_fusion_info_labels_init(finfo: *Info) callconv(.c) void {
+pub fn ggmlMetalFusionInfoLabelsInit(finfo: *Info) callconv(.c) void {
     if (finfo.labels_set) {
         return;
     }
@@ -1184,9 +1232,9 @@ pub export fn ggml_metal_fusion_info_labels_init(finfo: *Info) callconv(.c) void
     const len: usize = all.len;
 
     freeLabels(finfo);
-    finfo.counts = allocator.alloc(u64, len) catch impl.abort("metal: out of memory allocating the fusion counters");
+    finfo.counts = std.heap.c_allocator.alloc(u64, len) catch impl.abort("metal: out of memory allocating the fusion counters");
     @memset(finfo.counts, 0);
-    finfo.labels = allocator.alloc([:0]u8, len) catch impl.abort("metal: out of memory allocating the fusion labels");
+    finfo.labels = std.heap.c_allocator.alloc([:0]u8, len) catch impl.abort("metal: out of memory allocating the fusion labels");
 
     for (0..len) |i| {
         finfo.labels[i] = label(&all[i]);
@@ -1195,31 +1243,42 @@ pub export fn ggml_metal_fusion_info_labels_init(finfo: *Info) callconv(.c) void
     finfo.labels_set = true;
 }
 
+comptime {
+    @export(&ggmlMetalFusionInfoStatsInit, .{ .name = "ggml_metal_fusion_info_stats_init" });
+}
+
 /// Ports `ggml_metal_fusion_info_stats_init` (ggml-metal-fusion.cpp:958
 /// @cd959bae9).
-pub export fn ggml_metal_fusion_info_stats_init(finfo: *Info) callconv(.c) void {
+pub fn ggmlMetalFusionInfoStatsInit(finfo: *Info) callconv(.c) void {
     finfo.stats = true;
-    ggml_metal_fusion_info_labels_init(finfo);
+    ggmlMetalFusionInfoLabelsInit(finfo);
+}
+
+comptime {
+    @export(&ggmlMetalFusionInfoStatsReset, .{ .name = "ggml_metal_fusion_info_stats_reset" });
 }
 
 /// Ports `ggml_metal_fusion_info_stats_reset` (ggml-metal-fusion.cpp:963
 /// @cd959bae9).
-pub export fn ggml_metal_fusion_info_stats_reset(finfo: *Info) callconv(.c) void {
+pub fn ggmlMetalFusionInfoStatsReset(finfo: *Info) callconv(.c) void {
     @memset(finfo.counts, 0);
+}
+
+comptime {
+    @export(&ggmlMetalFusionInfoStatsGet, .{ .name = "ggml_metal_fusion_info_stats_get" });
 }
 
 /// Ports `ggml_metal_fusion_info_stats_get` (ggml-metal-fusion.cpp:967
 /// @cd959bae9).
 ///
-/// Parameters:
 /// - `labels`: receives up to `n` labels, borrowed from `finfo`; null asks
 ///   only for the count.
 /// - `counts`: receives the matching counters, or null.
 /// - `n`: capacity of both arrays.
 ///
-/// Return: the number of fusions when `labels` is null, else how many
+/// - Returns: the number of fusions when `labels` is null, else how many
 /// entries were filled.
-pub export fn ggml_metal_fusion_info_stats_get(finfo: *const Info, labels: ?[*][*:0]const u8, counts: ?[*]u64, n: c_int) callconv(.c) c_int {
+pub fn ggmlMetalFusionInfoStatsGet(finfo: *const Info, labels: ?[*][*:0]const u8, counts: ?[*]u64, n: c_int) callconv(.c) c_int {
     const n_fusions: c_int = @intCast(finfo.labels.len);
 
     const out = labels orelse return n_fusions;
@@ -1270,9 +1329,9 @@ fn nodesOverlap(a: *const Tensor, b: *const Tensor) bool {
     }
 
     const a_start: i64 = @bitCast(@as(u64, @intFromPtr(a.data)));
-    const a_end: i64 = a_start +% @as(i64, @bitCast(@as(u64, backend.ggml_backend_buft_get_alloc_size(impl.one(c.ggml_backend_buffer, a.buffer).buft, a))));
+    const a_end: i64 = a_start +% @as(i64, @bitCast(@as(u64, backend.ggmlBackendBuftGetAllocSize(impl.one(c.ggml_backend_buffer, a.buffer).buft, a))));
     const b_start: i64 = @bitCast(@as(u64, @intFromPtr(b.data)));
-    const b_end: i64 = b_start +% @as(i64, @bitCast(@as(u64, backend.ggml_backend_buft_get_alloc_size(impl.one(c.ggml_backend_buffer, b.buffer).buft, b))));
+    const b_end: i64 = b_start +% @as(i64, @bitCast(@as(u64, backend.ggmlBackendBuftGetAllocSize(impl.one(c.ggml_backend_buffer, b.buffer).buft, b))));
 
     return (b_start <= a_start and a_start < b_end) or
         (a_start <= b_start and b_start < a_end);
@@ -1342,18 +1401,21 @@ fn checkMemoryRanges(fusion: *const Fusion, nodes: [*]const *const Tensor, node_
 // -----------------------------------------------------------------------------
 // Queries
 
+comptime {
+    @export(&ggmlMetalFusionNext, .{ .name = "ggml_metal_fusion_next" });
+}
+
 /// Ports `ggml_metal_fusion_next` (ggml-metal-fusion.cpp:1080 @cd959bae9).
 ///
-/// Parameters:
 /// - `gf`: the graph.
 /// - `node_idxs`: `n_idxs` graph node indices — the non-empty nodes.
 /// - `idx`: a position in `node_idxs`, where the pattern must start.
 /// - `mode`: structural (optimizer) or full (encoder) checks.
 /// - `n_out`: receives the number of nodes consumed, 1 when nothing fuses.
 ///
-/// Return: the longest matching table entry, the first of equal length
+/// - Returns: the longest matching table entry, the first of equal length
 /// wins; null when nothing fuses.
-pub export fn ggml_metal_fusion_next(
+pub fn ggmlMetalFusionNext(
     gf: *const CGraph,
     node_idxs: [*]const c_int,
     n_idxs: c_int,
@@ -1421,7 +1483,7 @@ pub export fn ggml_metal_fusion_next(
             const n_outputs: c_int = 1 + @as(c_int, @intCast(fusion.outs.len));
 
             // structural subgraph checks (op sequence, elidable uses, view containment)
-            if (!graph.ggml_can_fuse_subgraph_ext(gf, node_idxs + base, n_ops, fusion.ops.ptr, &outputs_buf, n_outputs)) {
+            if (!graph.ggmlCanFuseSubgraphExt(gf, node_idxs + base, n_ops, fusion.ops.ptr, &outputs_buf, n_outputs)) {
                 continue;
             }
         }
@@ -1446,6 +1508,10 @@ pub export fn ggml_metal_fusion_next(
     return res;
 }
 
+comptime {
+    @export(&ggmlMetalFusionMax, .{ .name = "ggml_metal_fusion_max" });
+}
+
 /// Ports `ggml_metal_fusion_max` (ggml-metal-fusion.cpp:1175 @cd959bae9).
 ///
 /// The optimize phase's question: how many nodes from `idx` (a raw graph
@@ -1457,8 +1523,8 @@ pub export fn ggml_metal_fusion_next(
 /// encoders still skip it): an empty graph packs like its non-empty
 /// counterpart, so a no-output ubatch gets the same node order.
 ///
-/// Return: at least 1.
-pub export fn ggml_metal_fusion_max(gf: *const CGraph, idx: c_int) callconv(.c) c_int {
+/// - Returns: at least 1.
+pub fn ggmlMetalFusionMax(gf: *const CGraph, idx: c_int) callconv(.c) c_int {
     // a view node cannot start a pattern - pack it alone
     const first = gf.nodes[@intCast(idx)].?;
     if (impl.opIsEmpty(first.op)) {
@@ -1486,7 +1552,7 @@ pub export fn ggml_metal_fusion_max(gf: *const CGraph, idx: c_int) callconv(.c) 
 
     while (i_f < n_idxs and total < max) {
         var len: c_int = 1;
-        const fusion = ggml_metal_fusion_next(gf, &idxs, n_idxs, i_f, .structural, &len);
+        const fusion = ggmlMetalFusionNext(gf, &idxs, n_idxs, i_f, .structural, &len);
         if (fusion == null or total + len > max) {
             break;
         }
@@ -1511,33 +1577,33 @@ test {
 }
 
 test "the table's labels are its op names joined by +" {
-    const finfo = ggml_metal_fusion_info_init(true, 1);
-    defer ggml_metal_fusion_info_free(finfo);
+    const finfo = ggmlMetalFusionInfoInit(true, 1);
+    defer ggmlMetalFusionInfoFree(finfo);
 
-    try std.testing.expectEqual(@as(c_int, fusions.len), ggml_metal_fusion_info_n_fusions(finfo));
-    try std.testing.expectEqualStrings("NORM+MUL", std.mem.span(ggml_metal_fusion_info_label(finfo, 0)));
-    try std.testing.expectEqualStrings("SSM_CONV+UNARY", std.mem.span(ggml_metal_fusion_info_label(finfo, fusions.len - 2)));
-    try std.testing.expectEqualStrings("MUL_MAT+ADD", std.mem.span(ggml_metal_fusion_info_label(finfo, fusions.len - 1)));
+    try std.testing.expectEqual(@as(c_int, fusions.len), ggmlMetalFusionInfoNFusions(finfo));
+    try std.testing.expectEqualStrings("NORM+MUL", std.mem.span(ggmlMetalFusionInfoLabel(finfo, 0)));
+    try std.testing.expectEqualStrings("SSM_CONV+UNARY", std.mem.span(ggmlMetalFusionInfoLabel(finfo, fusions.len - 2)));
+    try std.testing.expectEqualStrings("MUL_MAT+ADD", std.mem.span(ggmlMetalFusionInfoLabel(finfo, fusions.len - 1)));
     // the labels name the non-empty ops: RESHAPE and VIEW are filtered out
-    try std.testing.expectEqualStrings("SOFT_MAX+ARGSORT+GET_ROWS", std.mem.span(ggml_metal_fusion_info_label(finfo, 14)));
-    try std.testing.expectEqualStrings("MUL+ADD", std.mem.span(ggml_metal_fusion_info_label(finfo, 18)));
+    try std.testing.expectEqualStrings("SOFT_MAX+ARGSORT+GET_ROWS", std.mem.span(ggmlMetalFusionInfoLabel(finfo, 14)));
+    try std.testing.expectEqualStrings("MUL+ADD", std.mem.span(ggmlMetalFusionInfoLabel(finfo, 18)));
 
-    ggml_metal_fusion_info_count_fusion(finfo, &fusions[4]);
-    ggml_metal_fusion_info_count_fusion(finfo, &fusions[4]);
-    try std.testing.expectEqual(@as(u64, 2), ggml_metal_fusion_info_count(finfo, 4));
+    ggmlMetalFusionInfoCountFusion(finfo, &fusions[4]);
+    ggmlMetalFusionInfoCountFusion(finfo, &fusions[4]);
+    try std.testing.expectEqual(@as(u64, 2), ggmlMetalFusionInfoCount(finfo, 4));
 
-    ggml_metal_fusion_info_stats_reset(finfo);
-    try std.testing.expectEqual(@as(u64, 0), ggml_metal_fusion_info_count(finfo, 4));
+    ggmlMetalFusionInfoStatsReset(finfo);
+    try std.testing.expectEqual(@as(u64, 0), ggmlMetalFusionInfoCount(finfo, 4));
 }
 
 test "a pointer outside the table counts nothing" {
-    const finfo = ggml_metal_fusion_info_init(true, 1);
-    defer ggml_metal_fusion_info_free(finfo);
+    const finfo = ggmlMetalFusionInfoInit(true, 1);
+    defer ggmlMetalFusionInfoFree(finfo);
 
     const stray: Fusion = fusions[0];
-    ggml_metal_fusion_info_count_fusion(finfo, &stray);
+    ggmlMetalFusionInfoCountFusion(finfo, &stray);
     for (0..fusions.len) |i| {
-        try std.testing.expectEqual(@as(u64, 0), ggml_metal_fusion_info_count(finfo, @intCast(i)));
+        try std.testing.expectEqual(@as(u64, 0), ggmlMetalFusionInfoCount(finfo, @intCast(i)));
     }
 }
 
@@ -1554,14 +1620,14 @@ test "every entry's ops are its ops_all without the empty ones" {
 }
 
 test "without debug the info keeps no labels until stats are asked for" {
-    const finfo = ggml_metal_fusion_info_init(false, 0);
-    defer ggml_metal_fusion_info_free(finfo);
+    const finfo = ggmlMetalFusionInfoInit(false, 0);
+    defer ggmlMetalFusionInfoFree(finfo);
 
-    try std.testing.expect(!ggml_metal_fusion_info_enabled(finfo));
-    try std.testing.expect(!ggml_metal_fusion_info_stats(finfo));
-    try std.testing.expectEqual(@as(c_int, 0), ggml_metal_fusion_info_stats_get(finfo, null, null, 0));
+    try std.testing.expect(!ggmlMetalFusionInfoEnabled(finfo));
+    try std.testing.expect(!ggmlMetalFusionInfoStats(finfo));
+    try std.testing.expectEqual(@as(c_int, 0), ggmlMetalFusionInfoStatsGet(finfo, null, null, 0));
 
-    ggml_metal_fusion_info_stats_init(finfo);
-    try std.testing.expect(ggml_metal_fusion_info_stats(finfo));
-    try std.testing.expectEqual(@as(c_int, fusions.len), ggml_metal_fusion_info_stats_get(finfo, null, null, 0));
+    ggmlMetalFusionInfoStatsInit(finfo);
+    try std.testing.expect(ggmlMetalFusionInfoStats(finfo));
+    try std.testing.expectEqual(@as(c_int, fusions.len), ggmlMetalFusionInfoStatsGet(finfo, null, null, 0));
 }

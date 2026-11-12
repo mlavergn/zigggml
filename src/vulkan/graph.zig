@@ -77,7 +77,7 @@ const ggml_graph = @import("../graph.zig");
 const common = m.common;
 const vk = common.vk;
 const d = &common.dispatch;
-const allocator = common.allocator;
+const allocator = std.heap.c_allocator;
 const BackendCtx = m.context.BackendCtx;
 const CGraph = impl.CGraph;
 const Op = c.enum_ggml_op;
@@ -1230,7 +1230,7 @@ pub fn graphOptimize(backend: c.ggml_backend_t, cgraph: ?*c.ggml_cgraph, params:
         }
     }.f;
 
-    const gpa = m.common.allocator;
+    const gpa = std.heap.c_allocator;
     var new_order: std.ArrayList(*c.ggml_tensor) = .empty;
     defer new_order.deinit(gpa);
     new_order.ensureTotalCapacity(gpa, n) catch oom();
@@ -1420,7 +1420,7 @@ pub fn graphOptimize(backend: c.ggml_backend_t, cgraph: ?*c.ggml_cgraph, params:
                     const node_idxs = [_]c_int{ @intCast(rope_idx), @intCast(vi), @intCast(sr) };
                     const pull_ops = [_]Op{ node(nodes, rope_idx).op, c.GGML_OP_VIEW, c.GGML_OP_SET_ROWS };
                     const sr_c: c_int = @intCast(sr);
-                    var can_pull = ggml_graph.ggml_can_fuse_subgraph_ext(graph, &node_idxs, 3, &pull_ops, &sr_c, 1);
+                    var can_pull = ggml_graph.ggmlCanFuseSubgraphExt(graph, &node_idxs, 3, &pull_ops, &sr_c, 1);
 
                     var cc = rope_idx + 1;
                     while (can_pull and cc < sr) : (cc += 1) {

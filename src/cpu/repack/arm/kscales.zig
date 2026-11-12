@@ -31,7 +31,6 @@ const scales_size: usize = 12;
 
 /// Ports `decode_q_Kx8_6bit_scales` (arch/arm/repack.cpp:29 @cd959bae9).
 ///
-/// Parameters:
 /// - `scales_in`: the twelve packed bytes for one sub-block.
 /// - `out_mins`: receives the eight mins, widened to `i16`.
 /// - `out_scales`: receives the eight scales as bytes.
@@ -44,7 +43,7 @@ pub inline fn decodeQKx86BitScales(scales_in: [*]const u8, out_mins: *i16x8, out
     const mins_u32: @Vector(2, u32) = .{ mins_0_3, mins_4_7 };
 
     const mins_u8: @Vector(8, u8) = @bitCast(mins_u32);
-    out_mins.* = @bitCast(neon.movl_u8(mins_u8));
+    out_mins.* = @bitCast(neon.movlU8(mins_u8));
 
     var scales_u32: [2]u32 = undefined;
     scales_u32[0] = sm[0] & kmask1;

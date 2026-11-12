@@ -34,7 +34,7 @@ const batch_get = @import("batch_get.zig");
 const cu = common.cu;
 const c = impl.c;
 const Tensor = c.ggml_tensor;
-const allocator = common.allocator;
+const allocator = std.heap.c_allocator;
 const cudaCheck = common.cudaCheck;
 
 // -----------------------------------------------------------------------------
@@ -305,7 +305,7 @@ fn bufferTypeAllocBuffer(buft: c.ggml_backend_buffer_type_t, size: usize) callco
 
     const ctx = allocator.create(BufferCtx) catch impl.abort("ggml-cuda: out of memory");
     ctx.* = .{ .device = device, .dev_ptr = dev_ptr };
-    _ = std.fmt.bufPrintSentinel(&ctx.name, common.name ++ "{d}", .{device}, 0) catch unreachable;
+    _ = std.fmt.bufPrintSentinel(&ctx.name, common.name ++ "{d}", .{device}, 0) catch @panic("name buffer too small");
 
     return c.ggml_backend_buffer_init(buft, buffer_interface, ctx, size);
 }
@@ -369,7 +369,7 @@ pub fn bufferType(device: c_int) callconv(.c) c.ggml_backend_buffer_type_t {
         while (i < getDeviceCount()) : (i += 1) {
             const u: usize = @intCast(i);
             BufferTypes.ctxs[u] = .{ .device = i };
-            _ = std.fmt.bufPrintSentinel(&BufferTypes.ctxs[u].name, common.name ++ "{d}", .{i}, 0) catch unreachable;
+            _ = std.fmt.bufPrintSentinel(&BufferTypes.ctxs[u].name, common.name ++ "{d}", .{i}, 0) catch @panic("name buffer too small");
             BufferTypes.types[u] = .{
                 .iface = buffer_type_interface,
                 .device = c.ggml_backend_reg_dev_get(reg(), u),
@@ -751,9 +751,9 @@ fn deviceDescription(device: c_int, out: []u8) [:0]u8 {
     const prop_name = std.mem.sliceTo(@as([*:0]const u8, @ptrCast(&prop.name)), 0);
     if (inf.device_count > inf.physical_device_count) {
         const d = inf.devices[@intCast(device)];
-        return std.fmt.bufPrintSentinel(out, "{s} (dev p{d}/v{d})", .{ prop_name, d.physical_device, d.virtual_index }, 0) catch unreachable;
+        return std.fmt.bufPrintSentinel(out, "{s} (dev p{d}/v{d})", .{ prop_name, d.physical_device, d.virtual_index }, 0) catch @panic("name buffer too small");
     }
-    return std.fmt.bufPrintSentinel(out, "{s}", .{prop_name}, 0) catch unreachable;
+    return std.fmt.bufPrintSentinel(out, "{s}", .{prop_name}, 0) catch @panic("name buffer too small");
 }
 
 /// Ports `ggml_backend_cuda_get_device_description` (ggml-cuda.cu:5604 @cd959bae9).
@@ -1084,7 +1084,7 @@ const Features = struct {
     fn run() void {
         var n: usize = 0;
         // `STRINGIFY(__CUDA_ARCH_LIST__)`.
-        _ = std.fmt.bufPrintSentinel(&arch_list, "{d}", .{common.highestCompiledArch(std.math.maxInt(c_int))}, 0) catch unreachable;
+        _ = std.fmt.bufPrintSentinel(&arch_list, "{d}", .{common.highestCompiledArch(std.math.maxInt(c_int))}, 0) catch @panic("name buffer too small");
         list[n] = .{ .name = "ARCHS", .value = &arch_list };
         n += 1;
         list[n] = .{ .name = "USE_GRAPHS", .value = "1" };
@@ -1159,7 +1159,7 @@ pub fn reg() callconv(.c) c.ggml_backend_reg_t {
 
             const dev_ctx = &Registry.device_ctxs[i];
             dev_ctx.* = .{ .device = @intCast(i), .op_offload_min_batch_size = min_batch_size };
-            _ = std.fmt.bufPrintSentinel(&dev_ctx.name, common.name ++ "{d}", .{i}, 0) catch unreachable;
+            _ = std.fmt.bufPrintSentinel(&dev_ctx.name, common.name ++ "{d}", .{i}, 0) catch @panic("name buffer too small");
             _ = deviceDescription(@intCast(i), &dev_ctx.description);
 
             var pci_bus_id: [32]u8 = @splat(0);
@@ -1167,9 +1167,9 @@ pub fn reg() callconv(.c) c.ggml_backend_reg_t {
             const bus = std.mem.sliceTo(&pci_bus_id, 0);
             const written = if (virtual_devices)
                 // make the pci bus id unique for virtual devices
-                std.fmt.bufPrintSentinel(&dev_ctx.pci_bus_id, "{s}-v{d}", .{ bus, i }, 0) catch unreachable
+                std.fmt.bufPrintSentinel(&dev_ctx.pci_bus_id, "{s}-v{d}", .{ bus, i }, 0) catch @panic("name buffer too small")
             else
-                std.fmt.bufPrintSentinel(&dev_ctx.pci_bus_id, "{s}", .{bus}, 0) catch unreachable;
+                std.fmt.bufPrintSentinel(&dev_ctx.pci_bus_id, "{s}", .{bus}, 0) catch @panic("name buffer too small");
             for (written) |*ch| ch.* = std.ascii.toLower(ch.*);
 
             Registry.devices[i] = .{

@@ -27,7 +27,7 @@ const common = @import("common.zig");
 
 const vk = common.vk;
 const d = &common.dispatch;
-const allocator = common.allocator;
+const allocator = std.heap.c_allocator;
 
 comptime {
     // The C++ carries fallback declarations for headers that predate
@@ -412,7 +412,7 @@ const DeviceIdentity = struct {
 
 /// Ports `ggml_vk_instance_init` (ggml-vulkan.cpp:5220 @cd959bae9).
 ///
-/// Return: nothing; an error where the C++ throws. As in the C++, the
+/// - Returns: nothing; an error where the C++ throws. As in the C++, the
 /// instance counts as initialised from the moment it is created, so a
 /// failure after that is not retried.
 pub fn instanceInit() InitError!void {
@@ -871,7 +871,7 @@ pub fn getDeviceType(device_idx: usize) vk.VkPhysicalDeviceType {
 
 /// Ports `ggml_backend_vk_get_device_pci_id` (ggml-vulkan.cpp:15441 @cd959bae9).
 ///
-/// Return: the bus id, `dddd:bb:dd.f`, or an empty string when the device
+/// - Returns: the bus id, `dddd:bb:dd.f`, or an empty string when the device
 /// lacks `VK_EXT_pci_bus_info`.
 pub fn getDevicePciId(device_idx: usize, buf: *[16]u8) []const u8 {
     impl.assert(device_idx < instance.device_indices.items.len, "device_idx >= 0 && device_idx < (int) vk_instance.device_indices.size()");
@@ -890,7 +890,7 @@ pub fn getDevicePciId(device_idx: usize, buf: *[16]u8) []const u8 {
     const pci_function: u8 = @truncate(pci_bus_info.pciFunction);
     // `char pci_bus_id[16]` and `snprintf`: at most 15 characters.
     var tmp: [64]u8 = undefined;
-    const full = std.fmt.bufPrint(&tmp, "{x:0>4}:{x:0>2}:{x:0>2}.{x}", .{ pci_bus_info.pciDomain, pci_bus_info.pciBus, pci_bus_info.pciDevice, pci_function }) catch unreachable;
+    const full = std.fmt.bufPrint(&tmp, "{x:0>4}:{x:0>2}:{x:0>2}.{x}", .{ pci_bus_info.pciDomain, pci_bus_info.pciBus, pci_bus_info.pciDevice, pci_function }) catch @panic("name buffer too small");
     const n = @min(full.len, buf.len - 1);
     @memcpy(buf[0..n], full[0..n]);
     return buf[0..n];

@@ -80,7 +80,7 @@ fn normF32(params: *const ComputeParams, dst: *Tensor) void {
                     const xf: [*]const f32 = @ptrCast(@alignCast(x));
 
                     var sum: f32 = 0.0;
-                    vec.sum_f32(l.ne00, &sum, xf);
+                    vec.sumF32(l.ne00, &sum, xf);
                     var mean: f32 = sum / ne00f;
 
                     const yf: [*]f32 = @ptrCast(@alignCast(y));
@@ -95,7 +95,7 @@ fn normF32(params: *const ComputeParams, dst: *Tensor) void {
                     }
 
                     const scale = 1.0 / @sqrt(variance + eps);
-                    vec.scale_f32(l.ne00, yf, scale);
+                    vec.scaleF32(l.ne00, yf, scale);
                 } else {
                     var sum: f32 = 0.0;
                     var j00: i64 = 0;
@@ -125,8 +125,12 @@ fn normF32(params: *const ComputeParams, dst: *Tensor) void {
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardNorm, .{ .name = "ggml_compute_forward_norm" });
+}
+
 /// Ports `ggml_compute_forward_norm` (ops.cpp:4054 @cd959bae9).
-pub export fn ggml_compute_forward_norm(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardNorm(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
 
     switch (src0.type) {
@@ -209,20 +213,24 @@ fn rmsNormF32(comptime fuse_op: RmsNormFuseOp, params: *const ComputeParams, dst
                         y[j00] = x[j00] * scale * w[j00];
                     }
                 } else {
-                    const n = @as(usize, @intCast(l.ne00));
+                    const n: usize = @intCast(l.ne00);
                     // The allocator runs this op in place when its source dies
                     // here, so `y == x`: a self-`memcpy` the C tolerates and
                     // Zig's `@memcpy` rejects in a safe build.
                     if (y != x) @memcpy(y[0..n], x[0..n]);
-                    vec.scale_f32(l.ne00, y, scale);
+                    vec.scaleF32(l.ne00, y, scale);
                 }
             }
         }
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardRmsNorm, .{ .name = "ggml_compute_forward_rms_norm" });
+}
+
 /// Ports `ggml_compute_forward_rms_norm` (ops.cpp:4147 @cd959bae9).
-pub export fn ggml_compute_forward_rms_norm(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardRmsNorm(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
 
     switch (src0.type) {
@@ -231,10 +239,14 @@ pub export fn ggml_compute_forward_rms_norm(params: *const ComputeParams, dst: *
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardRmsNormMulFused, .{ .name = "ggml_compute_forward_rms_norm_mul_fused" });
+}
+
 /// Ports `ggml_compute_forward_rms_norm_mul_fused` (ops.cpp:4167 @cd959bae9):
 /// `dst_mul = rms_norm(src0) * src1` in one pass, without materialising the
 /// `rms_norm` result.
-pub export fn ggml_compute_forward_rms_norm_mul_fused(params: *const ComputeParams, dst_rms_norm: *Tensor, dst_mul: ?*Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardRmsNormMulFused(params: *const ComputeParams, dst_rms_norm: *Tensor, dst_mul: ?*Tensor) callconv(.c) void {
     impl.assert(dst_mul != null, "dst_mul != nullptr");
     const m = dst_mul.?;
     impl.assert(m.src[0] == dst_rms_norm or m.src[1] == dst_rms_norm, "dst_mul->src[0] == dst_rms_norm || dst_mul->src[1] == dst_rms_norm");
@@ -319,8 +331,12 @@ fn rmsNormBackF32(params: *const ComputeParams, dst: *Tensor) void {
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardRmsNormBack, .{ .name = "ggml_compute_forward_rms_norm_back" });
+}
+
 /// Ports `ggml_compute_forward_rms_norm_back` (ops.cpp:4346 @cd959bae9).
-pub export fn ggml_compute_forward_rms_norm_back(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardRmsNormBack(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
 
     switch (src0.type) {
@@ -412,15 +428,19 @@ fn groupNormF32(params: *const ComputeParams, dst: *Tensor) void {
                 var j01: i64 = 0;
                 while (j01 < l.ne01) : (j01 += 1) {
                     const y: [*]f32 = @ptrCast(@alignCast(dd + at(j01, l.nb1) + at(j02, l.nb2) + at(j03, l.nb3)));
-                    vec.scale_f32(l.ne00, y, scale);
+                    vec.scaleF32(l.ne00, y, scale);
                 }
             }
         }
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardGroupNorm, .{ .name = "ggml_compute_forward_group_norm" });
+}
+
 /// Ports `ggml_compute_forward_group_norm` (ops.cpp:4441 @cd959bae9).
-pub export fn ggml_compute_forward_group_norm(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardGroupNorm(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
 
     switch (src0.type) {
@@ -474,7 +494,7 @@ fn l2NormF32(params: *const ComputeParams, dst: *Tensor) void {
                     const n = @as(usize, @intCast(l.ne00)) * @sizeOf(f32);
                     // In place when the allocator reuses the source; see above.
                     if (y != x) @memcpy(y[0..n], x[0..n]);
-                    vec.scale_f32(l.ne00, @ptrCast(@alignCast(y)), scale);
+                    vec.scaleF32(l.ne00, @ptrCast(@alignCast(y)), scale);
                 } else {
                     j00 = 0;
                     while (j00 < l.ne00) : (j00 += 1) {
@@ -487,8 +507,12 @@ fn l2NormF32(params: *const ComputeParams, dst: *Tensor) void {
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardL2Norm, .{ .name = "ggml_compute_forward_l2_norm" });
+}
+
 /// Ports `ggml_compute_forward_l2_norm` (ops.cpp:4509 @cd959bae9).
-pub export fn ggml_compute_forward_l2_norm(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardL2Norm(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
 
     switch (src0.type) {

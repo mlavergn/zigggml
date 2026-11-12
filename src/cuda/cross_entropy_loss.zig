@@ -12,7 +12,6 @@
 //! `ggml_cuda_cross_entropy_loss` reduces the per-row losses with
 //! `sum_f32_cuda`, which is `sum.zig`'s.
 
-const std = @import("std");
 const impl = @import("../impl.zig");
 const common = @import("common.zig");
 const kernels = @import("kernels.zig");
@@ -23,10 +22,6 @@ const cu = common.cu;
 const Tensor = c.ggml_tensor;
 
 const warp_size = common.warp_size;
-
-/// Ports `CUDA_CROSS_ENTROPY_LOSS_BLOCK_SIZE` (cross-entropy-loss.cuh:3 @cd959bae9).
-/// Unused by the C's host code too.
-const block_size = 256;
 
 /// Ports `ggml_cuda_cross_entropy_loss` (cross-entropy-loss.cu:94 @cd959bae9).
 pub fn opCrossEntropyLoss(ctx: *common.Context, dst: *Tensor) void {

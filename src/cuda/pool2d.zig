@@ -7,7 +7,6 @@
 //! kernels, `pool2d_nchw_kernel` and (since v0.7.0) the warp-per-output
 //! `pool2d_nchw_kernel_warp`, stay CUDA.
 
-const std = @import("std");
 const impl = @import("../impl.zig");
 const common = @import("common.zig");
 const kernels = @import("kernels.zig");

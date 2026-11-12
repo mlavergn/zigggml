@@ -28,8 +28,6 @@ const getrows = @import("getrows.zig");
 const c = impl.c;
 const cu = common.cu;
 const Tensor = c.ggml_tensor;
-const half = kernels.half;
-const bf16 = kernels.bf16;
 
 fn i32Of(x: i64) c_int {
     return @truncate(x);
@@ -672,8 +670,8 @@ pub fn mulMatId(ctx: *common.Context, dst: *Tensor) void {
 
     // `ids_to_sorted_host`, with `ids_from_sorted_host` appended after it
     // as the C does once the loop is done.
-    const ids_sorted_host = common.allocator.alloc(i32, 2 * n_rows) catch impl.abort("out of memory");
-    defer common.allocator.free(ids_sorted_host);
+    const ids_sorted_host = std.heap.c_allocator.alloc(i32, 2 * n_rows) catch impl.abort("out of memory");
+    defer std.heap.c_allocator.free(ids_sorted_host);
     var n_to_sorted: usize = 0;
     const ids_from_sorted_host = ids_sorted_host[n_rows..];
     @memset(ids_from_sorted_host, 0);
@@ -681,8 +679,8 @@ pub fn mulMatId(ctx: *common.Context, dst: *Tensor) void {
     var ids_buf_dev = common.PoolAlloc(i32).initAlloc(ctx.pool(), 2 * n_rows);
     defer ids_buf_dev.deinit();
 
-    const tokens_per_expert = common.allocator.alloc(i32, @intCast(ne02)) catch impl.abort("out of memory");
-    defer common.allocator.free(tokens_per_expert);
+    const tokens_per_expert = std.heap.c_allocator.alloc(i32, @intCast(ne02)) catch impl.abort("out of memory");
+    defer std.heap.c_allocator.free(tokens_per_expert);
     @memset(tokens_per_expert, 0);
 
     const n_src1_sorted: usize = @intCast(ne12 * n_expert_used * ne10);
@@ -692,8 +690,8 @@ pub fn mulMatId(ctx: *common.Context, dst: *Tensor) void {
     var dst_sorted = common.PoolAlloc(u8).initAlloc(ctx.pool(), n_dst_sorted * ts_dst_sorted);
     defer dst_sorted.deinit();
 
-    const ids_host = common.allocator.alloc(u8, c.ggml_nbytes(ids)) catch impl.abort("out of memory");
-    defer common.allocator.free(ids_host);
+    const ids_host = std.heap.c_allocator.alloc(u8, c.ggml_nbytes(ids)) catch impl.abort("out of memory");
+    defer std.heap.c_allocator.free(ids_host);
     common.cudaCheck(cu.cudaMemcpyAsync(ids_host.ptr, ids.data, c.ggml_nbytes(ids), cu.cudaMemcpyDeviceToHost, stream), "cudaMemcpyAsync(ids_host.data(), ids->data, ggml_nbytes(ids), cudaMemcpyDeviceToHost, stream)", @src());
     common.cudaCheck(cu.cudaStreamSynchronize(stream), "cudaStreamSynchronize(stream)", @src());
 

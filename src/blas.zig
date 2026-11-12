@@ -37,11 +37,6 @@ const impl = @import("impl.zig");
 const c = impl.c;
 const Tensor = c.ggml_tensor;
 
-/// The C++ `new`s the context and the backend and `delete`s both in
-/// `ggml_backend_blas_free`; libc's allocator is what a C entry point can
-/// reach, as in `cpu/cpu_backend.zig`.
-const allocator = std.heap.c_allocator;
-
 /// `enum CBLAS_ORDER` and `enum CBLAS_TRANSPOSE` (vecLib's `cblas_new.h`).
 const cblas_row_major: c_int = 101;
 const cblas_no_trans: c_int = 111;
@@ -140,8 +135,8 @@ fn mulMat(ctx: *Context, dst: *Tensor) void {
     const desired_wsize: usize = if (@"type" == c.GGML_TYPE_F32) 0 else @as(usize, @intCast(ne03 * ne02 * ne_plane)) * @sizeOf(f32);
 
     if (ctx.work_size < desired_wsize) {
-        if (ctx.work_data) |w| allocator.free(w[0..ctx.work_size]);
-        ctx.work_data = (allocator.alloc(u8, desired_wsize) catch impl.abort("std::bad_alloc")).ptr;
+        if (ctx.work_data) |w| std.heap.c_allocator.free(w[0..ctx.work_size]);
+        ctx.work_data = (std.heap.c_allocator.alloc(u8, desired_wsize) catch impl.abort("std::bad_alloc")).ptr;
         ctx.work_size = desired_wsize;
     }
     // Unread unless src0 needs converting, when it has just been sized.
@@ -153,7 +148,7 @@ fn mulMat(ctx: *Context, dst: *Tensor) void {
         const to_float = type_traits.*.to_float;
 
         var tasks: std.ArrayList(std.Thread) = .empty;
-        defer tasks.deinit(allocator);
+        defer tasks.deinit(std.heap.c_allocator);
 
         var j03: i64 = 0;
         while (j03 < ne03) : (j03 += 1) {
@@ -173,7 +168,7 @@ fn mulMat(ctx: *Context, dst: *Tensor) void {
                     if (start < end) {
                         const t = std.Thread.spawn(.{}, convertRows, .{ to_float, x, nb01, wplane, ne00, start, end }) catch
                             impl.abort("std::system_error");
-                        tasks.append(allocator, t) catch impl.abort("std::bad_alloc");
+                        tasks.append(std.heap.c_allocator, t) catch impl.abort("std::bad_alloc");
                     }
                 }
                 {
@@ -264,9 +259,9 @@ fn getName(backend: c.ggml_backend_t) callconv(.c) [*c]const u8 {
 fn backendFree(backend: c.ggml_backend_t) callconv(.c) void {
     const b = impl.one(c.struct_ggml_backend, backend);
     const ctx: *Context = @ptrCast(@alignCast(b.context.?));
-    if (ctx.work_data) |w| allocator.free(w[0..ctx.work_size]);
-    allocator.destroy(ctx);
-    allocator.destroy(b);
+    if (ctx.work_data) |w| std.heap.c_allocator.free(w[0..ctx.work_size]);
+    std.heap.c_allocator.destroy(ctx);
+    std.heap.c_allocator.destroy(b);
 }
 
 /// Ports `ggml_backend_blas_graph_compute` (ggml-blas.cpp:226 @cd959bae9).
@@ -317,36 +312,48 @@ fn guid() c.ggml_guid_t {
     return &blas_guid;
 }
 
+comptime {
+    @export(&ggmlBackendBlasInit, .{ .name = "ggml_backend_blas_init" });
+}
+
 /// Ports `ggml_backend_blas_init` (ggml-blas.cpp:286 @cd959bae9).
 ///
-/// Return: a new BLAS backend, owned by the caller and freed with
+/// - Returns: a new BLAS backend, owned by the caller and freed with
 /// `ggml_backend_free`; null if allocation failed, where the C++'s `new`
 /// would throw.
-pub export fn ggml_backend_blas_init() callconv(.c) c.ggml_backend_t {
-    const ctx = allocator.create(Context) catch return null;
+pub fn ggmlBackendBlasInit() callconv(.c) c.ggml_backend_t {
+    const ctx = std.heap.c_allocator.create(Context) catch return null;
     ctx.* = .{};
 
-    const backend = allocator.create(c.struct_ggml_backend) catch {
-        allocator.destroy(ctx);
+    const backend = std.heap.c_allocator.create(c.struct_ggml_backend) catch {
+        std.heap.c_allocator.destroy(ctx);
         return null;
     };
     backend.* = .{
         .guid = guid(),
         .iface = backend_i,
-        .device = c.ggml_backend_reg_dev_get(ggml_backend_blas_reg(), 0),
+        .device = c.ggml_backend_reg_dev_get(ggmlBackendBlasReg(), 0),
         .context = ctx,
     };
     return backend;
 }
 
+comptime {
+    @export(&ggmlBackendIsBlas, .{ .name = "ggml_backend_is_blas" });
+}
+
 /// Ports `ggml_backend_is_blas` (ggml-blas.cpp:309 @cd959bae9).
-pub export fn ggml_backend_is_blas(backend: c.ggml_backend_t) callconv(.c) bool {
+pub fn ggmlBackendIsBlas(backend: c.ggml_backend_t) callconv(.c) bool {
     return backend != null and c.ggml_guid_matches(impl.one(c.struct_ggml_backend, backend).guid, guid());
 }
 
+comptime {
+    @export(&ggmlBackendBlasSetNThreads, .{ .name = "ggml_backend_blas_set_n_threads" });
+}
+
 /// Ports `ggml_backend_blas_set_n_threads` (ggml-blas.cpp:313 @cd959bae9).
-pub export fn ggml_backend_blas_set_n_threads(backend_blas: c.ggml_backend_t, n_threads: c_int) callconv(.c) void {
-    impl.assert(ggml_backend_is_blas(backend_blas), "ggml_backend_is_blas(backend_blas)");
+pub fn ggmlBackendBlasSetNThreads(backend_blas: c.ggml_backend_t, n_threads: c_int) callconv(.c) void {
+    impl.assert(ggmlBackendIsBlas(backend_blas), "ggml_backend_is_blas(backend_blas)");
 
     const ctx: *Context = @ptrCast(@alignCast(impl.one(c.struct_ggml_backend, backend_blas).context.?));
     ctx.n_threads = n_threads;
@@ -404,7 +411,7 @@ fn deviceGetProps(dev: c.ggml_backend_dev_t, props: *c.struct_ggml_backend_dev_p
 fn deviceInitBackend(dev: c.ggml_backend_dev_t, params: [*c]const u8) callconv(.c) c.ggml_backend_t {
     _ = dev;
     _ = params;
-    return ggml_backend_blas_init();
+    return ggmlBackendBlasInit();
 }
 
 /// Ports `ggml_backend_blas_device_get_buffer_type` (ggml-blas.cpp:383
@@ -534,7 +541,7 @@ fn regGetDevice(reg: c.ggml_backend_reg_t, index: usize) callconv(.c) c.ggml_bac
 fn regGetProcAddress(reg: c.ggml_backend_reg_t, name: [*c]const u8) callconv(.c) ?*anyopaque {
     _ = reg;
     if (std.mem.eql(u8, std.mem.span(@as([*:0]const u8, @ptrCast(name))), "ggml_backend_set_n_threads")) {
-        return @ptrCast(@constCast(&ggml_backend_blas_set_n_threads));
+        return @ptrCast(@constCast(&ggmlBackendBlasSetNThreads));
     }
     return null;
 }
@@ -553,10 +560,14 @@ var blas_reg = c.struct_ggml_backend_reg{
     .context = null,
 };
 
+comptime {
+    @export(&ggmlBackendBlasReg, .{ .name = "ggml_backend_blas_reg" });
+}
+
 /// Ports `ggml_backend_blas_reg` (ggml-blas.cpp:522 @cd959bae9).
 ///
-/// Return: the BLAS registration, a process-lifetime singleton.
-pub export fn ggml_backend_blas_reg() callconv(.c) c.ggml_backend_reg_t {
+/// - Returns: the BLAS registration, a process-lifetime singleton.
+pub fn ggmlBackendBlasReg() callconv(.c) c.ggml_backend_reg_t {
     return &blas_reg;
 }
 

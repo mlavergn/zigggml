@@ -8,7 +8,6 @@
 //! kernels -- `rwkv_wkv_f32`, `rwkv_wkv7_f32` and
 //! `rwkv_wkv7_f32_t1_warp_row` -- stay CUDA. Every launch is `<<<>>>`.
 
-const std = @import("std");
 const impl = @import("../impl.zig");
 const common = @import("common.zig");
 const kernels = @import("kernels.zig");

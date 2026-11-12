@@ -33,7 +33,6 @@
 //! polymorphic, and nothing here is ever deleted through a base pointer.
 //! The instances are `static` or leaked `new`s that live for the process.
 
-const std = @import("std");
 const impl = @import("../impl.zig");
 const defs = @import("defs.zig");
 
@@ -83,15 +82,18 @@ pub const ExtraBufferType = extern struct {
 /// its one-time initialiser has run.
 const cpu_backend = @import("cpu_backend.zig");
 
+comptime {
+    @export(&ggmlCpuExtraComputeForward, .{ .name = "ggml_cpu_extra_compute_forward" });
+}
+
 /// Ports `ggml_cpu_extra_compute_forward` (traits.cpp:12 @cd959bae9).
 ///
-/// Parameters:
 /// - `params`: this thread's slice of the work.
 /// - `op`: the node to compute.
 ///
-/// Return: true when an accelerator claimed the op and has computed it, in
+/// - Returns: true when an accelerator claimed the op and has computed it, in
 /// which case the caller skips its own kernel.
-pub export fn ggml_cpu_extra_compute_forward(params: *ComputeParams, op: *Tensor) callconv(.c) bool {
+pub fn ggmlCpuExtraComputeForward(params: *ComputeParams, op: *Tensor) callconv(.c) bool {
     for (cpu_backend.getExtraBufferTypes()) |extra| {
         const buft = extra orelse continue;
         const ctx = buft.*.context orelse continue;
@@ -103,15 +105,18 @@ pub export fn ggml_cpu_extra_compute_forward(params: *ComputeParams, op: *Tensor
     return false;
 }
 
+comptime {
+    @export(&ggmlCpuExtraWorkSize, .{ .name = "ggml_cpu_extra_work_size" });
+}
+
 /// Ports `ggml_cpu_extra_work_size` (traits.cpp:25 @cd959bae9).
 ///
-/// Parameters:
 /// - `n_threads`: the thread count the plan is being sized for.
 /// - `op`: the node.
 /// - `size`: receives the work-buffer bytes the accelerator needs.
 ///
-/// Return: true when an accelerator claimed the op and set `size`.
-pub export fn ggml_cpu_extra_work_size(n_threads: c_int, op: *const Tensor, size: *usize) callconv(.c) bool {
+/// - Returns: true when an accelerator claimed the op and set `size`.
+pub fn ggmlCpuExtraWorkSize(n_threads: c_int, op: *const Tensor, size: *usize) callconv(.c) bool {
     for (cpu_backend.getExtraBufferTypes()) |extra| {
         const buft = extra orelse continue;
         const ctx = buft.*.context orelse continue;

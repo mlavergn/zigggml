@@ -11,7 +11,6 @@
 //! The short-sequence kernel goes through `ggml_cuda_kernel_launch` (PDL);
 //! the long-token one through `<<<>>>`. That asymmetry is upstream's.
 
-const std = @import("std");
 const impl = @import("../impl.zig");
 const common = @import("common.zig");
 const kernels = @import("kernels.zig");
@@ -108,7 +107,6 @@ fn ssmConvF32Cuda(
 
 /// Ports `ggml_cuda_op_ssm_conv` (ssm-conv.cu:161 @cd959bae9).
 ///
-/// Parameters:
 /// - `bias_add_node`: the fused `ADD` whose other operand is the bias, or
 ///   null; never without `silu_dst`.
 /// - `silu_dst`: the fused `SILU`, which the result is written to, or null.

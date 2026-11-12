@@ -11,7 +11,6 @@
 //! `size_t` is an unsigned division, and the quotient is converted back to
 //! `int64_t`. Reproduced as such.
 
-const std = @import("std");
 const impl = @import("../impl.zig");
 const common = @import("common.zig");
 const kernels = @import("kernels.zig");

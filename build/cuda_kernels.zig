@@ -33,10 +33,9 @@ const Entry = struct {
 
 /// Entry point: reads every listing and writes the table.
 ///
-/// Parameters:
 /// - `init`: process capabilities supplied by the runtime (allocator, IO, args).
 ///
-/// Return: nothing on success; propagates read, write and allocation
+/// - Returns: nothing on success; propagates read, write and allocation
 /// failures; `error.BadUsage` for an odd argument count and
 /// `error.DuplicateKernel` when two different kernels of one library share a
 /// key, which would make the key ambiguous.
@@ -91,7 +90,7 @@ pub fn main(init: std.process.Init) !void {
         std.mem.sort(Entry, entries.items, {}, Entry.lessThan);
         for (entries.items[0..entries.items.len -| 1], entries.items[@min(1, entries.items.len)..]) |a, b| {
             if (std.mem.eql(u8, a.key, b.key)) {
-                std.debug.print("cuda_kernels: {s}: two kernels share the key {s}:\n  {s}\n  {s}\n", .{ name, a.key, a.mangled, b.mangled });
+                std.log.err("cuda_kernels: {s}: two kernels share the key {s}:\n  {s}\n  {s}", .{ name, a.key, a.mangled, b.mangled });
                 return error.DuplicateKernel;
             }
         }
@@ -114,10 +113,9 @@ pub fn main(init: std.process.Init) !void {
 
 /// Strips the return type and the parameter list from a demangled kernel.
 ///
-/// Parameters:
 /// - `demangled`: `cu++filt`'s output for one entry symbol.
 ///
-/// Return: a slice of `demangled`; `error.BadListing` when it does not end
+/// - Returns: a slice of `demangled`; `error.BadListing` when it does not end
 /// in a balanced parameter list.
 fn keyOf(demangled: []const u8) ![]const u8 {
     var s = std.mem.trim(u8, demangled, " \r");
@@ -144,7 +142,6 @@ fn keyOf(demangled: []const u8) ![]const u8 {
 
 /// Appends `s` as a Zig string literal.
 ///
-/// Parameters:
 /// - `gpa`: allocator for `out`.
 /// - `out`: the buffer being written.
 /// - `s`: the text; demangled names hold no control characters, but quotes

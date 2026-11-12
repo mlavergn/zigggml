@@ -66,14 +66,14 @@ pub const neon = @import("quants/arm/neon.zig");
 /// `GGML_F32_VEC` and its operations, for this build's target.
 pub const F32 = switch (builtin.cpu.arch) {
     .aarch64 => NeonF32,
-    .x86_64 => x86Arm(Avx512F32, AvxF32),
+    .x86_64 => X86Arm(Avx512F32, AvxF32),
     else => @compileError("no SIMD arm for " ++ @tagName(builtin.cpu.arch)),
 };
 
 /// `GGML_F16_VEC` and its operations, for this build's target.
 pub const F16 = switch (builtin.cpu.arch) {
     .aarch64 => if (neon.has_fp16_va) NeonF16x8 else NeonF32Cx4,
-    .x86_64 => x86Arm(Avx512F32Cx16, AvxF32Cx8),
+    .x86_64 => X86Arm(Avx512F32Cx16, AvxF32Cx8),
     else => @compileError("no SIMD arm for " ++ @tagName(builtin.cpu.arch)),
 };
 
@@ -93,7 +93,7 @@ fn x86Has(comptime feature: std.Target.x86.Feature) bool {
 /// The x86 arm `simd-mappings.h` would take, in its order -- `__AVX512F__`
 /// before `__AVX__`, which is before `__SSE3__` -- refusing the ones not
 /// ported rather than falling through to a different one.
-fn x86Arm(comptime Avx512: type, comptime Avx: type) type {
+fn X86Arm(comptime Avx512: type, comptime Avx: type) type {
     if (x86Has(.avx512f)) {
         if (x86Has(.avx512fp16)) @compileError("the __AVX512FP16__ arm of simd-mappings.h is not ported");
         return Avx512;
@@ -149,7 +149,7 @@ const NeonF32 = struct {
     /// Ports `GGML_F32x4_FMA` (simd-mappings.h:366 @cd959bae9): `a + b * cc`,
     /// fused -- `vfmaq_f32`.
     pub inline fn fma(a: Vec, b: Vec, cc: Vec) Vec {
-        return neon.fma_f32(a, b, cc);
+        return neon.fmaF32(a, b, cc);
     }
 
     /// Ports `GGML_F32x4_ADD` (simd-mappings.h:367 @cd959bae9).
@@ -159,7 +159,7 @@ const NeonF32 = struct {
 
     /// Ports `GGML_F32x4_MUL` (simd-mappings.h:368 @cd959bae9).
     pub inline fn mul(a: Vec, b: Vec) Vec {
-        return neon.mul_f32(a, b);
+        return neon.mulF32(a, b);
     }
 
     /// Ports `GGML_F32x4_REDUCE` (simd-mappings.h:370 @cd959bae9): halve,
@@ -174,7 +174,7 @@ const NeonF32 = struct {
     /// left out. `x` is overwritten, as the macro overwrites it.
     pub inline fn reduce(x: *[arr]Vec) f32 {
         halve(Vec, arr, x);
-        return neon.addvq_f32(x[0]);
+        return neon.addvqF32(x[0]);
     }
 };
 
@@ -211,12 +211,12 @@ const NeonF16x8 = struct {
     /// Ports `GGML_F16x8_FMA` (simd-mappings.h:408 @cd959bae9): `a + b * cc`
     /// in half precision, fused -- `vfmaq_f16`.
     pub inline fn fma(a: Vec, b: Vec, cc: Vec) Vec {
-        return neon.fma_f16(a, b, cc);
+        return neon.fmaF16(a, b, cc);
     }
 
     /// Ports `GGML_F16x8_ADD` (simd-mappings.h:409 @cd959bae9).
     pub inline fn add(a: Vec, b: Vec) Vec {
-        return neon.add_f16(a, b);
+        return neon.addF16(a, b);
     }
 
     /// Ports `GGML_F16x8_REDUCE` (simd-mappings.h:411 @cd959bae9): halve,
@@ -224,9 +224,9 @@ const NeonF16x8 = struct {
     /// `f32x4`, add, and one pairwise `vaddvq_f32`.
     pub inline fn reduce(x: *[arr]Vec) f32 {
         halve(Vec, arr, x);
-        const t0 = neon.cvt_f32_f16_half(x[0], false);
-        const t1 = neon.cvt_f32_f16_half(x[0], true);
-        return neon.addvq_f32(t0 + t1);
+        const t0 = neon.cvtF32F16Half(x[0], false);
+        const t1 = neon.cvtF32F16Half(x[0], true);
+        return neon.addvqF32(t0 + t1);
     }
 };
 
@@ -257,13 +257,13 @@ const NeonF32Cx4 = struct {
     /// Ports `GGML_F32Cx4_LOAD` (simd-mappings.h:449 @cd959bae9): `vld1_f16`
     /// then `vcvt_f32_f16`, an exact widening.
     pub inline fn load(p: [*]const u16) Vec {
-        return neon.cvt_f32_f16(neon.load_f16x4(p));
+        return neon.cvtF32F16(neon.loadF16x4(p));
     }
 
     /// Ports `GGML_F32Cx4_FMA` (simd-mappings.h:451 @cd959bae9): `a + b * cc`
     /// in `f32`, fused -- `vfmaq_f32`.
     pub inline fn fma(a: Vec, b: Vec, cc: Vec) Vec {
-        return neon.fma_f32(a, b, cc);
+        return neon.fmaF32(a, b, cc);
     }
 
     /// Ports `GGML_F32Cx4_ADD` (simd-mappings.h:452 @cd959bae9).
@@ -656,12 +656,11 @@ pub const strict_loop: StrictLoop = blk: {
 /// cost-model decision, not something the source states. Each call site is
 /// one that `make ops-diff` or the goldens showed needs it.
 ///
-/// Parameters:
 /// - `x`, `y`: the operands.
 /// - `start`, `end`: the half-open range.
 /// - `acc`: the running sum.
 ///
-/// Return: the sum with the range folded in.
+/// - Returns: the sum with the range folded in.
 pub inline fn strictDot(x: [*]const f32, y: [*]const f32, start: usize, end: usize, acc: f32) f32 {
     var sumf = acc;
     const t = end - start;
@@ -696,12 +695,11 @@ pub inline fn strictDot(x: [*]const f32, y: [*]const f32, start: usize, end: usi
 /// the difference is zero and those tokens take the all-fused scalar loop
 /// while the first one does not.
 ///
-/// Parameters:
 /// - `trip`: the loop's iteration count.
 /// - `store`: the first address the loop stores to.
 /// - `loads`: the first address of each array the loop loads.
 ///
-/// Return: true when the vectorized form runs.
+/// - Returns: true when the vectorized form runs.
 pub inline fn strictLoopVectorized(trip: i64, store: *const anyopaque, loads: []const *const anyopaque) bool {
     const group = strict_loop.group orelse return false;
     if (trip < group) return false;

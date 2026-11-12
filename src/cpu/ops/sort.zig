@@ -74,12 +74,16 @@ fn fillTyped(comptime T: type, params: *const ComputeParams, dst: *Tensor) void 
 
         const dst_ptr: [*]T = @ptrCast(@alignCast(dd + off(j03, nb3) + off(j02, nb2) + off(j01, nb1)));
 
-        if (T == f32) vec.set_f32(ne0, dst_ptr, cval) else vec.set_f16(ne0, dst_ptr, cval);
+        if (T == f32) vec.setF32(ne0, dst_ptr, cval) else vec.setF16(ne0, dst_ptr, cval);
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardFill, .{ .name = "ggml_compute_forward_fill" });
+}
+
 /// Ports `ggml_compute_forward_fill` (ops.cpp:2222 @cd959bae9).
-pub export fn ggml_compute_forward_fill(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardFill(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
 
     switch (src0.type) {
@@ -140,8 +144,12 @@ fn triF32(params: *const ComputeParams, dst: *Tensor) void {
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardTri, .{ .name = "ggml_compute_forward_tri" });
+}
+
 /// Ports `ggml_compute_forward_tri` (ops.cpp:2278 @cd959bae9).
-pub export fn ggml_compute_forward_tri(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardTri(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
 
     switch (src0.type) {
@@ -212,8 +220,12 @@ fn argsortF32(params: *const ComputeParams, dst: *Tensor) void {
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardArgsort, .{ .name = "ggml_compute_forward_argsort" });
+}
+
 /// Ports `ggml_compute_forward_argsort` (ops.cpp:8750 @cd959bae9).
-pub export fn ggml_compute_forward_argsort(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardArgsort(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
 
     switch (src0.type) {
@@ -277,8 +289,12 @@ fn topKF32(params: *const ComputeParams, dst: *Tensor) void {
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardTopK, .{ .name = "ggml_compute_forward_top_k" });
+}
+
 /// Ports `ggml_compute_forward_top_k` (ops.cpp:8816 @cd959bae9).
-pub export fn ggml_compute_forward_top_k(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardTopK(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
 
     switch (src0.type) {
@@ -367,8 +383,12 @@ inline fn butterfly(row: [*]f32, n: usize, len: usize) void {
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardFwht, .{ .name = "ggml_compute_forward_fwht" });
+}
+
 /// Ports `ggml_compute_forward_fwht` (ops.cpp:12429 @cd959bae9).
-pub export fn ggml_compute_forward_fwht(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardFwht(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src1 = impl.one(Tensor, dst.src[1]);
 
     switch (src1.type) {
@@ -376,6 +396,10 @@ pub export fn ggml_compute_forward_fwht(params: *const ComputeParams, dst: *Tens
         c.GGML_TYPE_F16 => fwhtImpl(c.ggml_fp16_t, params, dst),
         else => impl.abort("fatal error - fwht supports F32 and F16 input"),
     }
+}
+
+comptime {
+    @export(&ggmlComputeForwardTopKMask, .{ .name = "ggml_compute_forward_top_k_mask" });
 }
 
 /// Ports `ggml_compute_forward_top_k_mask` (ops.cpp:11662 @cd959bae9), new at
@@ -386,7 +410,7 @@ pub export fn ggml_compute_forward_fwht(params: *const ComputeParams, dst: *Tens
 /// each optional: without `score` every pick is live, without `blocks` a pick
 /// is a cell, and `mask` broadcasts over the rows of `top_k`. A pick or cell
 /// out of range is skipped, not an error.
-pub export fn ggml_compute_forward_top_k_mask(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardTopKMask(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const mask = impl.one(Tensor, dst.src[0]);
     const top_k = impl.one(Tensor, dst.src[1]);
     const score: ?*const Tensor = dst.src[2];

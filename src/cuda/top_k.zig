@@ -21,7 +21,6 @@
 //! select past 4096 columns, for one long row. The radix kernels were
 //! HIP-only through v0.6.0.
 
-const std = @import("std");
 const impl = @import("../impl.zig");
 const common = @import("common.zig");
 const kernels = @import("kernels.zig");

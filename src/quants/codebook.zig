@@ -110,10 +110,14 @@ inline fn unpackPositions(bits: u16, pos: *[8]i8) void {
     }
 }
 
+comptime {
+    @export(&iq2xsInitImpl, .{ .name = "iq2xs_init_impl" });
+}
+
 /// Ports `iq2xs_init_impl` (ggml-quants.c:2869 @cd959bae9).
 ///
 /// Idempotent: returns immediately if this type's codebook is already built.
-pub export fn iq2xs_init_impl(t: c.enum_ggml_type) void {
+pub fn iq2xsInitImpl(t: c.enum_ggml_type) callconv(.c) void {
     const gindex = iq2DataIndex(t);
     const grid_size = iq2GridSize(t);
     if (iq2_data[gindex].grid != null) return;
@@ -269,8 +273,12 @@ fn fillNeighbours(pattern: usize, grid: [*]u64, grid_size: usize, dists: [*]Dist
     return n;
 }
 
+comptime {
+    @export(&iq2xsFreeImpl, .{ .name = "iq2xs_free_impl" });
+}
+
 /// Ports `iq2xs_free_impl` (ggml-quants.c:3276 @cd959bae9).
-pub export fn iq2xs_free_impl(t: c.enum_ggml_type) void {
+pub fn iq2xsFreeImpl(t: c.enum_ggml_type) callconv(.c) void {
     const gindex = iq2DataIndex(t);
     if (iq2_data[gindex].grid) |g| {
         std.c.free(g);
@@ -332,8 +340,12 @@ inline fn unpackPositions3(bits: u16, pos: *[4]i8) void {
     }
 }
 
+comptime {
+    @export(&iq3xsInitImpl, .{ .name = "iq3xs_init_impl" });
+}
+
 /// Ports `iq3xs_init_impl` (ggml-quants.c:3719 @cd959bae9).
-pub export fn iq3xs_init_impl(grid_size_in: c_int) void {
+pub fn iq3xsInitImpl(grid_size_in: c_int) callconv(.c) void {
     const gindex = iq3DataIndex(grid_size_in);
     if (iq3_data[gindex].grid != null) return;
 
@@ -454,8 +466,12 @@ fn walkNeighbours(dists: [*]Dist, grid_size: usize, nwant: i32, out: ?[*]u16, lo
     return n;
 }
 
+comptime {
+    @export(&iq3xsFreeImpl, .{ .name = "iq3xs_free_impl" });
+}
+
 /// Ports `iq3xs_free_impl` (ggml-quants.c:3920 @cd959bae9).
-pub export fn iq3xs_free_impl(grid_size: c_int) void {
+pub fn iq3xsFreeImpl(grid_size: c_int) callconv(.c) void {
     const gindex = iq3DataIndex(grid_size);
     if (iq3_data[gindex].grid) |g| {
         std.c.free(g);
@@ -490,9 +506,9 @@ test {
 test "the codebooks build, are idempotent, and free cleanly" {
     // Building twice must not leak or rebuild: `ggml_quantize_init` is called
     // on every quantize, so the early-out is load-bearing rather than tidy.
-    iq2xs_init_impl(c.GGML_TYPE_IQ2_XXS);
+    iq2xsInitImpl(c.GGML_TYPE_IQ2_XXS);
     const first = iq2Grid(c.GGML_TYPE_IQ2_XXS);
-    iq2xs_init_impl(c.GGML_TYPE_IQ2_XXS);
+    iq2xsInitImpl(c.GGML_TYPE_IQ2_XXS);
     try std.testing.expectEqual(first, iq2Grid(c.GGML_TYPE_IQ2_XXS));
 
     // Every codebook entry decodes to odd values in 1..7, and the map finds
@@ -509,15 +525,15 @@ test "the codebooks build, are idempotent, and free cleanly" {
         try std.testing.expectEqual(@as(i32, @intCast(i)), map[index]);
     }
 
-    iq2xs_free_impl(c.GGML_TYPE_IQ2_XXS);
+    iq2xsFreeImpl(c.GGML_TYPE_IQ2_XXS);
     // Freeing twice is safe, which `ggml_quantize_free` relies on: it frees
     // every codebook unconditionally, built or not.
-    iq2xs_free_impl(c.GGML_TYPE_IQ2_XXS);
+    iq2xsFreeImpl(c.GGML_TYPE_IQ2_XXS);
 }
 
 test "a pattern with no exact entry gets a non-empty neighbour list" {
-    iq2xs_init_impl(c.GGML_TYPE_IQ2_XXS);
-    defer iq2xs_free_impl(c.GGML_TYPE_IQ2_XXS);
+    iq2xsInitImpl(c.GGML_TYPE_IQ2_XXS);
+    defer iq2xsFreeImpl(c.GGML_TYPE_IQ2_XXS);
 
     const map = iq2Map(c.GGML_TYPE_IQ2_XXS);
     const neighbours = iq2Neighbours(c.GGML_TYPE_IQ2_XXS);
@@ -537,7 +553,7 @@ test "a pattern with no exact entry gets a non-empty neighbour list" {
 
 test "the 3-bit codebooks build for both grid sizes" {
     for ([_]c_int{ 256, 512 }) |size| {
-        iq3xs_init_impl(size);
+        iq3xsInitImpl(size);
         const grid = iq3Grid(size);
         const map = iq3Map(size);
         for (0..@intCast(size)) |i| {
@@ -550,6 +566,6 @@ test "the 3-bit codebooks build for both grid sizes" {
             }
             try std.testing.expectEqual(@as(i32, @intCast(i)), map[index]);
         }
-        iq3xs_free_impl(size);
+        iq3xsFreeImpl(size);
     }
 }

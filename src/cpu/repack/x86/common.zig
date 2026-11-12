@@ -48,39 +48,39 @@ pub inline fn f32cx8RepeatLoad(x: *const [4]c.ggml_half) m256 {
 /// the `__F16C__` arm: the eight halves reordered by a byte shuffle, then
 /// widened.
 pub inline fn f32cx8RearrangeLoad(x: *const [8]c.ggml_half, arrangeMask: m128i) m256 {
-    return cvtph(avx.as([8]u16, avx.mm_shuffle_epi8(avx.mm_loadu_si128(x), arrangeMask)));
+    return cvtph(avx.as([8]u16, avx.mmShuffleEpi8(avx.mmLoaduSi128(x), arrangeMask)));
 }
 
 /// Ports `sum_i16_pairs_acc_int32x8` (arch/x86/repack.cpp:146 @cd959bae9).
-pub inline fn sum_i16_pairs_acc_int32x8(acc: m256i, x: m256i) m256i {
-    const ones = avx.mm256_set1_epi16(1);
-    return avx.mm256_add_epi32(acc, avx.mm256_madd_epi16(ones, x));
+pub inline fn sumI16PairsAccInt32x8(acc: m256i, x: m256i) m256i {
+    const ones = avx.mm256Set1Epi16(1);
+    return avx.mm256AddEpi32(acc, avx.mm256MaddEpi16(ones, x));
 }
 
 /// Ports `mul_sum_us8_pairs_acc_int32x8` (arch/x86/repack.cpp:151 @cd959bae9):
 /// the `__AVX512VNNI__ && __AVX512VL__` arm where the target has it, the
 /// plain arm otherwise -- no VNNI at x86-64-v3 or v4.
-pub inline fn mul_sum_us8_pairs_acc_int32x8(acc: m256i, ax: m256i, sy: m256i) m256i {
-    if (comptime avx.has_avx512vnni_vl) return avx.mm256_dpbusd_epi32(acc, ax, sy);
+pub inline fn mulSumUs8PairsAccInt32x8(acc: m256i, ax: m256i, sy: m256i) m256i {
+    if (comptime avx.has_avx512vnni_vl) return avx.mm256DpbusdEpi32(acc, ax, sy);
     if (comptime avx.has_avxvnni_only) @compileError("the __AVXVNNI__ arm of mul_sum_us8_pairs_acc_int32x8 is not ported");
-    const dot = avx.mm256_maddubs_epi16(ax, sy);
-    return sum_i16_pairs_acc_int32x8(acc, dot);
+    const dot = avx.mm256MaddubsEpi16(ax, sy);
+    return sumI16PairsAccInt32x8(acc, dot);
 }
 
 /// Ports `mul_sum_i8_pairs_acc_int32x8` (arch/x86/repack.cpp:165 @cd959bae9),
 /// the arm without `__AVXVNNIINT8__`.
-pub inline fn mul_sum_i8_pairs_acc_int32x8(acc: m256i, x: m256i, y: m256i) m256i {
+pub inline fn mulSumI8PairsAccInt32x8(acc: m256i, x: m256i, y: m256i) m256i {
     if (comptime avx.has_avxvnniint8) @compileError("the __AVXVNNIINT8__ arm of mul_sum_i8_pairs_acc_int32x8 is not ported");
-    const ax = avx.mm256_sign_epi8(x, x);
-    const sy = avx.mm256_sign_epi8(y, x);
-    return mul_sum_us8_pairs_acc_int32x8(acc, ax, sy);
+    const ax = avx.mm256SignEpi8(x, x);
+    const sy = avx.mm256SignEpi8(y, x);
+    return mulSumUs8PairsAccInt32x8(acc, ax, sy);
 }
 
 /// A 128-bit load repeated into both halves: the C's `_mm256_castsi128_si256`
 /// then `_mm256_permute2f128_si256(v, v, 0)`.
 pub inline fn repeat128(v: m128i) m256i {
-    const w = avx.mm256_castsi128_si256(v);
-    return avx.mm256_permute2f128_si256(w, w, 0);
+    const w = avx.mm256Castsi128Si256(v);
+    return avx.mm256Permute2f128Si256(w, w, 0);
 }
 
 // -----------------------------------------------------------------------------

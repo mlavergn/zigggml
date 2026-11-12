@@ -42,13 +42,17 @@ const QK_K = c.QK_K;
 // -----------------------------------------------------------------------------
 // q2_K -- 2 bits per weight, 16 sub-blocks of 16
 
+comptime {
+    @export(&quantizeRowQ2KRef, .{ .name = "quantize_row_q2_K_ref" });
+}
+
 /// Ports `quantize_row_q2_K_ref` (ggml-quants.c:900 @cd959bae9).
 ///
 /// Three passes: fit each sub-block's scale and min, quantize those 16 pairs
 /// against the block maxima into 4 bits each, then requantize the weights
 /// against the *rounded* scales -- not the fitted ones, so the error the
 /// rounding introduced is absorbed rather than compounded.
-pub export fn quantize_row_q2_K_ref(x_in: [*c]const f32, y: [*c]blocks.Q2_K, k: i64) void {
+pub fn quantizeRowQ2KRef(x_in: [*c]const f32, y: [*c]blocks.Q2_K, k: i64) callconv(.c) void {
     std.debug.assert(@rem(k, QK_K) == 0);
     const nb: usize = @intCast(@divExact(k, QK_K));
     var x = x_in;
@@ -122,8 +126,12 @@ pub export fn quantize_row_q2_K_ref(x_in: [*c]const f32, y: [*c]blocks.Q2_K, k: 
     }
 }
 
+comptime {
+    @export(&dequantizeRowQ2K, .{ .name = "dequantize_row_q2_K" });
+}
+
 /// Ports `dequantize_row_q2_K` (ggml-quants.c:970 @cd959bae9).
-pub export fn dequantize_row_q2_K(x: [*c]const blocks.Q2_K, y_in: [*c]f32, k: i64) void {
+pub fn dequantizeRowQ2K(x: [*c]const blocks.Q2_K, y_in: [*c]f32, k: i64) callconv(.c) void {
     std.debug.assert(@rem(k, QK_K) == 0);
     const nb: usize = @intCast(@divExact(k, QK_K));
     var y = y_in;
@@ -167,13 +175,17 @@ pub export fn dequantize_row_q2_K(x: [*c]const blocks.Q2_K, y_in: [*c]f32, k: i6
 // -----------------------------------------------------------------------------
 // q3_K -- 3 bits per weight, 16 sub-blocks of 16
 
+comptime {
+    @export(&quantizeRowQ3KRef, .{ .name = "quantize_row_q3_K_ref" });
+}
+
 /// Ports `quantize_row_q3_K_ref` (ggml-quants.c:1239 @cd959bae9).
 ///
 /// Symmetric, so there is no min. The 16 sub-block scales are signed 6-bit
 /// values biased by 32, split across `scales[0..12]`: the low four bits in the
 /// first eight bytes (packed two per byte) and the top two bits in the last
 /// four, at `2*(j/4)`.
-pub export fn quantize_row_q3_K_ref(x_in: [*c]const f32, y: [*c]blocks.Q3_K, k: i64) void {
+pub fn quantizeRowQ3KRef(x_in: [*c]const f32, y: [*c]blocks.Q3_K, k: i64) callconv(.c) void {
     std.debug.assert(@rem(k, QK_K) == 0);
     const nb: usize = @intCast(@divExact(k, QK_K));
     var x = x_in;
@@ -259,12 +271,16 @@ pub export fn quantize_row_q3_K_ref(x_in: [*c]const f32, y: [*c]blocks.Q3_K, k: 
     }
 }
 
+comptime {
+    @export(&dequantizeRowQ3K, .{ .name = "dequantize_row_q3_K" });
+}
+
 /// Ports `dequantize_row_q3_K` (ggml-quants.c:1315 @cd959bae9).
 ///
 /// Reassembles the 6-bit scales with the same word-at-a-time trick the C uses:
 /// the twelve bytes are read as four `u32`s and the high bits shuffled in
 /// four masked operations rather than sixteen scalar ones.
-pub export fn dequantize_row_q3_K(x: [*c]const blocks.Q3_K, y_in: [*c]f32, k: i64) void {
+pub fn dequantizeRowQ3K(x: [*c]const blocks.Q3_K, y_in: [*c]f32, k: i64) callconv(.c) void {
     std.debug.assert(@rem(k, QK_K) == 0);
     const nb: usize = @intCast(@divExact(k, QK_K));
     var y = y_in;
@@ -389,8 +405,12 @@ fn packScalesK(scales_out: [*]u8, scales: *const [QK_K / 32]f32, mins: *const [Q
     }
 }
 
+comptime {
+    @export(&quantizeRowQ4KRef, .{ .name = "quantize_row_q4_K_ref" });
+}
+
 /// Ports `quantize_row_q4_K_ref` (ggml-quants.c:1467 @cd959bae9).
-pub export fn quantize_row_q4_K_ref(x_in: [*c]const f32, y: [*c]blocks.Q4_K, k: i64) void {
+pub fn quantizeRowQ4KRef(x_in: [*c]const f32, y: [*c]blocks.Q4_K, k: i64) callconv(.c) void {
     std.debug.assert(@rem(k, QK_K) == 0);
     const nb: usize = @intCast(@divExact(k, QK_K));
     var x = x_in;
@@ -433,8 +453,12 @@ pub export fn quantize_row_q4_K_ref(x_in: [*c]const f32, y: [*c]blocks.Q4_K, k: 
     }
 }
 
+comptime {
+    @export(&dequantizeRowQ4K, .{ .name = "dequantize_row_q4_K" });
+}
+
 /// Ports `dequantize_row_q4_K` (ggml-quants.c:1539 @cd959bae9).
-pub export fn dequantize_row_q4_K(x: [*c]const blocks.Q4_K, y_in: [*c]f32, k: i64) void {
+pub fn dequantizeRowQ4K(x: [*c]const blocks.Q4_K, y_in: [*c]f32, k: i64) callconv(.c) void {
     std.debug.assert(@rem(k, QK_K) == 0);
     const nb: usize = @intCast(@divExact(k, QK_K));
     var y = y_in;
@@ -469,8 +493,12 @@ pub export fn dequantize_row_q4_K(x: [*c]const blocks.Q4_K, y_in: [*c]f32, k: i6
     }
 }
 
+comptime {
+    @export(&quantizeRowQ5KRef, .{ .name = "quantize_row_q5_K_ref" });
+}
+
 /// Ports `quantize_row_q5_K_ref` (ggml-quants.c:1654 @cd959bae9).
-pub export fn quantize_row_q5_K_ref(x_in: [*c]const f32, y: [*c]blocks.Q5_K, k: i64) void {
+pub fn quantizeRowQ5KRef(x_in: [*c]const f32, y: [*c]blocks.Q5_K, k: i64) callconv(.c) void {
     std.debug.assert(@rem(k, QK_K) == 0);
     const nb: usize = @intCast(@divExact(k, QK_K));
     var x = x_in;
@@ -535,8 +563,12 @@ pub export fn quantize_row_q5_K_ref(x_in: [*c]const f32, y: [*c]blocks.Q5_K, k: 
     }
 }
 
+comptime {
+    @export(&dequantizeRowQ5K, .{ .name = "dequantize_row_q5_K" });
+}
+
 /// Ports `dequantize_row_q5_K` (ggml-quants.c:1741 @cd959bae9).
-pub export fn dequantize_row_q5_K(x: [*c]const blocks.Q5_K, y_in: [*c]f32, k: i64) void {
+pub fn dequantizeRowQ5K(x: [*c]const blocks.Q5_K, y_in: [*c]f32, k: i64) callconv(.c) void {
     std.debug.assert(@rem(k, QK_K) == 0);
     const nb: usize = @intCast(@divExact(k, QK_K));
     var y = y_in;
@@ -583,12 +615,16 @@ pub export fn dequantize_row_q5_K(x: [*c]const blocks.Q5_K, y_in: [*c]f32, k: i6
 // -----------------------------------------------------------------------------
 // q6_K -- 6 bits per weight, 16 sub-blocks of 16, symmetric
 
+comptime {
+    @export(&quantizeRowQ6KRef, .{ .name = "quantize_row_q6_K_ref" });
+}
+
 /// Ports `quantize_row_q6_K_ref` (ggml-quants.c:1879 @cd959bae9).
 ///
 /// The most accurate K-quant: no min, and the sub-block scales are full signed
 /// bytes rather than packed 6-bit fields. Each weight is four low bits in `ql`
 /// and two high bits in `qh`.
-pub export fn quantize_row_q6_K_ref(x_in: [*c]const f32, y: [*c]blocks.Q6_K, k: i64) void {
+pub fn quantizeRowQ6KRef(x_in: [*c]const f32, y: [*c]blocks.Q6_K, k: i64) callconv(.c) void {
     std.debug.assert(@rem(k, QK_K) == 0);
     const nb: usize = @intCast(@divExact(k, QK_K));
     var x = x_in;
@@ -661,8 +697,12 @@ pub export fn quantize_row_q6_K_ref(x_in: [*c]const f32, y: [*c]blocks.Q6_K, k: 
     }
 }
 
+comptime {
+    @export(&dequantizeRowQ6K, .{ .name = "dequantize_row_q6_K" });
+}
+
 /// Ports `dequantize_row_q6_K` (ggml-quants.c:1949 @cd959bae9).
-pub export fn dequantize_row_q6_K(x: [*c]const blocks.Q6_K, y_in: [*c]f32, k: i64) void {
+pub fn dequantizeRowQ6K(x: [*c]const blocks.Q6_K, y_in: [*c]f32, k: i64) callconv(.c) void {
     std.debug.assert(@rem(k, QK_K) == 0);
     const nb: usize = @intCast(@divExact(k, QK_K));
     var y = y_in;
@@ -698,6 +738,10 @@ pub export fn dequantize_row_q6_K(x: [*c]const blocks.Q6_K, y_in: [*c]f32, k: i6
 // -----------------------------------------------------------------------------
 // q8_K -- the activation side of the K-quant dot products
 
+comptime {
+    @export(&quantizeRowQ8KRef, .{ .name = "quantize_row_q8_K_ref" });
+}
+
 /// Ports `quantize_row_q8_K_ref` (ggml-quants.c:2784 @cd959bae9).
 ///
 /// Never a stored weight format: this is what an activation is quantized into
@@ -707,7 +751,7 @@ pub export fn dequantize_row_q6_K(x: [*c]const blocks.Q6_K, y_in: [*c]f32, k: i6
 ///
 /// The scale divides by 127, not 128, and the C says why: 128 makes the AVX
 /// implementation of `iq2_xxs` awkward.
-pub export fn quantize_row_q8_K_ref(x_in: [*c]const f32, y: [*c]blocks.Q8_K, k: i64) void {
+pub fn quantizeRowQ8KRef(x_in: [*c]const f32, y: [*c]blocks.Q8_K, k: i64) callconv(.c) void {
     std.debug.assert(@rem(k, QK_K) == 0);
     const nb: usize = @intCast(@divExact(k, QK_K));
     var x = x_in;
@@ -747,8 +791,12 @@ pub export fn quantize_row_q8_K_ref(x_in: [*c]const f32, y: [*c]blocks.Q8_K, k: 
     }
 }
 
+comptime {
+    @export(&dequantizeRowQ8K, .{ .name = "dequantize_row_q8_K" });
+}
+
 /// Ports `dequantize_row_q8_K` (ggml-quants.c:2823 @cd959bae9).
-pub export fn dequantize_row_q8_K(x: [*c]const blocks.Q8_K, y_in: [*c]f32, k: i64) void {
+pub fn dequantizeRowQ8K(x: [*c]const blocks.Q8_K, y_in: [*c]f32, k: i64) callconv(.c) void {
     std.debug.assert(@rem(k, QK_K) == 0);
     const nb: usize = @intCast(@divExact(k, QK_K));
     var y = y_in;
@@ -790,7 +838,7 @@ fn checkK(
 
         const used = g.row_size * t.n_rows;
         std.testing.expectEqual(g.ref.?, t.fnv(buf[0..used])) catch |e| {
-            std.debug.print("{s}: quantize differs on pattern '{s}'\n", .{ name, pattern.name() });
+            std.log.warn("{s}: quantize differs on pattern '{s}'", .{ name, pattern.name() });
             return e;
         };
 
@@ -798,32 +846,32 @@ fn checkK(
         @memset(&out, 0);
         dequant(@ptrCast(@alignCast(&buf)), &out, @intCast(t.n_elem));
         std.testing.expectEqual(g.deq.?, t.fnv(std.mem.sliceAsBytes(out[0..]))) catch |e| {
-            std.debug.print("{s}: dequantize differs on pattern '{s}'\n", .{ name, pattern.name() });
+            std.log.warn("{s}: dequantize differs on pattern '{s}'", .{ name, pattern.name() });
             return e;
         };
     }
 }
 
 test "q2_K matches the C on every pattern" {
-    try checkK("Q2_K", blocks.Q2_K, quantize_row_q2_K_ref, dequantize_row_q2_K);
+    try checkK("Q2_K", blocks.Q2_K, quantizeRowQ2KRef, dequantizeRowQ2K);
 }
 
 test "q3_K matches the C on every pattern" {
-    try checkK("Q3_K", blocks.Q3_K, quantize_row_q3_K_ref, dequantize_row_q3_K);
+    try checkK("Q3_K", blocks.Q3_K, quantizeRowQ3KRef, dequantizeRowQ3K);
 }
 
 test "q4_K matches the C on every pattern" {
-    try checkK("Q4_K", blocks.Q4_K, quantize_row_q4_K_ref, dequantize_row_q4_K);
+    try checkK("Q4_K", blocks.Q4_K, quantizeRowQ4KRef, dequantizeRowQ4K);
 }
 
 test "q5_K matches the C on every pattern" {
-    try checkK("Q5_K", blocks.Q5_K, quantize_row_q5_K_ref, dequantize_row_q5_K);
+    try checkK("Q5_K", blocks.Q5_K, quantizeRowQ5KRef, dequantizeRowQ5K);
 }
 
 test "q6_K matches the C on every pattern" {
-    try checkK("Q6_K", blocks.Q6_K, quantize_row_q6_K_ref, dequantize_row_q6_K);
+    try checkK("Q6_K", blocks.Q6_K, quantizeRowQ6KRef, dequantizeRowQ6K);
 }
 
 test "q8_K matches the C on every pattern" {
-    try checkK("Q8_K", blocks.Q8_K, quantize_row_q8_K_ref, dequantize_row_q8_K);
+    try checkK("Q8_K", blocks.Q8_K, quantizeRowQ8KRef, dequantizeRowQ8K);
 }

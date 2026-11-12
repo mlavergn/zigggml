@@ -60,7 +60,7 @@ make bench ARGS="--full --backend CUDA0 --json" ZIG_ARGS="-Dcuda"
 ## Architecture
 
 ```
-src/            the ggml port (copied verbatim from llama.zig's src/ggml/; see UPSTREAM.md)
+src/            the ggml port (from llama.zig's src/ggml/, restyled; see UPSTREAM.md)
   module.zig      barrel: forces every ported translation unit into the archive
   cpu/ metal/ cuda/ vulkan/ quants/   backends and kernels
 vendor/ggml/    upstream inputs that are not Zig: headers, Metal .m and kernels,
@@ -69,7 +69,7 @@ build/ggml.zig  the library build: backends, header generation, nvcc/glslc steps
 cli/            zigggml-cli: devices, bench
   bench/          the port of test-backend-ops: runner, report, case lists
   bench/cases/    one file per test-backend-ops case class
-scripts/        sync (re-copy from llama.zig), vk-toolchain
+scripts/        sync (refresh vendor/, list upstream changes), vk-toolchain
 ```
 
-`make sync` re-copies everything from `../llama.zig`; `UPSTREAM.md` records the pin and the procedure.
+`make sync` re-copies `vendor/` from `../llama.zig` and lists the upstream changes to port by hand; `UPSTREAM.md` records the pin and the procedure.

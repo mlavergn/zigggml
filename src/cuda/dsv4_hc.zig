@@ -9,7 +9,6 @@
 //! `dsv4_hc_post_f32<has_comb, gated>` -- stay CUDA. All three launch through
 //! `ggml_cuda_kernel_launch` (PDL).
 
-const std = @import("std");
 const impl = @import("../impl.zig");
 const common = @import("common.zig");
 const kernels = @import("kernels.zig");

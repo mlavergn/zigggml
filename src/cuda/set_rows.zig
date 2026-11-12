@@ -16,7 +16,6 @@
 //! `k_set_rows` goes through `ggml_cuda_kernel_launch` (PDL);
 //! `k_set_rows_quant` through `<<<>>>`. Both are upstream's choice.
 
-const std = @import("std");
 const impl = @import("../impl.zig");
 const common = @import("common.zig");
 const kernels = @import("kernels.zig");

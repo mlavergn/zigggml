@@ -42,7 +42,6 @@
 //! emits no code for it and it has no symbol. Recorded here so its absence is
 //! a decision rather than an oversight.
 
-const std = @import("std");
 const impl = @import("../impl.zig");
 const convert = @import("convert.zig");
 const defs = @import("defs.zig");
@@ -408,11 +407,15 @@ comptime {
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardXielu, .{ .name = "ggml_compute_forward_xielu" });
+}
+
 /// Ports `ggml_compute_forward_xielu` (unary-ops.cpp:325 @cd959bae9).
 ///
 /// The only entry point that reads `op_params`, and the only one that goes
 /// through the functor family. Note the C reads indices **1 to 4**, not 0 to 3.
-pub export fn ggml_compute_forward_xielu(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardXielu(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const op: Xielu = .{
         .alpha_n = impl.getOpParamsF32(dst, 1),
         .alpha_p = impl.getOpParamsF32(dst, 2),

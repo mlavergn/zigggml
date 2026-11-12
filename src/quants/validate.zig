@@ -129,25 +129,28 @@ fn checkDVec(comptime Block: type, comptime nr: usize, data: [*]const u8, nb: us
     return true;
 }
 
+comptime {
+    @export(&ggmlValidateRowData, .{ .name = "ggml_validate_row_data" });
+}
+
 /// Ports `ggml_validate_row_data` (ggml-quants.c:5397 @cd959bae9).
 ///
-/// Parameters:
 /// - `t`: the format `data` is in.
 /// - `data`: the raw bytes.
 /// - `nbytes`: their length; must be a whole number of blocks.
 ///
-/// Return: false, with a message on stderr, if the data is not a whole number
+/// - Returns: false, with a message on stderr, if the data is not a whole number
 /// of blocks or any scale is an infinity or a NaN.
-pub export fn ggml_validate_row_data(t: c.enum_ggml_type, data: ?*const anyopaque, nbytes: usize) bool {
+pub fn ggmlValidateRowData(t: c.enum_ggml_type, data: ?*const anyopaque, nbytes: usize) callconv(.c) bool {
     if (t < 0 or t >= c.GGML_TYPE_COUNT) {
         warn("%s: invalid type %d\n", .{ "ggml_validate_row_data", @as(c_int, @intCast(t)) });
         return false;
     }
 
-    const type_size = types.ggml_type_size(t);
+    const type_size = types.ggmlTypeSize(t);
     if (nbytes % type_size != 0) {
         warn("%s: invalid size %zu for type %s (type size = %zu)\n", .{
-            "ggml_validate_row_data", nbytes, types.ggml_type_name(t), type_size,
+            "ggml_validate_row_data", nbytes, types.ggmlTypeName(t), type_size,
         });
         return false;
     }

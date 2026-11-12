@@ -21,7 +21,6 @@ pub extern fn ggml_cuda_cub_reduce_sum_f32(d_temp_storage: ?*anyopaque, tmp_size
 /// Ports `sum_f32_cuda` (sum.cu:11 @cd959bae9). Upstream ignores both of
 /// CUB's return values, and so does this.
 ///
-/// Parameters:
 /// - `pool`: the device's pool, for CUB's temporary storage.
 /// - `x`, `dst`: `ne` floats in, one float out.
 /// - `stream`: the stream the reduction runs on.

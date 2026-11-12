@@ -295,8 +295,12 @@ fn iq3XxsImpl(grid_size: c_int, x: [*]const f32, vy: ?*anyopaque, n: i64, quant_
     }
 }
 
+comptime {
+    @export(&quantizeIq3Xxs, .{ .name = "quantize_iq3_xxs" });
+}
+
 /// Ports `quantize_iq3_xxs` (ggml-quants.c:4168 @cd959bae9).
-pub export fn quantize_iq3_xxs(src: [*c]const f32, dst: ?*anyopaque, nrow: i64, n_per_row: i64, quant_weights: [*c]const f32) usize {
+pub fn quantizeIq3Xxs(src: [*c]const f32, dst: ?*anyopaque, nrow: i64, n_per_row: i64, quant_weights: [*c]const f32) callconv(.c) usize {
     impl.assert(@rem(n_per_row, QK_K) == 0, "n_per_row%QK_K == 0");
     const nblock: usize = @intCast(@divExact(n_per_row, QK_K));
     var qrow: [*]u8 = @ptrCast(dst.?);
@@ -309,8 +313,12 @@ pub export fn quantize_iq3_xxs(src: [*c]const f32, dst: ?*anyopaque, nrow: i64, 
     return @as(usize, @intCast(nrow)) * nblock * @sizeOf(blocks.IQ3_XXS);
 }
 
+comptime {
+    @export(&quantizeRowIq3XxsRef, .{ .name = "quantize_row_iq3_xxs_ref" });
+}
+
 /// Ports `quantize_row_iq3_xxs_ref` (ggml-quants.c:4180 @cd959bae9).
-pub export fn quantize_row_iq3_xxs_ref(x: [*c]const f32, y: [*c]blocks.IQ3_XXS, k: i64) void {
+pub fn quantizeRowIq3XxsRef(x: [*c]const f32, y: [*c]blocks.IQ3_XXS, k: i64) callconv(.c) void {
     std.debug.assert(@rem(k, QK_K) == 0);
     iq3XxsImpl(256, x, @ptrCast(y), k, null);
 }
@@ -520,8 +528,12 @@ fn iq3SImpl(block_size: usize, x: [*]const f32, vy: ?*anyopaque, n: i64, quant_w
     }
 }
 
+comptime {
+    @export(&quantizeIq3S, .{ .name = "quantize_iq3_s" });
+}
+
 /// Ports `quantize_iq3_s` (ggml-quants.c:4369 @cd959bae9).
-pub export fn quantize_iq3_s(src: [*c]const f32, dst: ?*anyopaque, nrow: i64, n_per_row: i64, quant_weights: [*c]const f32) usize {
+pub fn quantizeIq3S(src: [*c]const f32, dst: ?*anyopaque, nrow: i64, n_per_row: i64, quant_weights: [*c]const f32) callconv(.c) usize {
     impl.assert(@rem(n_per_row, QK_K) == 0, "n_per_row%QK_K == 0");
     const nblock: usize = @intCast(@divExact(n_per_row, QK_K));
     var qrow: [*]u8 = @ptrCast(dst.?);
@@ -534,8 +546,12 @@ pub export fn quantize_iq3_s(src: [*c]const f32, dst: ?*anyopaque, nrow: i64, n_
     return @as(usize, @intCast(nrow)) * nblock * @sizeOf(blocks.IQ3_S);
 }
 
+comptime {
+    @export(&quantizeRowIq3SRef, .{ .name = "quantize_row_iq3_s_ref" });
+}
+
 /// Ports `quantize_row_iq3_s_ref` (ggml-quants.c:4391 @cd959bae9).
-pub export fn quantize_row_iq3_s_ref(x: [*c]const f32, y: [*c]blocks.IQ3_S, k: i64) void {
+pub fn quantizeRowIq3SRef(x: [*c]const f32, y: [*c]blocks.IQ3_S, k: i64) callconv(.c) void {
     std.debug.assert(@rem(k, QK_K) == 0);
-    _ = quantize_iq3_s(x, @ptrCast(y), 1, k, null);
+    _ = quantizeIq3S(x, @ptrCast(y), 1, k, null);
 }

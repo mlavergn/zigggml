@@ -1425,11 +1425,19 @@ const all = .{
     silu_back,
 };
 
-export fn zz_kargs_count() usize {
+comptime {
+    @export(&zzKargsCount, .{ .name = "zz_kargs_count" });
+}
+
+fn zzKargsCount() callconv(.c) usize {
     return all.len;
 }
 
-export fn zz_kargs_name(i: usize) ?[*:0]const u8 {
+comptime {
+    @export(&zzKargsName, .{ .name = "zz_kargs_name" });
+}
+
+fn zzKargsName(i: usize) callconv(.c) ?[*:0]const u8 {
     @setEvalBranchQuota(200000);
     inline for (all, 0..) |T, k| {
         if (k == i) return @typeName(T)[(comptime std.mem.findScalarLast(u8, @typeName(T), '.').? + 1)..].ptr;
@@ -1437,7 +1445,11 @@ export fn zz_kargs_name(i: usize) ?[*:0]const u8 {
     return null;
 }
 
-export fn zz_kargs_sizeof(i: usize) usize {
+comptime {
+    @export(&zzKargsSizeof, .{ .name = "zz_kargs_sizeof" });
+}
+
+fn zzKargsSizeof(i: usize) callconv(.c) usize {
     @setEvalBranchQuota(200000);
     inline for (all, 0..) |T, k| {
         if (k == i) return @sizeOf(T);
@@ -1445,7 +1457,11 @@ export fn zz_kargs_sizeof(i: usize) usize {
     return std.math.maxInt(usize);
 }
 
-export fn zz_kargs_alignof(i: usize) usize {
+comptime {
+    @export(&zzKargsAlignof, .{ .name = "zz_kargs_alignof" });
+}
+
+fn zzKargsAlignof(i: usize) callconv(.c) usize {
     @setEvalBranchQuota(200000);
     inline for (all, 0..) |T, k| {
         if (k == i) return @alignOf(T);
@@ -1453,7 +1469,11 @@ export fn zz_kargs_alignof(i: usize) usize {
     return std.math.maxInt(usize);
 }
 
-export fn zz_kargs_nfields(i: usize) usize {
+comptime {
+    @export(&zzKargsNfields, .{ .name = "zz_kargs_nfields" });
+}
+
+fn zzKargsNfields(i: usize) callconv(.c) usize {
     @setEvalBranchQuota(200000);
     inline for (all, 0..) |T, k| {
         if (k == i) return @typeInfo(T).@"struct".field_names.len;
@@ -1461,7 +1481,11 @@ export fn zz_kargs_nfields(i: usize) usize {
     return std.math.maxInt(usize);
 }
 
-export fn zz_kargs_field_offset(i: usize, f: usize) usize {
+comptime {
+    @export(&zzKargsFieldOffset, .{ .name = "zz_kargs_field_offset" });
+}
+
+fn zzKargsFieldOffset(i: usize, f: usize) callconv(.c) usize {
     @setEvalBranchQuota(200000);
     inline for (all, 0..) |T, k| {
         if (k == i) {
@@ -1474,7 +1498,11 @@ export fn zz_kargs_field_offset(i: usize, f: usize) usize {
     return std.math.maxInt(usize);
 }
 
-export fn zz_kargs_field_size(i: usize, f: usize) usize {
+comptime {
+    @export(&zzKargsFieldSize, .{ .name = "zz_kargs_field_size" });
+}
+
+fn zzKargsFieldSize(i: usize, f: usize) callconv(.c) usize {
     @setEvalBranchQuota(200000);
     inline for (all, 0..) |T, k| {
         if (k == i) {
@@ -1487,7 +1515,11 @@ export fn zz_kargs_field_size(i: usize, f: usize) usize {
     return std.math.maxInt(usize);
 }
 
-export fn zz_kargs_field_name(i: usize, f: usize) ?[*:0]const u8 {
+comptime {
+    @export(&zzKargsFieldName, .{ .name = "zz_kargs_field_name" });
+}
+
+fn zzKargsFieldName(i: usize, f: usize) callconv(.c) ?[*:0]const u8 {
     @setEvalBranchQuota(200000);
     inline for (all, 0..) |T, k| {
         if (k == i) {

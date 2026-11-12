@@ -1,16 +1,16 @@
 #!/bin/bash
-# Re-copies ggml from llama.zig into zigggml (PLAN.md: llama.zig drives syncs
-# with upstream llama.cpp and pushes the ggml changes here).
+# Pulls upstream changes from llama.zig into zigggml (llama.zig drives syncs
+# with upstream llama.cpp; see UPSTREAM.md).
 #
-# Copies, replacing what is here:
-#   src/                  <- $LLAMA_ZIG/src/ggml/   (minus ported.zig, .mc.zig;
-#                                                    zigggml's own root.zig kept)
-#   build/{metal_embed,cuda_kernels,vulkan_shaders}.zig <- $LLAMA_ZIG/build/
-#   cli/cpu.zig           <- $LLAMA_ZIG/tools/common/cpu.zig
-#   vendor/ggml/          <- $LLAMA_ZIG/llama.cpp/ (LICENSE, ggml/include,
-#                            ggml/src/*.h, ggml-metal .m/.h/kernels,
-#                            ggml-cuda, ggml-vulkan/vulkan-shaders)
-# then rewrites UPSTREAM.md's pin section from both checkouts.
+# zigggml's Zig sources (src/, cli/cpu.zig, build/{metal_embed,cuda_kernels,
+# vulkan_shaders}.zig) began as copies of llama.zig's but have been restyled
+# to ZIGSTYLE.md, so they are never overwritten. This script:
+#   - re-copies vendor/ggml/ from $LLAMA_ZIG/llama.cpp/ (LICENSE, ggml/include,
+#     ggml/src/*.h, ggml-metal .m/.h/kernels, ggml-cuda,
+#     ggml-vulkan/vulkan-shaders);
+#   - lists what changed in llama.zig's src/ggml/ and those build tools since
+#     the pinned llama.zig commit, for porting by hand;
+#   - rewrites UPSTREAM.md's pin section from both checkouts.
 #
 # Usage: scripts/sync [LLAMA_ZIG]   (default ../llama.zig; or: make sync)
 set -euo pipefail
@@ -22,11 +22,15 @@ UP="$LZ/llama.cpp"
 
 cd "$ROOT"
 
-# Zig sources. --delete drops files llama.zig removed; root.zig is ours.
-rsync -a --delete --exclude ported.zig --exclude .mc.zig --exclude root.zig "$LZ/src/ggml/" src/
-
-cp "$LZ/build/metal_embed.zig" "$LZ/build/cuda_kernels.zig" "$LZ/build/vulkan_shaders.zig" build/
-cp "$LZ/tools/common/cpu.zig" cli/cpu.zig
+# Zig sources are restyled here: report llama.zig's changes since the pin.
+old_rev="$(sed -n 's/^- llama.zig: `\([0-9a-f]*\) .*/\1/p' UPSTREAM.md | head -1)"
+if [ -n "$old_rev" ] && git -C "$LZ" cat-file -e "$old_rev" 2>/dev/null; then
+    echo "llama.zig changes since $old_rev to port by hand:"
+    git -C "$LZ" diff --stat "$old_rev" HEAD -- src/ggml build/metal_embed.zig build/cuda_kernels.zig \
+        build/vulkan_shaders.zig build/llamacpp.zig tools/common/cpu.zig
+else
+    echo "sync: cannot find the pinned llama.zig commit; compare src/ by hand" >&2
+fi
 
 # Vendored upstream inputs.
 V=vendor/ggml
@@ -60,4 +64,4 @@ awk -v pinfile="$pin" '
 rm -f "$pin"
 
 echo "synced from $LZ: llama.zig $lz_rev, llama.cpp $up_rev"
-echo "next: make validate, then compare symbols (see UPSTREAM.md)"
+echo "next: port the listed changes into src/ (restyled), make validate, compare symbols (see UPSTREAM.md)"

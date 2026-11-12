@@ -207,7 +207,6 @@ fn mropeCacheInit(
 
 /// Ports `rotate_pairs` (ops.cpp:6276 @cd959bae9).
 ///
-/// Parameters:
 /// - `n`: elements to rotate, stepped two at a time.
 /// - `n_offset`: distance between the two halves of a pair.
 /// - `scale`: 2 everywhere except `GGML_ROPE_TYPE_NORMAL`, where it is 1 so
@@ -236,7 +235,6 @@ inline fn rotatePairs(comptime T: type, n: i64, n_offset: i64, cache: [*]const f
 
 /// Ports `ggml_compute_forward_rope_flt` (ops.cpp:6295 @cd959bae9).
 ///
-/// Parameters:
 /// - `T`: `f32` or `ggml_fp16_t`.
 /// - `forward`: false for `rope_back`, which rotates by the transpose — the
 ///   same rotation with the sine negated.
@@ -414,8 +412,12 @@ fn ropeFlt(comptime T: type, params: *const ComputeParams, dst: *Tensor, forward
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardRope, .{ .name = "ggml_compute_forward_rope" });
+}
+
 /// Ports `ggml_compute_forward_rope` (ops.cpp:6453 @cd959bae9).
-pub export fn ggml_compute_forward_rope(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardRope(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
 
     switch (src0.type) {
@@ -425,8 +427,12 @@ pub export fn ggml_compute_forward_rope(params: *const ComputeParams, dst: *Tens
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardRopeBack, .{ .name = "ggml_compute_forward_rope_back" });
+}
+
 /// Ports `ggml_compute_forward_rope_back` (ops.cpp:6477 @cd959bae9).
-pub export fn ggml_compute_forward_rope_back(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardRopeBack(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     const src0 = impl.one(Tensor, dst.src[0]);
 
     switch (src0.type) {

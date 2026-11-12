@@ -53,10 +53,14 @@ const impl = @import("impl.zig");
 /// libc++'s `constexpr mutex()`.
 export var ggml_critical_section_mutex: impl.CxxMutex = .{};
 
+comptime {
+    @export(&ggmlCriticalSectionStart, .{ .name = "ggml_critical_section_start" });
+}
+
 /// Ports `ggml_critical_section_start` (ggml-threading.cpp:6 @cd959bae9).
 ///
-/// Return: nothing. Blocks until the lock is held.
-export fn ggml_critical_section_start() callconv(.c) void {
+/// - Returns: nothing. Blocks until the lock is held.
+fn ggmlCriticalSectionStart() callconv(.c) void {
     // `std::mutex::lock` throws on error; a C ABI has nowhere to put that, and
     // the only documented failures here (deadlock, invalid mutex) are bugs
     // rather than conditions. The C++ would terminate; this returns having not
@@ -64,10 +68,14 @@ export fn ggml_critical_section_start() callconv(.c) void {
     ggml_critical_section_mutex.lock();
 }
 
+comptime {
+    @export(&ggmlCriticalSectionEnd, .{ .name = "ggml_critical_section_end" });
+}
+
 /// Ports `ggml_critical_section_end` (ggml-threading.cpp:10 @cd959bae9).
 ///
-/// Return: nothing.
-export fn ggml_critical_section_end() callconv(.c) void {
+/// - Returns: nothing.
+fn ggmlCriticalSectionEnd() callconv(.c) void {
     ggml_critical_section_mutex.unlock();
 }
 
@@ -81,10 +89,10 @@ test {
 test "the critical section is reentrant across sequential acquisitions" {
     // A plain (non-recursive) mutex, so this is lock/unlock twice in sequence,
     // not a nested lock. It is the shape every caller uses.
-    ggml_critical_section_start();
-    ggml_critical_section_end();
-    ggml_critical_section_start();
-    ggml_critical_section_end();
+    ggmlCriticalSectionStart();
+    ggmlCriticalSectionEnd();
+    ggmlCriticalSectionStart();
+    ggmlCriticalSectionEnd();
 }
 
 test "the critical section actually excludes" {
@@ -95,8 +103,8 @@ test "the critical section actually excludes" {
 
         fn bump(times: usize) void {
             for (0..times) |_| {
-                ggml_critical_section_start();
-                defer ggml_critical_section_end();
+                ggmlCriticalSectionStart();
+                defer ggmlCriticalSectionEnd();
                 // Deliberately non-atomic: the lock is what makes it safe.
                 value += 1;
             }

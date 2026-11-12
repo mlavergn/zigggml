@@ -162,13 +162,12 @@ const kernels = struct {
 
 /// Ports `ggml_compute_forward` (ggml-cpu.c:1754 @cd959bae9).
 ///
-/// Parameters:
 /// - `params`: this thread's index, count, and slice of the work buffer.
 /// - `tensor`: the node to compute, in place, into its own `data`.
 pub fn computeForward(params: *const ComputeParams, tensor: *Tensor) void {
     probe();
 
-    if (tensor.op == c.GGML_OP_NONE or types.ggml_is_empty(tensor)) return;
+    if (tensor.op == c.GGML_OP_NONE or types.ggmlIsEmpty(tensor)) return;
 
     // An extra-buffer op, handled by an accelerator rather than by us.
     if (ggml_cpu_extra_compute_forward(params, tensor)) return;
@@ -202,7 +201,7 @@ pub fn computeForward(params: *const ComputeParams, tensor: *Tensor) void {
         c.GGML_OP_RMS_NORM_BACK => kernels.ggml_compute_forward_rms_norm_back(params, tensor),
         c.GGML_OP_GROUP_NORM => kernels.ggml_compute_forward_group_norm(params, tensor),
         c.GGML_OP_L2_NORM => kernels.ggml_compute_forward_l2_norm(params, tensor),
-        c.GGML_OP_MUL_MAT => mulmat.ggml_compute_forward_mul_mat(params, tensor),
+        c.GGML_OP_MUL_MAT => mulmat.ggmlComputeForwardMulMat(params, tensor),
         c.GGML_OP_MUL_MAT_ID => mulmat.computeForwardMulMatId(params, tensor),
         c.GGML_OP_OUT_PROD => kernels.ggml_compute_forward_out_prod(params, tensor),
         c.GGML_OP_SCALE => kernels.ggml_compute_forward_scale(params, tensor),
@@ -299,7 +298,7 @@ test "an empty tensor is skipped before the switch" {
     tensor.op = c.GGML_OP_ADD;
     tensor.ne = .{ 4, 0, 1, 1 };
 
-    try std.testing.expect(types.ggml_is_empty(&tensor));
+    try std.testing.expect(types.ggmlIsEmpty(&tensor));
 }
 
 test "the shape-only ops are no-ops" {

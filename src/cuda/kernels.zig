@@ -45,7 +45,6 @@
 //! struct; that is `make cuda-struct-layout`'s job.
 
 const std = @import("std");
-const builtin = @import("builtin");
 const common = @import("common.zig");
 const gen = @import("cuda_kernels");
 
@@ -67,13 +66,12 @@ pub const Kernel = struct {
 
 /// Resolves a kernel at comptime.
 ///
-/// Parameters:
 /// - `library`: the translation unit's stem, e.g. `"binbcast"` or
 ///   `"mmq-instance-q4_k"`.
 /// - `key`: the demangled template spelling without return type or
 ///   parameters.
 ///
-/// Return: the kernel; a compile error when either is unknown.
+/// - Returns: the kernel; a compile error when either is unknown.
 pub fn get(comptime library: []const u8, comptime key: []const u8) Kernel {
     return comptime lookup(library, key);
 }
@@ -115,10 +113,9 @@ var checked: [gen.kernel_count]std.atomic.Value(bool) = @splat(.init(false));
 
 /// The kernel's handle, loading its library on first use.
 ///
-/// Parameters:
 /// - `k`: from `get`.
 ///
-/// Return: the context-independent handle; aborts if the driver refuses.
+/// - Returns: the context-independent handle; aborts if the driver refuses.
 pub fn handle(k: Kernel) cu.CUkernel {
     if (handles[k.index].load(.acquire)) |h| return @ptrCast(h);
     _ = std.c.pthread_mutex_lock(&load_mutex);
@@ -216,7 +213,6 @@ fn function(h: cu.CUkernel) cu.CUfunction {
 /// `kernel<<<grid, block, shmem, stream>>>(args...)`, then
 /// `CUDA_CHECK(cudaGetLastError())`.
 ///
-/// Parameters:
 /// - `k`: from `get`.
 /// - `p`: grid, block, dynamic shared memory and stream.
 /// - `args`: a tuple of the kernel's arguments, in order, each of exactly
@@ -269,7 +265,6 @@ pub fn launchPdl(k: Kernel, p: LaunchParams, args: anytype) void {
 /// `cudaLaunchKernelEx`, which the C does not call here. No PDL attribute:
 /// the C passes none.
 ///
-/// Parameters:
 /// - `k`: from `get`.
 /// - `p`: grid, block, dynamic shared memory and stream.
 /// - `args`: a tuple of the kernel's arguments, in order, each of exactly

@@ -35,7 +35,6 @@
 //! against `op_add` and friends. A comptime enum is the same decision made at
 //! the same time, without the function-pointer identity.
 
-const std = @import("std");
 const impl = @import("../impl.zig");
 const convert = @import("convert.zig");
 const defs = @import("defs.zig");
@@ -141,7 +140,7 @@ inline fn fromF32(comptime T: type, v: f32) T {
 
 /// Ports `get_thread_range` (ggml-cpu/common.h:88 @cd959bae9).
 ///
-/// Return: `.{ ir0, ir1 }`, the half-open row range this thread owns. The
+/// - Returns: `.{ ir0, ir1 }`, the half-open row range this thread owns. The
 /// last thread gets a short range rather than the division being exact.
 fn threadRange(params: *const ComputeParams, src0: *const Tensor) struct { i64, i64 } {
     const ith: i64 = params.ith;
@@ -324,22 +323,38 @@ fn binaryOp(comptime op: Op, params: *const ComputeParams, dst: *Tensor) void {
     }
 }
 
+comptime {
+    @export(&ggmlComputeForwardAddNonQuantized, .{ .name = "ggml_compute_forward_add_non_quantized" });
+}
+
 /// Ports `ggml_compute_forward_add_non_quantized` (binary-ops.cpp:140 @cd959bae9).
-pub export fn ggml_compute_forward_add_non_quantized(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardAddNonQuantized(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     binaryOp(.add, params, dst);
 }
 
+comptime {
+    @export(&ggmlComputeForwardSub, .{ .name = "ggml_compute_forward_sub" });
+}
+
 /// Ports `ggml_compute_forward_sub` (binary-ops.cpp:144 @cd959bae9).
-pub export fn ggml_compute_forward_sub(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardSub(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     binaryOp(.sub, params, dst);
 }
 
+comptime {
+    @export(&ggmlComputeForwardMul, .{ .name = "ggml_compute_forward_mul" });
+}
+
 /// Ports `ggml_compute_forward_mul` (binary-ops.cpp:148 @cd959bae9).
-pub export fn ggml_compute_forward_mul(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardMul(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     binaryOp(.mul, params, dst);
 }
 
+comptime {
+    @export(&ggmlComputeForwardDiv, .{ .name = "ggml_compute_forward_div" });
+}
+
 /// Ports `ggml_compute_forward_div` (binary-ops.cpp:152 @cd959bae9).
-pub export fn ggml_compute_forward_div(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
+pub fn ggmlComputeForwardDiv(params: *const ComputeParams, dst: *Tensor) callconv(.c) void {
     binaryOp(.div, params, dst);
 }

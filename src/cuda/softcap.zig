@@ -7,7 +7,6 @@
 //! `llama.cpp/ggml/src/ggml-cuda/softcap.cuh` at v0.9.0 (`cd959bae9`). The
 //! kernel, `softcap_f32`, stays CUDA.
 
-const std = @import("std");
 const impl = @import("../impl.zig");
 const common = @import("common.zig");
 const kernels = @import("kernels.zig");

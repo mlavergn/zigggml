@@ -10,7 +10,6 @@
 //! The block is `(1, 32, 1)` and the grid `(nrows, ceil(ncols / 32), 1)`:
 //! rows on x, columns on y.
 
-const std = @import("std");
 const impl = @import("../impl.zig");
 const common = @import("common.zig");
 const kernels = @import("kernels.zig");

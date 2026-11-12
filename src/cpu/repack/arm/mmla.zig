@@ -83,7 +83,7 @@ inline fn combineHigh(a: i32x4, b: i32x4) i32x4 {
 /// Four `f16` deltas from an interleaved block, widened: `vcvt_f32_f16(
 /// vld1_f16(p + 4 * j))`.
 inline fn deltas(p: *const [8]c.ggml_half, j: usize) f32x4 {
-    return neon.cvt_f32_f16(neon.load_f16x4(@as([*]const u16, @ptrCast(p)) + 4 * j));
+    return neon.cvtF32F16(neon.loadF16x4(@as([*]const u16, @ptrCast(p)) + 4 * j));
 }
 
 // -----------------------------------------------------------------------------
@@ -101,12 +101,11 @@ inline fn deltas(p: *const [8]c.ggml_half, j: usize) f32x4 {
 /// identical, all 445 lines. The C writes `smmla` as `.inst` encodings, so
 /// the assembler needs no i8mm of its own.
 ///
-/// Parameters:
 /// - `n`: the reduction length; `nb = n / 32` blocks.
 /// - `s`, `bs`: the result and its row stride in elements.
 /// - `vx`, `vy`: the interleaved weights and the quantized activations.
 /// - `nr`, `nc`: rows and columns of the product.
-pub fn gemmQ4_0_4x8(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) void {
+pub fn gemmQ404x8(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) void {
     const nb: usize = @intCast(@divTrunc(n, 32));
 
     const b_ptr: [*]const u8 = @ptrCast(vx);
@@ -572,7 +571,7 @@ inline fn pairedBsums(q8: *const blocks.block_q8_Kx4) [4][8]i16 {
     var arr: [4][8]i16 = undefined;
     inline for (0..4) |q8_row| {
         const bp: [*]const i16 = @as([*]const i16, @ptrCast(&q8.bsums)) + 16 * q8_row;
-        arr[q8_row] = neon.paddq_s16(loadq16(bp), loadq16(bp + 8));
+        arr[q8_row] = neon.paddqS16(loadq16(bp), loadq16(bp + 8));
     }
     return arr;
 }
@@ -704,7 +703,7 @@ fn gemmQ45K8x8(comptime kind: Q45, n: c_int, s: [*]f32, bs: usize, vx: *const an
                                     const hbit_lo = neon.@"and"(qh[cp][k], mone);
                                     const hbit_hi = neon.shlN(neon.@"and"(qh[cp][k], mtwo), 3);
                                     qh[cp][k] = neon.shrN(qh[cp][k], 2);
-                                    w[0][k] = @bitCast(neon.sli_n_u8(neon.@"and"(qs_cp[k], m4b), hbit_lo, 4));
+                                    w[0][k] = @bitCast(neon.sliNU8(neon.@"and"(qs_cp[k], m4b), hbit_lo, 4));
                                     w[1][k] = @bitCast(neon.orr(neon.shrN(qs_cp[k], 4), hbit_hi));
                                 },
                             }
@@ -716,7 +715,7 @@ fn gemmQ45K8x8(comptime kind: Q45, n: c_int, s: [*]f32, bs: usize, vx: *const an
                             inline for (0..2) |blk| {
                                 var a = sb_acc[2 * rp + blk];
                                 inline for (0..4) |qs_offset| {
-                                    a = neon.mmlaq_s32(a, w[blk][qs_offset], q8s[rp][4 * blk + qs_offset]);
+                                    a = neon.mmlaqS32(a, w[blk][qs_offset], q8s[rp][4 * blk + qs_offset]);
                                 }
                                 sb_acc[2 * rp + blk] = a;
                             }
@@ -727,20 +726,20 @@ fn gemmQ45K8x8(comptime kind: Q45, n: c_int, s: [*]f32, bs: usize, vx: *const an
                         const block_scale_0 = pairScale(sb_scales[0][so], sb_scales[0][so + 1]);
                         const block_scale_1 = pairScale(sb_scales[1][so], sb_scales[1][so + 1]);
 
-                        acc[cp] = neon.mlaq_s32(acc[cp], sb_acc[0], block_scale_0);
-                        acc[cp + 4] = neon.mlaq_s32(acc[cp + 4], sb_acc[2], block_scale_0);
-                        acc[cp] = neon.mlaq_s32(acc[cp], sb_acc[1], block_scale_1);
-                        acc[cp + 4] = neon.mlaq_s32(acc[cp + 4], sb_acc[3], block_scale_1);
+                        acc[cp] = neon.mlaqS32(acc[cp], sb_acc[0], block_scale_0);
+                        acc[cp + 4] = neon.mlaqS32(acc[cp + 4], sb_acc[2], block_scale_0);
+                        acc[cp] = neon.mlaqS32(acc[cp], sb_acc[1], block_scale_1);
+                        acc[cp + 4] = neon.mlaqS32(acc[cp + 4], sb_acc[3], block_scale_1);
                     }
 
                     // The mins against the bsums both halves share.
                     inline for (0..4) |q8_row| {
                         const bsums_vec_lo: i16x4 = @splat(bsums_arr[sb][q8_row * 2]);
                         const bsums_vec_hi: i16x4 = @splat(bsums_arr[sb][q8_row * 2 + 1]);
-                        bias_acc[2 * q8_row] = neon.mlal_s16(bias_acc[2 * q8_row], bsums_vec_lo, neon.low(sb_mins[0]));
-                        bias_acc[2 * q8_row] = neon.mlal_s16(bias_acc[2 * q8_row], bsums_vec_hi, neon.low(sb_mins[1]));
-                        bias_acc[2 * q8_row + 1] = neon.mlal_s16(bias_acc[2 * q8_row + 1], bsums_vec_lo, neon.high(sb_mins[0]));
-                        bias_acc[2 * q8_row + 1] = neon.mlal_s16(bias_acc[2 * q8_row + 1], bsums_vec_hi, neon.high(sb_mins[1]));
+                        bias_acc[2 * q8_row] = neon.mlalS16(bias_acc[2 * q8_row], bsums_vec_lo, neon.low(sb_mins[0]));
+                        bias_acc[2 * q8_row] = neon.mlalS16(bias_acc[2 * q8_row], bsums_vec_hi, neon.low(sb_mins[1]));
+                        bias_acc[2 * q8_row + 1] = neon.mlalS16(bias_acc[2 * q8_row + 1], bsums_vec_lo, neon.high(sb_mins[0]));
+                        bias_acc[2 * q8_row + 1] = neon.mlalS16(bias_acc[2 * q8_row + 1], bsums_vec_hi, neon.high(sb_mins[1]));
                     }
                 }
 
@@ -752,8 +751,8 @@ fn gemmQ45K8x8(comptime kind: Q45, n: c_int, s: [*]f32, bs: usize, vx: *const an
                         const dmins = deltas(&q_ptr[b].dmin, j) * q8_d;
                         const scale = deltas(&q_ptr[b].d, j) * q8_d;
 
-                        acc_f32[2 * i + j] = neon.mlsq_f32(acc_f32[2 * i + j], neon.cvt_f32_s32(bias_acc[2 * i + j]), dmins);
-                        acc_f32[2 * i + j] = neon.mlaq_f32(acc_f32[2 * i + j], neon.cvt_f32_s32(reorder_acc[2 * i + j]), scale);
+                        acc_f32[2 * i + j] = neon.mlsqF32(acc_f32[2 * i + j], neon.cvtF32S32(bias_acc[2 * i + j]), dmins);
+                        acc_f32[2 * i + j] = neon.mlaqF32(acc_f32[2 * i + j], neon.cvtF32S32(reorder_acc[2 * i + j]), scale);
                     }
                 }
             }
@@ -765,12 +764,12 @@ fn gemmQ45K8x8(comptime kind: Q45, n: c_int, s: [*]f32, bs: usize, vx: *const an
 }
 
 /// `ggml_gemm_q4_K_8x8_q8_K`'s i8mm arm; see `gemmQ45K8x8`.
-pub fn gemmQ4_K_8x8(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) void {
+pub fn gemmQ4K8x8(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) void {
     gemmQ45K8x8(.q4_K, n, s, bs, vx, vy, nr, nc);
 }
 
 /// `ggml_gemm_q5_K_8x8_q8_K`'s i8mm arm; see `gemmQ45K8x8`.
-pub fn gemmQ5_K_8x8(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) void {
+pub fn gemmQ5K8x8(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) void {
     gemmQ45K8x8(.q5_K, n, s, bs, vx, vy, nr, nc);
 }
 
@@ -783,7 +782,7 @@ pub fn gemmQ5_K_8x8(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *c
 /// no mins -- so the epilogue is the scaled sum alone. The scales are one
 /// signed byte per sixteen weights, widened through `vmovl_s8` in the C,
 /// which for a value read as `i32` is the identity.
-pub fn gemmQ6_K_8x8(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) void {
+pub fn gemmQ6K8x8(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) void {
     const nb: usize = @intCast(@divTrunc(n, QK_K));
     const ncols_interleaved = 8;
     const m4b: u8x16 = @splat(0x0f);
@@ -864,26 +863,26 @@ pub fn gemmQ6_K_8x8(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *c
                             const h1_bits = q6_qh_1[cp];
 
                             // q6 = (low4 | high2 << 4) - 32.
-                            const q6_l0 = neon.sub(@as(i8x16, @bitCast(neon.sli_n_u8(neon.@"and"(l0_bits, m4b), neon.@"and"(h0_bits, mask_lo), 4))), m32s);
-                            const q6_l1 = neon.sub(@as(i8x16, @bitCast(neon.sli_n_u8(neon.@"and"(l1_bits, m4b), neon.@"and"(h1_bits, mask_lo), 4))), m32s);
+                            const q6_l0 = neon.sub(@as(i8x16, @bitCast(neon.sliNU8(neon.@"and"(l0_bits, m4b), neon.@"and"(h0_bits, mask_lo), 4))), m32s);
+                            const q6_l1 = neon.sub(@as(i8x16, @bitCast(neon.sliNU8(neon.@"and"(l1_bits, m4b), neon.@"and"(h1_bits, mask_lo), 4))), m32s);
                             const q6_h0 = neon.sub(@as(i8x16, @bitCast(neon.orr(neon.shrN(l0_bits, 4), neon.@"and"(h0_bits, mask_hi)))), m32s);
                             const q6_h1 = neon.sub(@as(i8x16, @bitCast(neon.orr(neon.shrN(l1_bits, 4), neon.@"and"(h1_bits, mask_hi)))), m32s);
 
                             const zero: i32x4 = @splat(0);
-                            const sb_acc_0l = neon.mmlaq_s32(neon.mmlaq_s32(zero, q6_l0, q8_l_01[0]), q6_l1, q8_l_01[1]);
-                            const sb_acc_0h = neon.mmlaq_s32(neon.mmlaq_s32(zero, q6_h0, q8_h_01[0]), q6_h1, q8_h_01[1]);
-                            const sb_acc_1l = neon.mmlaq_s32(neon.mmlaq_s32(zero, q6_l0, q8_l_23[0]), q6_l1, q8_l_23[1]);
-                            const sb_acc_1h = neon.mmlaq_s32(neon.mmlaq_s32(zero, q6_h0, q8_h_23[0]), q6_h1, q8_h_23[1]);
+                            const sb_acc_0l = neon.mmlaqS32(neon.mmlaqS32(zero, q6_l0, q8_l_01[0]), q6_l1, q8_l_01[1]);
+                            const sb_acc_0h = neon.mmlaqS32(neon.mmlaqS32(zero, q6_h0, q8_h_01[0]), q6_h1, q8_h_01[1]);
+                            const sb_acc_1l = neon.mmlaqS32(neon.mmlaqS32(zero, q6_l0, q8_l_23[0]), q6_l1, q8_l_23[1]);
+                            const sb_acc_1h = neon.mmlaqS32(neon.mmlaqS32(zero, q6_h0, q8_h_23[0]), q6_h1, q8_h_23[1]);
 
                             const scale_idx_l = half * 8 + sb;
                             const scale_idx_h = half * 8 + sb + 4;
                             const scale_vec_l = pairScale(q6_scales[scale_idx_l * 8 + cp * 2], q6_scales[scale_idx_l * 8 + cp * 2 + 1]);
                             const scale_vec_h = pairScale(q6_scales[scale_idx_h * 8 + cp * 2], q6_scales[scale_idx_h * 8 + cp * 2 + 1]);
 
-                            acc[cp] = neon.mlaq_s32(acc[cp], sb_acc_0l, scale_vec_l);
-                            acc[cp] = neon.mlaq_s32(acc[cp], sb_acc_0h, scale_vec_h);
-                            acc[cp + 4] = neon.mlaq_s32(acc[cp + 4], sb_acc_1l, scale_vec_l);
-                            acc[cp + 4] = neon.mlaq_s32(acc[cp + 4], sb_acc_1h, scale_vec_h);
+                            acc[cp] = neon.mlaqS32(acc[cp], sb_acc_0l, scale_vec_l);
+                            acc[cp] = neon.mlaqS32(acc[cp], sb_acc_0h, scale_vec_h);
+                            acc[cp + 4] = neon.mlaqS32(acc[cp + 4], sb_acc_1l, scale_vec_l);
+                            acc[cp + 4] = neon.mlaqS32(acc[cp + 4], sb_acc_1h, scale_vec_h);
                         }
                     }
                 }
@@ -895,7 +894,7 @@ pub fn gemmQ6_K_8x8(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *c
                     for (0..2) |j| {
                         const q8_d: f32x4 = @splat(q8_ptr[b].d[i]);
                         const scale = deltas(&q6_ptr[b].d, j) * q8_d;
-                        acc_f32[2 * i + j] = neon.mlaq_f32(acc_f32[2 * i + j], neon.cvt_f32_s32(reorder_acc[2 * i + j]), scale);
+                        acc_f32[2 * i + j] = neon.mlaqF32(acc_f32[2 * i + j], neon.cvtF32S32(reorder_acc[2 * i + j]), scale);
                     }
                 }
             }
@@ -914,7 +913,7 @@ pub fn gemmQ6_K_8x8(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *c
 /// Activations go in as `smmla`'s first operand here, so each accumulator
 /// is a row-major 2x2 tile -- `[r0c0, r0c1, r1c0, r1c1]` -- and four
 /// recombines make whole rows, with no zip.
-pub fn gemmQ8_0_4x8(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) void {
+pub fn gemmQ804x8(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *const anyopaque, nr: c_int, nc: c_int) void {
     const nb: usize = @intCast(@divTrunc(n, c.QK8_0));
     const ncols_interleaved = 4;
 
@@ -943,10 +942,10 @@ pub fn gemmQ8_0_4x8(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *c
                     const b01 = loadq(@as([*]const i8, &b_ptr[b].qs) + chunk * 32);
                     const b23 = loadq(@as([*]const i8, &b_ptr[b].qs) + chunk * 32 + 16);
 
-                    acc[0] = neon.mmlaq_s32(acc[0], a01, b01);
-                    acc[1] = neon.mmlaq_s32(acc[1], a01, b23);
-                    acc[2] = neon.mmlaq_s32(acc[2], a23, b01);
-                    acc[3] = neon.mmlaq_s32(acc[3], a23, b23);
+                    acc[0] = neon.mmlaqS32(acc[0], a01, b01);
+                    acc[1] = neon.mmlaqS32(acc[1], a01, b23);
+                    acc[2] = neon.mmlaqS32(acc[2], a23, b01);
+                    acc[3] = neon.mmlaqS32(acc[3], a23, b23);
                 }
 
                 // 2x2 tiles to rows.
@@ -957,14 +956,14 @@ pub fn gemmQ8_0_4x8(n: c_int, s: [*]f32, bs: usize, vx: *const anyopaque, vy: *c
                     combineHigh(acc[2], acc[3]),
                 };
 
-                const a_d = neon.cvt_f32_f16(neon.load_f16x4(@ptrCast(&a_ptr[b].d)));
-                const b_d = neon.cvt_f32_f16(neon.load_f16x4(@ptrCast(&b_ptr[b].d)));
+                const a_d = neon.cvtF32F16(neon.loadF16x4(@ptrCast(&a_ptr[b].d)));
+                const b_d = neon.cvtF32F16(neon.loadF16x4(@ptrCast(&b_ptr[b].d)));
 
                 // `vfmaq_f32(acc, row, vmulq_laneq_f32(b_d, a_d, r))`: the
                 // scale product rounds, the accumulate fuses.
                 inline for (0..4) |r| {
                     const lane: f32x4 = @splat(a_d[r]);
-                    acc_f32[r] = neon.fma_f32(acc_f32[r], neon.cvt_f32_s32(rows[r]), b_d * lane);
+                    acc_f32[r] = neon.fmaF32(acc_f32[r], neon.cvtF32S32(rows[r]), b_d * lane);
                 }
             }
 

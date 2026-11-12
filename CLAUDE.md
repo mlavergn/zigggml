@@ -14,7 +14,9 @@ Scope boundaries:
 ## Hard constraints
 
 - **Zig 0.17.0** (`.minimum_zig_version` in `build.zig.zon`).
-- **Never edit `src/`.** It is a verbatim copy of `../llama.zig/src/ggml/` (minus `ported.zig` and `.mc.zig`; `src/root.zig` is ours), and `make sync` overwrites it. Fixes go to llama.zig first. The same applies to `vendor/ggml/`, `build/{metal_embed,cuda_kernels,vulkan_shaders}.zig` and `cli/cpu.zig`.
+- `src/` began as a copy of `../llama.zig/src/ggml/` and is now restyled to ZIGSTYLE. Upstream changes are ported in by hand (`UPSTREAM.md`); `make sync` never overwrites it. **Keep every provenance header** (`Ports \`x\` (file.c:N @commit)`), which records the upstream source.
+- **Never edit `vendor/ggml/`.** It is upstream's verbatim, and `make sync` re-copies it.
+- Every C symbol keeps its name. A ported function is camelCase in Zig and exported with `@export(&fooBar, .{ .name = "foo_bar" })` plus `callconv(.c)`. `extern fn` declarations keep their C names.
 - **No Zig package dependencies.** `.dependencies` holds only `zigbuildx` (build-only, pinned by `.url` + `.hash`, never `.path`). System SDKs (CUDA, Vulkan, Apple frameworks) are linked, not depended on.
 - `build.zig.zon` is the source of truth for name and version. `.paths = .{ "src" }`.
 - `config.zon` sets `GGML_DEFAULT_N_THREADS`. `build/ggml.zig` rewrites that `#define` in a generated copy of `vendor/ggml/include/` (the whole directory, since the headers include `"ggml.h"` quoted), which feeds both the translation and the installed headers.
@@ -27,7 +29,7 @@ Scope boundaries:
 - `make test` runs the library's ~420 unit tests (~2.5 min in Debug), the CLI tests, and `bench --smoke`. Use `zig build test-cli` for the CLI alone (seconds).
 - Zig's test runner prints `failed command:` above the stderr of *passing* tests (ggml logs backend registration). Read the `Build Summary` line. Any `log.err` inside a test fails it.
 - `-Dtest-filter=<str>` filters both test binaries.
-- `make lint` covers `build.zig`, `build/` and `cli/` only. `src/` is not linted (its exported C names alone are ~1,800 case-convention hits), nor are the verbatim build tools.
+- `make lint` covers every Zig file (`build.zig`, `build/`, `cli/`, `src/`). zlint misses references inside `callconv(...)`, so a calling-convention constant reads as unused; write the convention inline.
 - CPU is the default. `-Dcuda` (an nvcc build takes ~3 min), `-Dvulkan`, `-Dblas` (Apple only). Metal is always on for Apple targets.
 - Symbol parity check: see `UPSTREAM.md`. The diff against llama.zig's `reference` build with the same backends must be empty. One anonymous-namespace symbol in `cub_shim.cu` differs by path hash; that is expected.
 
@@ -41,12 +43,12 @@ Scope boundaries:
   - It times both case lists (upstream times only its perf list) with a fixed warmup plus N runs, not "at least one second".
   - Before timing, it requires *every* node of a graph to be supported, not just the output, and skips CUDA graphs with skipped (`-1`) expert ids (`Runner.perf`). Without these, eval-list cases abort or fault on CUDA.
   - There is no memory column: per-op peak RSS isn't meaningful.
+- No per-function entry tracing in `src/`: these are low-level kernels. Test diagnostics use `std.log.warn` (`log.err` fails a test).
 - Translate-C gives `[*c]` for `ggml_tensor` (it coerces to `*`) but `?*` for opaque types (`ggml_cgraph`, `ggml_context`). Variables named `i0`…`i3` shadow primitive types; use `j0`….
 
 ## Open items
 
 - Metal and BLAS have not been built or symbol-checked: they need an Apple host. Build with `-Dblas` on macOS and run the `UPSTREAM.md` parity check against llama.zig's `reference` step.
-- The repo is not under git yet (`git init`, first commit).
 - On CUDA, `MUL_MAT_ID` with skipped expert ids is unsupported upstream (`TAG_MUL_MAT_ID_SKIP`, llama.cpp PR 26631). The fix belongs upstream, in `mmid.cu` and its kernels, and arrives through llama.zig.
 
 ## Style

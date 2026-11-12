@@ -91,7 +91,6 @@ const Lcg = struct {
 /// Ports `fill`, which sets both operands for one pattern
 /// (vecdot_golden.c:141).
 ///
-/// Parameters:
 /// - `p`: which pattern.
 /// - `x`, `y`: destination rows, `nelem` floats each.
 fn fill(p: Pattern, x: []f32, y: []f32) void {
@@ -174,13 +173,12 @@ extern fn ggml_quantize_chunk(
 
 /// Runs one kernel against its goldens, on every pattern.
 ///
-/// Parameters:
 /// - `dot`: the kernel under test.
 /// - `xt`: the left operand's type.
 /// - `yt`: the right operand's type, which is `xt`'s `vec_dot_type`.
 /// - `g`: the golden row for this kernel.
 ///
-/// Return: nothing; fails the test on the first pattern that differs, naming
+/// - Returns: nothing; fails the test on the first pattern that differs, naming
 /// the pattern and printing both values in decimal and in hex.
 pub fn check(dot: DotFn, xt: c.enum_ggml_type, yt: c.enum_ggml_type, g: anytype) !void {
     // The NEON `nvfp4` kernel reads `ggml_table_f32_ue4m3`, which only
@@ -222,8 +220,8 @@ pub fn check(dot: DotFn, xt: c.enum_ggml_type, yt: c.enum_ggml_type, g: anytype)
         const want = p.pick(g);
         const got: u32 = @bitCast(s);
         if (got != want) {
-            std.debug.print(
-                "{s}: want 0x{X:0>8} ({d}), got 0x{X:0>8} ({d})\n",
+            std.log.warn(
+                "{s}: want 0x{X:0>8} ({d}), got 0x{X:0>8} ({d})",
                 .{ @tagName(p), want, @as(f32, @bitCast(want)), got, s },
             );
             return error.GoldenMismatch;
@@ -239,12 +237,11 @@ extern fn ggml_cpu_init() void;
 
 /// Runs one row quantizer against its goldens, on every pattern.
 ///
-/// Parameters:
 /// - `quant`: the quantizer under test.
 /// - `t`: the type it writes, for sizing the output.
 /// - `g`: the golden row for this quantizer.
 ///
-/// Return: nothing; fails on the first pattern whose output checksum differs.
+/// - Returns: nothing; fails on the first pattern whose output checksum differs.
 pub fn checkRow(quant: RowFn, t: c.enum_ggml_type, g: anytype) !void {
     ggml_cpu_init();
     try expectNotAllZero(g);
@@ -263,8 +260,8 @@ pub fn checkRow(quant: RowFn, t: c.enum_ggml_type, g: anytype) !void {
         const got = fnv1a(out[0..bytes]);
         const want = p.pick(g);
         if (got != want) {
-            std.debug.print(
-                "{s}: want 0x{X:0>16}, got 0x{X:0>16}\n",
+            std.log.warn(
+                "{s}: want 0x{X:0>16}, got 0x{X:0>16}",
                 .{ @tagName(p), want, got },
             );
             return error.GoldenMismatch;
@@ -282,7 +279,7 @@ fn expectNotAllZero(g: anytype) !void {
         if (p.pick(g) != 0) any = true;
     }
     if (!any) {
-        std.debug.print("every golden for this kernel is zero -- the capture is broken\n", .{});
+        std.log.warn("every golden for this kernel is zero -- the capture is broken", .{});
         return error.GoldensAllZero;
     }
 }

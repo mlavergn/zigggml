@@ -43,14 +43,17 @@ extern fn ggml_gemm_q4_0_4x4_q8_0_generic(n: c_int, s: [*]f32, bs: usize, vx: *c
 
 const c = impl.c;
 
+comptime {
+    @export(&ggmlGemmQ404x4Q80, .{ .name = "ggml_gemm_q4_0_4x4_q8_0" });
+}
+
 /// Ports `ggml_gemm_q4_0_4x4_q8_0` (arch/arm/repack.cpp:2089 @cd959bae9).
 ///
-/// Parameters:
 /// - `n`: the reduction length; `nb = n / 32` blocks.
 /// - `s`, `bs`: the result and its row stride in elements.
 /// - `vx`, `vy`: the interleaved weights and the quantized activations.
 /// - `nr`, `nc`: rows and columns of the product.
-pub export fn ggml_gemm_q4_0_4x4_q8_0(
+pub fn ggmlGemmQ404x4Q80(
     n: c_int,
     s: [*]f32,
     bs: usize,

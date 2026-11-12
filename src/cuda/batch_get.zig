@@ -89,12 +89,11 @@ fn rangeLess(_: void, a: Range, b: Range) bool {
 
 /// Ports `ggml_cuda_get_tensor_n` (batch-get.cu:85 @cd959bae9).
 ///
-/// Parameters:
 /// - `device`: the buffer's device, already current.
 /// - `tensors`, `data`, `offsets`, `sizes`, `n_tensors`: the
 ///   `get_tensor_n` request.
 ///
-/// Return: true when every read was done here (gathered or by DMA into
+/// - Returns: true when every read was done here (gathered or by DMA into
 /// the registered span), false when the caller must do them one at a time.
 pub fn getTensorN(device: c_int, tensors: [*c]const [*c]const Tensor, data: [*c]const ?*anyopaque, offsets: [*c]const usize, sizes: [*c]const usize, n_tensors: usize) bool {
     // Provisional dispatch values based on experiments.
@@ -102,8 +101,8 @@ pub fn getTensorN(device: c_int, tensors: [*c]const [*c]const Tensor, data: [*c]
     const max_gather_read_bytes: usize = 128 * 1024;
     // Collect non-empty CPU destination ranges.
     var ranges: std.ArrayList(Range) = .empty;
-    defer ranges.deinit(common.allocator);
-    ranges.ensureTotalCapacity(common.allocator, n_tensors) catch impl.abort("ggml-cuda: out of memory");
+    defer ranges.deinit(std.heap.c_allocator);
+    ranges.ensureTotalCapacity(std.heap.c_allocator, n_tensors) catch impl.abort("ggml-cuda: out of memory");
     var payload_bytes: usize = 0;
     // Number of non-empty reads whose size is at most max_gather_read_bytes.
     var n_reads_small: usize = 0;

@@ -1,0 +1,392 @@
+//! What the CPU this binary was built for can do, and the one-time
+//! initialisation that depends on it.
+//!
+//! # Provenance
+//!
+//! Ported from `llama.cpp/ggml/src/ggml-cpu/ggml-cpu.c` (v0.9.0, `cd959bae9`),
+//! the arch-feature state at line 92, the predicates at line 3660, and
+//! `ggml_cpu_init` at line 3884. Each declaration names the C it replaces and
+//! the line it began at.
+//!
+//! # These are compile-time answers, not runtime probes
+//!
+//! Every one of the C's predicates is a `#if defined(__AVX2__)` around a
+//! `return 1`, so what they report is the instruction set the *compiler* was
+//! told to target, not what the chip underneath happens to have. The
+//! translation keeps that: each is a `comptime` test against
+//! `builtin.cpu.features`, which is where Zig records the same thing.
+//!
+//! Keeping the answers honest matters more than it looks. `type_traits_cpu`
+//! branches on i8mm to decide how many rows a kernel takes per call, and the
+//! kernels themselves are compiled by `zig cc` from `quants.c`. Both sides
+//! read the same target, so both sides agree -- but only because neither is
+//! hardcoded.
+
+const std = @import("std");
+const builtin = @import("builtin");
+const impl = @import("../impl.zig");
+const convert = @import("convert.zig");
+const c = impl.c;
+
+/// True when this build targets AArch64 and the named feature is enabled.
+///
+/// The C's spelling is `#if defined(__ARM_ARCH) && defined(__ARM_FEATURE_X)`.
+/// The arch test comes first here for the same reason it does there: on a
+/// non-ARM target the feature question is not merely false, it is meaningless.
+inline fn armHas(comptime name: []const u8) bool {
+    if (builtin.cpu.arch != .aarch64) return false;
+    return std.Target.aarch64.featureSetHas(
+        builtin.cpu.features,
+        @field(std.Target.aarch64.Feature, name),
+    );
+}
+
+/// Ports `struct ggml_arm_arch_features_type` and the `ggml_arm_arch_features`
+/// instance (ggml-cpu.c:95 @cd959bae9).
+///
+/// Exported because it is a file-scope non-static in the C, and therefore part
+/// of the translation unit's symbol contract even though only `ggml_cpu_init`
+/// writes it and only `ggml_cpu_get_sve_cnt` reads it.
+pub const ArmArchFeatures = extern struct {
+    sve_cnt: c_int,
+};
+
+pub export var ggml_arm_arch_features: ArmArchFeatures = .{ .sve_cnt = 0 };
+
+/// Ports `ggml_cpu_disable_fusion` (ggml-cpu.c:3084 @cd959bae9).
+///
+/// Written once by `ggml_cpu_init` and read-only afterwards, so no
+/// synchronisation -- the C says the same in a comment on the same line.
+pub var disable_fusion = false;
+
+// -----------------------------------------------------------------------------
+// x86 and friends
+//
+// Each is the C's `#if defined(__X__) return 1`, asked of Zig's x86 feature
+// set -- the one clang derives `__X__` from -- and constant-false off x86.
+// They are written out rather than folded into one table because they are
+// separate C symbols and the backend registry calls every one of them by
+// name to build its feature string.
+
+/// True when this build targets x86_64 and the named feature is enabled: the
+/// C's `#if defined(__AVX2__)` and friends.
+inline fn x86Has(comptime name: []const u8) bool {
+    if (builtin.cpu.arch != .x86_64) return false;
+    return std.Target.x86.featureSetHas(
+        builtin.cpu.features,
+        @field(std.Target.x86.Feature, name),
+    );
+}
+
+/// Ports `ggml_cpu_has_avx` (ggml-cpu.c:3660 @cd959bae9).
+pub export fn ggml_cpu_has_avx() c_int {
+    return @intFromBool(x86Has("avx"));
+}
+
+/// Ports `ggml_cpu_has_avx_vnni` (ggml-cpu.c:3668 @cd959bae9).
+pub export fn ggml_cpu_has_avx_vnni() c_int {
+    return @intFromBool(x86Has("avxvnni"));
+}
+
+/// Ports `ggml_cpu_has_avx2` (ggml-cpu.c:3676 @cd959bae9).
+pub export fn ggml_cpu_has_avx2() c_int {
+    return @intFromBool(x86Has("avx2"));
+}
+
+/// Ports `ggml_cpu_has_avx512` (ggml-cpu.c:3684 @cd959bae9).
+pub export fn ggml_cpu_has_avx512() c_int {
+    return @intFromBool(x86Has("avx512f"));
+}
+
+/// Ports `ggml_cpu_has_avx512_vbmi` (ggml-cpu.c:3692 @cd959bae9).
+pub export fn ggml_cpu_has_avx512_vbmi() c_int {
+    return @intFromBool(x86Has("avx512vbmi"));
+}
+
+/// Ports `ggml_cpu_has_avx512_vnni` (ggml-cpu.c:3700 @cd959bae9).
+pub export fn ggml_cpu_has_avx512_vnni() c_int {
+    return @intFromBool(x86Has("avx512vnni"));
+}
+
+/// Ports `ggml_cpu_has_avx512_bf16` (ggml-cpu.c:3708 @cd959bae9).
+pub export fn ggml_cpu_has_avx512_bf16() c_int {
+    return @intFromBool(x86Has("avx512bf16"));
+}
+
+/// Ports `ggml_cpu_has_amx_int8` (ggml-cpu.c:3716 @cd959bae9).
+pub export fn ggml_cpu_has_amx_int8() c_int {
+    return @intFromBool(x86Has("amx_int8"));
+}
+
+/// Ports `ggml_cpu_has_bmi2` (ggml-cpu.c:3724 @cd959bae9).
+pub export fn ggml_cpu_has_bmi2() c_int {
+    return @intFromBool(x86Has("bmi2"));
+}
+
+/// Ports `ggml_cpu_has_fma` (ggml-cpu.c:3732 @cd959bae9). The x86 `__FMA__`, not ARM's.
+pub export fn ggml_cpu_has_fma() c_int {
+    return @intFromBool(x86Has("fma"));
+}
+
+/// Ports `ggml_cpu_has_f16c` (ggml-cpu.c:3764 @cd959bae9).
+pub export fn ggml_cpu_has_f16c() c_int {
+    return @intFromBool(x86Has("f16c"));
+}
+
+/// Ports `ggml_cpu_has_sse3` (ggml-cpu.c:3796 @cd959bae9).
+pub export fn ggml_cpu_has_sse3() c_int {
+    return @intFromBool(x86Has("sse3"));
+}
+
+/// Ports `ggml_cpu_has_ssse3` (ggml-cpu.c:3804 @cd959bae9).
+pub export fn ggml_cpu_has_ssse3() c_int {
+    return @intFromBool(x86Has("ssse3"));
+}
+
+/// Ports `ggml_cpu_has_vsx` (ggml-cpu.c:3812 @cd959bae9), POWER9.
+pub export fn ggml_cpu_has_vsx() c_int {
+    return 0;
+}
+
+/// Ports `ggml_cpu_has_vxe` (ggml-cpu.c:3820 @cd959bae9), s390x.
+pub export fn ggml_cpu_has_vxe() c_int {
+    return 0;
+}
+
+/// Ports `ggml_cpu_has_wasm_simd` (ggml-cpu.c:3780 @cd959bae9).
+pub export fn ggml_cpu_has_wasm_simd() c_int {
+    return 0;
+}
+
+/// Ports `ggml_cpu_has_riscv_v` (ggml-cpu.c:3748 @cd959bae9).
+pub export fn ggml_cpu_has_riscv_v() c_int {
+    return 0;
+}
+
+/// Ports `ggml_cpu_get_rvv_vlen` (ggml-cpu.c:3756 @cd959bae9).
+pub export fn ggml_cpu_get_rvv_vlen() c_int {
+    return 0;
+}
+
+// -----------------------------------------------------------------------------
+// ARM
+
+/// Ports `ggml_cpu_has_arm_fma` (ggml-cpu.c:3740 @cd959bae9).
+///
+/// The C tests `__ARM_FEATURE_FMA`, which clang defines whenever the ARM
+/// floating-point unit is available -- always, on AArch64.
+pub export fn ggml_cpu_has_arm_fma() c_int {
+    return @intFromBool(armHas("fp_armv8"));
+}
+
+/// Ports `ggml_cpu_has_fp16_va` (ggml-cpu.c:3772 @cd959bae9).
+///
+/// `__ARM_FEATURE_FP16_VECTOR_ARITHMETIC`, which clang ties to FullFP16.
+pub export fn ggml_cpu_has_fp16_va() c_int {
+    return @intFromBool(armHas("fullfp16"));
+}
+
+/// Ports `ggml_cpu_has_neon` (ggml-cpu.c:3828 @cd959bae9).
+pub export fn ggml_cpu_has_neon() c_int {
+    return @intFromBool(armHas("neon"));
+}
+
+/// Ports `ggml_cpu_has_dotprod` (ggml-cpu.c:3836 @cd959bae9).
+pub export fn ggml_cpu_has_dotprod() c_int {
+    return @intFromBool(armHas("dotprod"));
+}
+
+/// Ports `ggml_cpu_has_sve` (ggml-cpu.c:3844 @cd959bae9).
+pub export fn ggml_cpu_has_sve() c_int {
+    return @intFromBool(armHas("sve"));
+}
+
+/// Ports `ggml_cpu_has_matmul_int8` (ggml-cpu.c:3852 @cd959bae9).
+pub export fn ggml_cpu_has_matmul_int8() c_int {
+    return @intFromBool(armHas("i8mm"));
+}
+
+/// Ports `ggml_cpu_get_sve_cnt` (ggml-cpu.c:3860 @cd959bae9).
+///
+/// Zero unless SVE is compiled in, in which case `ggml_cpu_init` has filled
+/// it from `svcntb()`.
+pub export fn ggml_cpu_get_sve_cnt() c_int {
+    if (!armHas("sve")) return 0;
+    return ggml_arm_arch_features.sve_cnt;
+}
+
+/// Ports `ggml_cpu_has_sme` (ggml-cpu.c:3868 @cd959bae9).
+pub export fn ggml_cpu_has_sme() c_int {
+    return @intFromBool(armHas("sme"));
+}
+
+/// Ports `ggml_cpu_has_sme2` (ggml-cpu.c:3876 @cd959bae9).
+pub export fn ggml_cpu_has_sme2() c_int {
+    return @intFromBool(armHas("sme2"));
+}
+
+// -----------------------------------------------------------------------------
+// Build configuration
+
+/// Ports `ggml_cpu_has_llamafile` (ggml-cpu.c:3788 @cd959bae9).
+///
+/// Not a CPU question at all: `GGML_USE_LLAMAFILE` is a build flag, and
+/// `build/llamacpp.zig` passes it. Kept true to match, and asserted against
+/// the `mul_mat` fast path in the test below so the two cannot drift apart.
+pub export fn ggml_cpu_has_llamafile() c_int {
+    return @intFromBool(use_llamafile);
+}
+
+/// Ports the `GGML_USE_LLAMAFILE` define (build/llamacpp.zig).
+///
+/// The C also clears it under SVE or i8mm -- see `ggml-cpu.c:44` -- because
+/// `sgemm.cpp` has no kernels for those paths. Reproduced here so the flag and
+/// the `mul_mat` fast path cannot disagree.
+pub const use_llamafile = !armHas("sve") and !armHas("i8mm");
+
+// -----------------------------------------------------------------------------
+// The goldens
+
+/// Whether the unit tests compare against the goldens captured at `generic`
+/// rather than at the baseline: `quants/arm/golden_generic.zig` and
+/// `vec_golden_generic.zig`, written by `GOLDEN_CPU=generic
+/// scripts/vecdot-golden` and `scripts/vec-golden`. The reference computes
+/// different bits there -- the `F16` arm, `ggml_vdotq_s32`'s grouping, the
+/// vectorizer's width -- so it is a different oracle, not a looser one.
+/// What decides is those three, not the model's name: `apple_a7` to
+/// `apple_a11` have neither `fullfp16` nor `dotprod` and the vectorizer's
+/// narrower interleave (`simd.strict_loop`), so they compute `generic`'s
+/// bits; the A14 and later share the baseline's. The A12 and A13, with
+/// `fullfp16` and without the rest, match neither set.
+pub const golden_generic = builtin.cpu.arch == .aarch64 and
+    !std.Target.aarch64.featureSetHas(builtin.cpu.features, .fullfp16) and
+    !std.Target.aarch64.featureSetHas(builtin.cpu.features, .dotprod) and
+    !std.Target.aarch64.featureSetHas(builtin.cpu.features, .max_interleave_factor_4);
+
+// -----------------------------------------------------------------------------
+// One-time initialisation
+
+/// The C's `static bool is_first_call`, hoisted to file scope because Zig has
+/// no function-local statics. Read and written only under the critical
+/// section `ggml_cpu_init` takes.
+var is_first_call = true;
+
+extern fn ggml_time_us() i64;
+extern fn atoi(str: [*:0]const u8) c_int;
+
+/// Ports `ggml_cpu_init` (ggml-cpu.c:3884 @cd959bae9).
+///
+/// Fills the lookup tables and reads `GGML_CPU_DISABLE_FUSION`, once per
+/// process. `ggml_graph_compute` calls it on every graph, so the guard is what
+/// makes that cheap.
+pub export fn ggml_cpu_init() void {
+    // Needed to initialise ggml's time base. The context is created and freed
+    // purely for that side effect, which is what the C does.
+    {
+        const params = c.struct_ggml_init_params{
+            .mem_size = 0,
+            .mem_buffer = null,
+            .no_alloc = false,
+        };
+        ggml_free(ggml_init(params));
+    }
+
+    c.ggml_critical_section_start();
+
+    if (is_first_call) {
+        const t_start = ggml_time_us();
+
+        convert.initTables();
+
+        const t_end = ggml_time_us();
+        impl.printDebug(
+            "ggml_cpu_init: GELU, Quick GELU, SILU and EXP tables initialized in %f ms\n",
+            .{@as(f64, @floatFromInt(t_end - t_start)) / 1000.0},
+        );
+
+        initArmArchFeatures();
+
+        if (std.c.getenv("GGML_CPU_DISABLE_FUSION")) |env| {
+            disable_fusion = atoi(env) == 1;
+        }
+
+        is_first_call = false;
+    }
+
+    c.ggml_critical_section_end();
+}
+
+/// Ports `ggml_init_arm_arch_features` (ggml-cpu.c:741 @cd959bae9).
+///
+/// Empty on this build: the C reads `svcntb()` only under
+/// `__ARM_FEATURE_SVE`, and takes the empty arm at line 735 otherwise.
+/// Left as a named function rather than deleted so the SVE arm has somewhere
+/// obvious to go.
+fn initArmArchFeatures() void {
+    if (comptime armHas("sve")) {
+        @compileError("SVE builds must fill ggml_arm_arch_features.sve_cnt from svcntb()");
+    }
+}
+
+extern fn ggml_init(params: c.struct_ggml_init_params) ?*anyopaque;
+extern fn ggml_free(ctx: ?*anyopaque) void;
+
+// -----------------------------------------------------------------------------
+// Unit Tests
+
+test {
+    std.testing.refAllDecls(@This());
+}
+
+test "the ARM predicates agree with the build target" {
+    // These are what `type_traits_cpu` and the still-C kernels branch on, so
+    // they are asserted against Zig's own view of the target rather than
+    // against a hardcoded expectation for this machine.
+    const has = std.Target.aarch64.featureSetHas;
+    if (builtin.cpu.arch != .aarch64) return error.SkipZigTest;
+
+    try std.testing.expectEqual(
+        @intFromBool(has(builtin.cpu.features, .neon)),
+        ggml_cpu_has_neon(),
+    );
+    try std.testing.expectEqual(
+        @intFromBool(has(builtin.cpu.features, .dotprod)),
+        ggml_cpu_has_dotprod(),
+    );
+    try std.testing.expectEqual(
+        @intFromBool(has(builtin.cpu.features, .i8mm)),
+        ggml_cpu_has_matmul_int8(),
+    );
+}
+
+test "the x86 predicates are all false" {
+    try std.testing.expectEqual(@as(c_int, 0), ggml_cpu_has_avx());
+    try std.testing.expectEqual(@as(c_int, 0), ggml_cpu_has_avx2());
+    try std.testing.expectEqual(@as(c_int, 0), ggml_cpu_has_avx512());
+    try std.testing.expectEqual(@as(c_int, 0), ggml_cpu_has_f16c());
+    try std.testing.expectEqual(@as(c_int, 0), ggml_cpu_has_fma());
+}
+
+test "sve_cnt stays zero without SVE" {
+    try std.testing.expectEqual(@as(c_int, 0), ggml_cpu_has_sve());
+    try std.testing.expectEqual(@as(c_int, 0), ggml_cpu_get_sve_cnt());
+}
+
+test "llamafile is on unless the CPU has SVE or i8mm, as ggml-cpu.c:45 decides" {
+    // On for the baseline (M1), which is what mul_mat's fast path assumes
+    // there; off for `-Dcpu=apple_m3`, where the C undefines it because
+    // `sgemm.cpp` has no kernels for i8mm.
+    const expect_on = !armHas("sve") and !armHas("i8mm");
+    try std.testing.expectEqual(@as(c_int, @intFromBool(expect_on)), ggml_cpu_has_llamafile());
+    try std.testing.expectEqual(expect_on, use_llamafile);
+}
+
+test "init is idempotent and fills the tables" {
+    ggml_cpu_init();
+    const first = convert.ggml_table_f32_f16[0x3C00]; // 1.0 as a half
+    try std.testing.expectEqual(@as(f32, 1.0), first);
+
+    ggml_cpu_init();
+    try std.testing.expectEqual(first, convert.ggml_table_f32_f16[0x3C00]);
+    try std.testing.expectEqual(@as(f32, 0.5), convert.ggml_table_f32_ue4m3[0x38]);
+}

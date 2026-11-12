@@ -1,0 +1,16 @@
+.{
+    .name = .zigggml,
+    .description = "Zig GGML Module",
+    .version = "0.9.0",
+    .fingerprint = 0xaea38f52f4352072,
+    .minimum_zig_version = "0.17.0",
+    .paths = .{
+        "src",
+    },
+    .dependencies = .{
+        .zigbuildx = .{
+            .url = "git+https://github.com/mlavergn/zigbuildx?ref=v5.1.0#57e98c96795f708fc91e69eab2ce8cf6ec350cee",
+            .hash = "zigbuildx-5.1.0-9koPhJcsBAB39QF21x2r6-T1LQi32FrZmnpvzyLkYoxO",
+        },
+    },
+}

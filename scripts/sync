@@ -1,0 +1,63 @@
+#!/bin/bash
+# Re-copies ggml from llama.zig into zigggml (PLAN.md: llama.zig drives syncs
+# with upstream llama.cpp and pushes the ggml changes here).
+#
+# Copies, replacing what is here:
+#   src/                  <- $LLAMA_ZIG/src/ggml/   (minus ported.zig, .mc.zig;
+#                                                    zigggml's own root.zig kept)
+#   build/{metal_embed,cuda_kernels,vulkan_shaders}.zig <- $LLAMA_ZIG/build/
+#   cli/cpu.zig           <- $LLAMA_ZIG/tools/common/cpu.zig
+#   vendor/ggml/          <- $LLAMA_ZIG/llama.cpp/ (LICENSE, ggml/include,
+#                            ggml/src/*.h, ggml-metal .m/.h/kernels,
+#                            ggml-cuda, ggml-vulkan/vulkan-shaders)
+# then rewrites UPSTREAM.md's pin section from both checkouts.
+#
+# Usage: scripts/sync [LLAMA_ZIG]   (default ../llama.zig; or: make sync)
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+LZ="$(cd "${1:-$ROOT/../llama.zig}" && pwd)"
+UP="$LZ/llama.cpp"
+[ -f "$LZ/src/ggml/module.zig" ] || { echo "sync: $LZ is not a llama.zig checkout" >&2; exit 1; }
+[ -f "$UP/ggml/include/ggml.h" ] || { echo "sync: $UP has no ggml/include/ggml.h" >&2; exit 1; }
+
+cd "$ROOT"
+
+# Zig sources. --delete drops files llama.zig removed; root.zig is ours.
+rsync -a --delete --exclude ported.zig --exclude .mc.zig --exclude root.zig "$LZ/src/ggml/" src/
+
+cp "$LZ/build/metal_embed.zig" "$LZ/build/cuda_kernels.zig" "$LZ/build/vulkan_shaders.zig" build/
+cp "$LZ/tools/common/cpu.zig" cli/cpu.zig
+
+# Vendored upstream inputs.
+V=vendor/ggml
+rm -rf "$V"
+mkdir -p "$V/src/ggml-metal" "$V/src/ggml-vulkan"
+cp "$UP/LICENSE" "$V/LICENSE"
+cp -a "$UP/ggml/include" "$V/include"
+cp "$UP"/ggml/src/*.h "$V/src/"
+cp "$UP"/ggml/src/ggml-metal/*.m "$UP"/ggml/src/ggml-metal/*.h "$V/src/ggml-metal/"
+cp -a "$UP/ggml/src/ggml-metal/kernels" "$V/src/ggml-metal/"
+cp -a "$UP/ggml/src/ggml-cuda" "$V/src/ggml-cuda"
+cp -a "$UP/ggml/src/ggml-vulkan/vulkan-shaders" "$V/src/ggml-vulkan/"
+rm -f "$V/src/ggml-cuda/CMakeLists.txt" "$V/src/ggml-vulkan/vulkan-shaders/CMakeLists.txt"
+
+# UPSTREAM.md's pin section, between the markers.
+lz_rev="$(git -C "$LZ" describe --tags --always 2>/dev/null || echo unknown) ($(git -C "$LZ" rev-parse --short HEAD 2>/dev/null || echo unknown))"
+up_rev="$(git -C "$UP" describe --tags --always 2>/dev/null || echo unknown) ($(git -C "$UP" rev-parse --short=9 HEAD 2>/dev/null || echo unknown))"
+pin="$(mktemp)"
+{
+    echo "<!-- pin:begin (written by scripts/sync) -->"
+    echo "- llama.zig: \`$lz_rev\`"
+    echo "- llama.cpp: \`$up_rev\`"
+    echo "- synced: $(date -u +%Y-%m-%d)"
+    echo "<!-- pin:end -->"
+} > "$pin"
+awk -v pinfile="$pin" '
+    /<!-- pin:begin/ { while ((getline line < pinfile) > 0) print line; skip = 1; next }
+    /<!-- pin:end/   { skip = 0; next }
+    !skip
+' UPSTREAM.md > UPSTREAM.md.tmp && mv UPSTREAM.md.tmp UPSTREAM.md
+rm -f "$pin"
+
+echo "synced from $LZ: llama.zig $lz_rev, llama.cpp $up_rev"
+echo "next: make validate, then compare symbols (see UPSTREAM.md)"

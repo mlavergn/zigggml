@@ -1,0 +1,7 @@
+// Build-time settings for the ggml library. Read by build.zig.
+.{
+    // The value GGML_DEFAULT_N_THREADS is defined to in the generated (and
+    // installed) ggml.h: the CPU thread count ggml uses when a caller sets
+    // none. Upstream's, and llama.zig's, is 4. Must be at least 1.
+    .default_n_threads = 4,
+}
